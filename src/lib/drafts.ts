@@ -34,3 +34,8 @@ export function useDraft<T>(videoId: string, key: string, initial: T | (() => T)
 export function seedDraft<T>(videoId: string, key: string, value: T) {
   cache.set(`${videoId}:${key}`, value);
 }
+
+/** Read a draft outside React (e.g. to send the advisor's choices with a job). */
+export function peekDraft<T>(videoId: string, key: string): T | undefined {
+  return cache.get(`${videoId}:${key}`) as T | undefined;
+}

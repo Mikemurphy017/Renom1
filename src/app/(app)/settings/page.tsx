@@ -17,6 +17,7 @@ import { useStore } from "@/lib/store";
 import { TEAM } from "@/lib/mock/advisor";
 import type { DisclosureVersion } from "@/lib/types";
 import { cn, fmtDate } from "@/lib/utils";
+import { BRAND } from "@/lib/brand";
 
 const SECTIONS = [
   ["voice", "Your voice"],
@@ -92,7 +93,7 @@ export default function SettingsPage() {
         </nav>
 
         <div className="min-w-0 space-y-12 pb-24">
-          <Section id="voice" title="Your voice" desc="Everything Renom writes starts here: ideas, scripts and captions. The more specific you are, the more it sounds like you.">
+          <Section id="voice" title="Your voice" desc={`Everything ${BRAND.name} writes starts here: ideas, scripts and captions. The more specific you are, the more it sounds like you.`}>
             <div className={cn("flex items-start gap-3 rounded-xl border px-4 py-3 text-[13px]", claude ? "border-success/25 bg-success-soft" : "border-border bg-card")}>
               {claude ? <Sparkles className="mt-0.5 size-4 text-success" /> : <CircleAlert className="mt-0.5 size-4 text-muted-foreground" />}
               <div>
@@ -123,7 +124,7 @@ export default function SettingsPage() {
                 </div>
               ))}
             </div>
-            <Field label="Strong opinions" hint="Renom leans on these">
+            <Field label="Strong opinions" hint={`${BRAND.name} leans on these`}>
               <ul className="space-y-2">
                 {p.opinions.map((o, i) => (
                   <li key={i} className="group flex items-start gap-3 rounded-lg border border-border bg-card px-3 py-2.5 text-[14px]">
@@ -182,7 +183,7 @@ export default function SettingsPage() {
             </details>
           </Section>
 
-          <Section id="publishing" title="Publishing" desc="Renom schedules through Buffer. Your social accounts are connected in Buffer.">
+          <Section id="publishing" title="Publishing" desc={`${BRAND.name} schedules through Buffer. Your social accounts are connected in Buffer.`}>
             <BufferCard />
           </Section>
 

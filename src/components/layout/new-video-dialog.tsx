@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useStartVideo } from "./use-start-video";
 import type { VideoFormat } from "@/lib/types";
+import { BRAND } from "@/lib/brand";
 
 export function NewVideoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const start = useStartVideo();
@@ -24,7 +25,7 @@ export function NewVideoDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       <DialogContent className="gap-6 sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-2xl">What do you want to talk about?</DialogTitle>
-          <DialogDescription>A sentence is plenty. Or leave it blank and Renom will suggest ideas.</DialogDescription>
+          <DialogDescription>A sentence is plenty. Or leave it blank and {BRAND.name} will suggest ideas.</DialogDescription>
         </DialogHeader>
         <textarea
           autoFocus

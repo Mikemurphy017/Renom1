@@ -63,6 +63,8 @@ export interface Video {
   publishedAt?: string;
   compliance: ComplianceStatus;
   metrics?: PlatformMetrics[];
+  /** Final rendered video from the AI edit (see src/lib/video). */
+  outputUrl?: string;
 }
 
 export interface Platform {

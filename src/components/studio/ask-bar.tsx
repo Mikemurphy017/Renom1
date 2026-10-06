@@ -4,6 +4,7 @@ import * as React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUp, LoaderCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BRAND } from "@/lib/brand";
 
 /** A single floating line for changes: "Make it shorter", "Punchier hook"… */
 export function AskBar({
@@ -12,7 +13,7 @@ export function AskBar({
   status,
   note,
   suggestions = [],
-  placeholder = "Ask Renom to change anything…",
+  placeholder = `Ask ${BRAND.name} to change anything…`,
   className,
 }: {
   onAsk: (text: string) => void;

@@ -31,6 +31,8 @@
   --border: #e5e1d8;
   --input: #e5e1d8;
   --ring: #b08d57;
+  /* brand accent; overridden by NEXT_PUBLIC_BRAND_PRIMARY (src/lib/brand.ts) */
+  --brass: #b08d57;
 
   --navy: #0b1f3a;
   --navy-2: #13294a;
@@ -139,7 +141,7 @@
   --color-navy: var(--navy);
   --color-navy-2: var(--navy-2);
   --color-navy-foreground: var(--navy-foreground);
-  --color-brass: #b08d57;
+  --color-brass: var(--brass);
   --color-oxblood: #8b2e2e;
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);

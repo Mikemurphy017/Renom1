@@ -20,6 +20,10 @@ import type { Script, Video } from "@/lib/types";
 import { cn, fmtDuration } from "@/lib/utils";
 import { useCapture } from "@/lib/media/use-capture";
 import { getTake, saveTake, takeExtension } from "@/lib/media/takes";
+import { peekDraft } from "@/lib/drafts";
+import { analyzeTake } from "@/lib/video/client";
+import { defaultOverlays } from "@/lib/video/edit-model";
+import { DEFAULT_EDIT, type OverlayOptions } from "@/lib/video/types";
 import { StepSection, FieldLabel } from "../step-layout";
 import type { StepProps } from "../studio-view";
 
@@ -39,7 +43,7 @@ function MicMeter({ level, live }: { level: number; live: boolean }) {
 }
 export function RecordStep({ video, complete }: StepProps) {
   const router = useRouter();
-  const { videos, updateVideo } = useStore();
+  const { videos, updateVideo, profile } = useStore();
   const queueCandidates = React.useMemo(() => {
     const others = videos.filter((v) => v.id !== video.id && v.status !== "published" && (["record", "descriptions"].includes(v.stage) || v.compliance === "changes_requested"));
     return [video, ...others];
@@ -125,6 +129,23 @@ export function RecordStep({ video, complete }: StepProps) {
     setOffset(0);
     setRecording(true);
     setPlaying(true);
+  };
+
+  // Upload the take and start the AI edit; Edit shows the progress, so move on right away.
+  const sendToAiEdit = () => {
+    const take = getTake(active.id);
+    setDoneOpen(false);
+    if (take) {
+      const target = active;
+      analyzeTake(target.id, take, {
+        aspect: take.height > take.width ? "9:16" : "16:9",
+        edit: DEFAULT_EDIT,
+        overlays: peekDraft<OverlayOptions>(target.id, "edit.overlays") ?? defaultOverlays(profile, target.format),
+        script: scriptText(target),
+      }).catch((e) => toast.error("AI Edit couldn’t process this take", { description: (e as Error).message }));
+    }
+    if (active.id === video.id) complete();
+    else { updateVideo(active.id, { stage: "edit" }); toast.success("Sent to AI Edit", { description: active.title }); }
   };
 
   const toggleRecord = async () => {
@@ -399,11 +420,7 @@ export function RecordStep({ video, complete }: StepProps) {
           )}
           <div className="grid gap-3 sm:grid-cols-2">
             <button
-              onClick={() => {
-                setDoneOpen(false);
-                if (active.id === video.id) complete();
-                else { updateVideo(active.id, { stage: "edit" }); toast.success("Sent to AI Edit", { description: active.title }); }
-              }}
+              onClick={sendToAiEdit}
               className="cursor-pointer rounded-lg border border-primary bg-brass-soft/50 p-4 text-left transition-colors hover:bg-brass-soft"
             >
               <Sparkles className="size-5 text-primary" />

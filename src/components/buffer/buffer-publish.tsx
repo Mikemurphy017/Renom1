@@ -42,7 +42,7 @@ type Result = { channelId: string; ok: boolean; message: string; dueAt?: string 
 export function useBufferPlan(video: Video, channels: BufferChannel[]) {
   const [mine] = useAdvisorChannels(TEAM[0].id);
   const { profile } = useStore();
-  const [videoUrl, setVideoUrl] = useDraft(video.id, "buffer.videoUrl", "");
+  const [videoUrl, setVideoUrl] = useDraft(video.id, "buffer.videoUrl", () => (video.outputUrl?.startsWith("https://") ? video.outputUrl : ""));
   const [plans, setPlans] = useDraft<Record<string, ChannelPlan>>(video.id, "buffer.plans", {});
   const [copies] = useDraft<PlatformCopy[]>(video.id, "desc.copies", []);
 

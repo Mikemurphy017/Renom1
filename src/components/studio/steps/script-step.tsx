@@ -17,6 +17,7 @@ import { cn, fmtDuration } from "@/lib/utils";
 import { AskBar, RequestLine, Writing } from "../ask-bar";
 import { StepIntro } from "../step-layout";
 import type { StepProps } from "../studio-view";
+import { BRAND } from "@/lib/brand";
 
 function Editable({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
   const ref = React.useRef<HTMLTextAreaElement>(null);
@@ -81,7 +82,7 @@ export function ScriptStep({ video, complete }: StepProps) {
 
   return (
     <div className="space-y-8 pb-28">
-      <StepIntro title={video.title} subtitle={script ? "Click any line to edit it. Ask Renom for bigger changes." : "Renom writes it in your voice. You make it yours."} />
+      <StepIntro title={video.title} subtitle={script ? `Click any line to edit it. Ask ${BRAND.name} for bigger changes.` : `${BRAND.name} writes it in your voice. You make it yours.`} />
 
       <div className="flex flex-wrap items-center gap-2">
         <ToggleGroup type="single" value={format} onValueChange={(v) => v && setFormat(v as VideoFormat)} className="rounded-full">
@@ -96,7 +97,7 @@ export function ScriptStep({ video, complete }: StepProps) {
           </PopoverTrigger>
           <PopoverContent align="start" className="w-80 space-y-4">
             <div>
-              <div className="mb-1.5 text-[12px] font-medium">Notes for Renom</div>
+              <div className="mb-1.5 text-[12px] font-medium">Notes for {BRAND.name}</div>
               <Textarea rows={3} value={context} onChange={(e) => setContext(e.target.value)} placeholder="A story, a client question, a stat you trust…" className="text-[13px]" />
             </div>
             <div>

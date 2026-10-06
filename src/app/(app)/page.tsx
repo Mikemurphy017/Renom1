@@ -18,6 +18,7 @@ import { getStage, stageIndex } from "@/lib/stages";
 import { inPipeline, isPublished, videoTotals } from "@/lib/selectors";
 import type { PlatformId, VideoFormat } from "@/lib/types";
 import { TODAY, fmtCompact, relativeTime } from "@/lib/utils";
+import { BRAND } from "@/lib/brand";
 
 function greeting() {
   const h = TODAY.getHours();
@@ -40,7 +41,7 @@ export default function HomePage() {
 
   const bufferStatus = buffer.status && "channels" in buffer.status ? buffer.status : null;
   const upcoming = [
-    ...videos.filter((v) => v.scheduledFor && new Date(v.scheduledFor) >= TODAY).map((v) => ({ id: v.id, at: v.scheduledFor!, title: v.title, platforms: v.platforms, href: `/studio/${v.id}/${v.stage}`, source: "Renom" })),
+    ...videos.filter((v) => v.scheduledFor && new Date(v.scheduledFor) >= TODAY).map((v) => ({ id: v.id, at: v.scheduledFor!, title: v.title, platforms: v.platforms, href: `/studio/${v.id}/${v.stage}`, source: BRAND.name })),
     ...(bufferStatus?.upcoming ?? []).flatMap((p) => {
       const pl = platformForService(p.channelService, "long");
       const ch = bufferStatus!.channels.find((c) => c.id === p.channelId);

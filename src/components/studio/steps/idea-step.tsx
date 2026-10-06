@@ -17,6 +17,7 @@ import type { Category } from "@/lib/types";
 import { AskBar, RequestLine, Writing } from "../ask-bar";
 import { StepIntro } from "../step-layout";
 import type { StepProps } from "../studio-view";
+import { BRAND } from "@/lib/brand";
 
 type Idea = IdeasOutput["ideas"][number] & { id: string };
 let n = 0;
@@ -65,7 +66,7 @@ export function IdeaStep({ video, complete }: StepProps) {
 
   return (
     <div className="space-y-10 pb-28">
-      <StepIntro title="What do you want to talk about?" subtitle="A sentence is plenty. Renom turns it into ideas in your voice." />
+      <StepIntro title="What do you want to talk about?" subtitle={`A sentence is plenty. ${BRAND.name} turns it into ideas in your voice.`} />
 
       <div className="rounded-2xl border border-border bg-card p-2 shadow-soft">
         <textarea

@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { Logo } from "./logo";
 import { NAV } from "./nav";
 import { useShell } from "./shell-context";
+import { BRAND } from "@/lib/brand";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -24,7 +25,7 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-[1200px] items-center gap-6 px-4 sm:px-6">
-        <Link href="/" aria-label="Renom home"><Logo /></Link>
+        <Link href="/" aria-label={`${BRAND.name} home`}><Logo /></Link>
         <nav className="flex flex-1 items-center justify-center gap-1">
           {NAV.map((n) => {
             const active = isActive(n.href);

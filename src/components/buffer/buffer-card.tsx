@@ -12,6 +12,7 @@ import { fmtDateTime } from "@/lib/utils";
 import { ChannelAvatar, channelLabel } from "./channel-avatar";
 import { getPlatform } from "@/lib/mock/platforms";
 import { platformForService, type BufferChannel } from "@/lib/buffer/types";
+import { BRAND } from "@/lib/brand";
 
 const serviceLabel = (c: BufferChannel) => {
   const p = platformForService(c.service, "long");
@@ -41,7 +42,7 @@ export function BufferCard() {
             Buffer
             {connected && <span className="inline-flex items-center gap-1 text-[11px] font-normal text-success"><span className="size-1.5 rounded-full bg-success" /> Connected</span>}
           </div>
-          <p className="text-[12px] text-muted-foreground">Renom schedules and publishes through your Buffer account. Social accounts are connected in Buffer.</p>
+          <p className="text-[12px] text-muted-foreground">{BRAND.name} schedules and publishes through your Buffer account. Social accounts are connected in Buffer.</p>
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={() => refresh().then(() => toast.success("Buffer refreshed"))}><RefreshCw /> Refresh</Button>

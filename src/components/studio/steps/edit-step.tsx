@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRight, Bookmark, Heart, MessageCircle, Pause, Play, Send, Upload, Wand2, Scissors, Undo2 } from "lucide-react";
+import { ArrowRight, Bookmark, Heart, MessageCircle, Pause, Play, RotateCcw, Send, Sparkles, TriangleAlert, Upload, Wand2, Scissors, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -13,22 +13,24 @@ import { Headshot } from "@/components/shared/headshot";
 import { useDraft } from "@/lib/drafts";
 import { getTake, subscribeTakes } from "@/lib/media/takes";
 import { generateScript } from "@/lib/ai/content";
-import { ADVISOR } from "@/lib/mock/advisor";
+import { useStore } from "@/lib/store";
+import { BRAND } from "@/lib/brand";
 import type { Video } from "@/lib/types";
 import { cn, fmtDuration, sleep } from "@/lib/utils";
+import { analyzeTake, renderFinal, usePipeline, type PipelineState } from "@/lib/video/client";
+import { cutsFromSegments, defaultOverlays, segmentsFromResult, type Segment } from "@/lib/video/edit-model";
+import { DEFAULT_EDIT, type OverlayOptions } from "@/lib/video/types";
 import type { StepProps } from "../studio-view";
+import { LookPanel, PreviewOverlays, type LookPeek } from "./edit-look";
 
-interface Segment {
-  id: string;
-  text: string;
-  kind: "speech" | "silence" | "retake" | "filler";
-  dur: number;
-  removed: boolean;
-}
-
-function buildSegments(v: Video): Segment[] {
+const scriptLines = (v: Video) => {
   const s = v.script ?? generateScript(v.title, v.format);
-  const lines = [s.hook, ...s.body, s.cta];
+  return [s.hook, ...s.body, s.cta];
+};
+
+/** Sample transcript used until a real take has been processed. */
+function buildSegments(v: Video): Segment[] {
+  const lines = scriptLines(v);
   const out: Segment[] = [];
   let n = 0;
   const push = (text: string, kind: Segment["kind"], dur?: number) =>
@@ -50,8 +52,20 @@ function buildSegments(v: Video): Segment[] {
 
 const KIND_LABEL: Record<Segment["kind"], string> = { speech: "", silence: "Dead air", retake: "Bad take", filler: "Filler" };
 
-export function EditStep({ video, complete }: StepProps) {
-  const [segments, setSegments] = useDraft<Segment[]>(video.id, "edit.segments", () => buildSegments(video));
+export function EditStep(props: StepProps) {
+  const analysis = usePipeline(props.video.id, "analyze");
+  // Remount when a processed result arrives so the transcript switches over cleanly.
+  return <EditStudio key={analysis?.result?.jobId ?? "sample"} {...props} analysis={analysis} />;
+}
+
+function EditStudio({ video, complete, analysis }: StepProps & { analysis?: PipelineState }) {
+  const { profile } = useStore();
+  const result = analysis?.result;
+  const [segments, setSegments] = useDraft<Segment[]>(video.id, result ? `edit.segments.${result.jobId}` : "edit.segments", () => (result ? segmentsFromResult(result) : buildSegments(video)));
+  const [look, setLook] = useDraft<OverlayOptions>(video.id, "edit.overlays", () => defaultOverlays(profile, video.format));
+  const [peek, setPeek] = React.useState<LookPeek>(null);
+  const render = usePipeline(video.id, "render");
+  const [rendering, setRendering] = React.useState(false);
   const [t, setT] = React.useState(0);
   const take = React.useSyncExternalStore(subscribeTakes, () => getTake(video.id), () => undefined);
   const takeRef = React.useRef<HTMLVideoElement>(null);
@@ -75,6 +89,20 @@ export function EditStep({ video, complete }: StepProps) {
   const total = timeline.at(-1)?.end ?? 1;
   const kept = timeline.filter((s) => !s.removed).reduce((a, s) => a + s.dur, 0);
   const current = timeline.find((s) => t >= s.start && t < s.end) ?? timeline[0];
+  const keptSpan = timeline.filter((s) => !s.removed);
+  const firstKept = keptSpan[0]?.start ?? 0;
+  const lastKept = keptSpan.at(-1)?.end ?? total;
+  const keyPhrases = React.useMemo(
+    () => result?.keyPhrases ?? [...new Set(segments.filter((s) => s.kind === "speech").flatMap((s) => s.text.split(/\s+/).filter((w) => /[\d$%]/.test(w))))],
+    [result, segments]
+  );
+
+  // Show the overlay the advisor just changed for a moment, wherever the playhead is.
+  React.useEffect(() => {
+    if (!peek) return;
+    const id = setTimeout(() => setPeek(null), 2500);
+    return () => clearTimeout(id);
+  }, [peek, look]);
 
   React.useEffect(() => {
     if (!playing) return;
@@ -85,7 +113,14 @@ export function EditStep({ video, complete }: StepProps) {
       last = now;
       const el = takeRef.current;
       if (el) {
-        // Real take drives the playhead.
+        // Real take drives the playhead. Cuts only line up with it once it has been processed.
+        if (skipCuts && result) {
+          const seg = timeline.find((s) => el.currentTime >= s.start && el.currentTime < s.end);
+          if (seg?.removed) {
+            if (seg.end >= total - 0.05) el.pause();
+            else el.currentTime = seg.end;
+          }
+        }
         setT(Math.min(total - 0.01, el.currentTime));
         raf = requestAnimationFrame(tick);
         return;
@@ -106,21 +141,59 @@ export function EditStep({ video, complete }: StepProps) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, skipCuts, timeline, total]);
+  }, [playing, skipCuts, timeline, total, result]);
 
   const toggleSeg = (id: string) => setSegments((ss) => ss.map((s) => (s.id === id ? { ...s, removed: !s.removed } : s)));
 
   // Caption: ~5-word window around progress inside current speech segment
   const caption = React.useMemo(() => {
+    // While the advisor tweaks captions, preview them even over a pause.
+    if (peek === "captions" && (!current || current.kind === "silence" || current.removed)) {
+      const first = timeline.find((s) => s.kind === "speech");
+      return first ? first.text.split(/\s+/).slice(0, 5).map((w, i) => ({ w, on: i === 1 })) : "";
+    }
     if (!current || current.kind === "silence") return "";
     const words = current.text.split(/\s+/);
     const p = (t - current.start) / current.dur;
     const idx = Math.min(words.length - 1, Math.floor(p * words.length));
     const startW = Math.floor(idx / 5) * 5;
     return words.slice(startW, startW + 5).map((w, i) => ({ w, on: startW + i === idx }));
-  }, [current, t]);
+  }, [current, t, peek, timeline]);
+
+  const sourceId = result ? analysis?.sourceId : undefined;
+  const changeLook = (next: OverlayOptions, p: LookPeek) => {
+    setLook(next);
+    setPeek(p);
+  };
+
+  const processTake = () => {
+    if (!take) return;
+    analyzeTake(video.id, take, { aspect: take.height > take.width ? "9:16" : "16:9", edit: DEFAULT_EDIT, overlays: look, script: scriptLines(video) }).catch((e) =>
+      toast.error("AI Edit couldn’t process this take", { description: (e as Error).message })
+    );
+  };
 
   const doExport = async () => {
+    if (sourceId) {
+      // Real render: the advisor's cuts and look go to the processor.
+      setRendering(true);
+      try {
+        const out = await renderFinal(video.id, sourceId, {
+          aspect: vertical ? "9:16" : "16:9",
+          edit: { ...DEFAULT_EDIT, enhanceAudio: enhance },
+          overlays: look,
+          script: scriptLines(video),
+          cuts: cutsFromSegments(segments),
+        });
+        toast.success("Your video is ready", { description: `${fmtDuration(kept)} · ${vertical ? "9:16" : "16:9"}${analysis?.processor === "mock" ? " · sample processing (original file)" : ""}` });
+        complete({ runtimeSec: Math.round(kept), outputUrl: out.outputUrl });
+      } catch (e) {
+        toast.error("Render failed", { description: (e as Error).message });
+      } finally {
+        setRendering(false);
+      }
+      return;
+    }
     setExporting({ phase: `Rendering ${vertical ? "1080×1920" : "1920×1080"} · captions burned in`, pct: 0 });
     for (let p = 0; p <= 100; p += 4) {
       await sleep(70);
@@ -132,6 +205,11 @@ export function EditStep({ video, complete }: StepProps) {
     complete({ runtimeSec: Math.round(kept) });
   };
 
+  const dialog = rendering
+    ? { title: "Rendering your video", phase: render?.status ?? "Starting…", pct: Math.round((render?.progress ?? 0) * 100) }
+    : exporting && { title: exporting.pct < 60 ? "Rendering your video" : "Uploading", phase: exporting.phase, pct: exporting.pct };
+  const busy = analysis && (analysis.phase === "uploading" || analysis.phase === "processing");
+
   const pxPerSec = 14 * zoom;
   const frames = Math.ceil((total * pxPerSec) / 44);
 
@@ -139,84 +217,86 @@ export function EditStep({ video, complete }: StepProps) {
     <div className="space-y-6">
       <div className="text-center">
         <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">Cut the pauses. Keep you.</h1>
-        <p className="mt-2 text-[15px] text-muted-foreground">Renom marked the dead air and retakes. Click any phrase to cut or restore it.</p>
+        <p className="mt-2 text-[15px] text-muted-foreground">{BRAND.name} marked the dead air and retakes. Click any phrase to cut or restore it.</p>
       </div>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
-        {/* Preview */}
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="eyebrow">Preview</div>
-            <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
-              Social overlay <Switch checked={social} onCheckedChange={setSocial} />
-            </label>
-          </div>
-          <div className="flex justify-center rounded-md bg-[#06101F] p-4">
-            <div className={cn("relative overflow-hidden rounded-md bg-gradient-to-b from-[#2A3B55] to-[#1A2840]", vertical ? "aspect-[9/16] h-[520px] max-h-[60vh]" : "aspect-video w-full")}>
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_30%,#3A4E6E_0%,transparent_70%)]" />
-              {take ? (
-                <video
-                  ref={takeRef}
-                  src={take.url}
-                  playsInline
-                  className="absolute inset-0 h-full w-full object-cover"
-                  onPlay={() => setPlaying(true)}
-                  onPause={() => setPlaying(false)}
-                  onEnded={() => setPlaying(false)}
+        {/* Preview + look */}
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="eyebrow">Preview</div>
+              <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                Social overlay <Switch checked={social} onCheckedChange={setSocial} />
+              </label>
+            </div>
+            <div className="flex justify-center rounded-md bg-[#06101F] p-4">
+              <div className={cn("relative overflow-hidden rounded-md bg-gradient-to-b from-[#2A3B55] to-[#1A2840]", vertical ? "aspect-[9/16] h-[520px] max-h-[60vh]" : "aspect-video w-full")}>
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_30%,#3A4E6E_0%,transparent_70%)]" />
+                {take ? (
+                  <video
+                    ref={takeRef}
+                    src={take.url}
+                    playsInline
+                    className="absolute inset-0 h-full w-full object-cover"
+                    onPlay={() => setPlaying(true)}
+                    onPause={() => setPlaying(false)}
+                    onEnded={() => setPlaying(false)}
+                  />
+                ) : (
+                  <Headshot pose={current?.kind === "speech" && Math.floor(t / 4) % 3 === 1 ? "point" : "center"} className={cn("absolute bottom-0 left-1/2 -translate-x-1/2", vertical ? "h-[62%]" : "h-[85%]")} />
+                )}
+                <PreviewOverlays
+                  look={look}
+                  caption={caption}
+                  keyPhrases={keyPhrases}
+                  vertical={vertical}
+                  showLowerThird={peek === "lowerThird" || (!peek && t < firstKept + 5)}
+                  showEndCard={peek === "endCard" || (!peek && t >= lastKept - 2.5 && t > firstKept + 5)}
                 />
-              ) : (
-                <Headshot pose={current?.kind === "speech" && Math.floor(t / 4) % 3 === 1 ? "point" : "center"} className={cn("absolute bottom-0 left-1/2 -translate-x-1/2", vertical ? "h-[62%]" : "h-[85%]")} />
-              )}
-              {caption && (
-                <div className={cn("absolute inset-x-[8%] text-center", vertical ? "top-[56%]" : "bottom-[12%]")}>
-                  <span className="rounded-md bg-black/35 px-2 py-1 text-[17px] leading-snug font-extrabold tracking-tight text-white uppercase [text-shadow:0_2px_8px_rgba(0,0,0,.5)]">
-                    {caption.map((c, i) => (
-                      <span key={i} className={c.on ? "text-[#E8CFA4]" : undefined}>{c.w} </span>
-                    ))}
-                  </span>
-                </div>
-              )}
-              {social && (
-                <>
-                  <div className="absolute right-3 bottom-24 flex flex-col items-center gap-4 text-white">
-                    {[Heart, MessageCircle, Send, Bookmark].map((I, i) => (
-                      <div key={i} className="flex flex-col items-center gap-0.5">
-                        <I className="size-6 drop-shadow" />
-                        <span className="text-[10px] tnum">{["2.4K", "186", "92", "310"][i]}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="absolute inset-x-3 bottom-4 text-white">
-                    <div className="flex items-center gap-2 text-[13px] font-semibold">
-                      <span className="size-7 rounded-full bg-gradient-to-br from-[#D2B07A] to-[#9C7A47]" /> halewealth
-                      <span className="rounded border border-white/60 px-1.5 text-[10px] font-medium">Follow</span>
+                {social && (
+                  <>
+                    <div className="absolute right-3 bottom-24 flex flex-col items-center gap-4 text-white">
+                      {[Heart, MessageCircle, Send, Bookmark].map((I, i) => (
+                        <div key={i} className="flex flex-col items-center gap-0.5">
+                          <I className="size-6 drop-shadow" />
+                          <span className="text-[10px] tnum">{["2.4K", "186", "92", "310"][i]}</span>
+                        </div>
+                      ))}
                     </div>
-                    <p className="mt-1.5 line-clamp-2 text-[12px] opacity-90">{video.title} 👇 #FinancialPlanning</p>
-                  </div>
-                </>
-              )}
-              {enhance && <span className="absolute top-2 left-2 rounded bg-black/45 px-1.5 py-0.5 text-[10px] text-white/90">Studio sound</span>}
+                    <div className="absolute inset-x-3 bottom-4 text-white">
+                      <div className="flex items-center gap-2 text-[13px] font-semibold">
+                        <span className="size-7 rounded-full bg-gradient-to-br from-[#D2B07A] to-[#9C7A47]" /> halewealth
+                        <span className="rounded border border-white/60 px-1.5 text-[10px] font-medium">Follow</span>
+                      </div>
+                      <p className="mt-1.5 line-clamp-2 text-[12px] opacity-90">{video.title} 👇 #FinancialPlanning</p>
+                    </div>
+                  </>
+                )}
+                {enhance && <span className="absolute top-2 left-2 rounded bg-black/45 px-1.5 py-0.5 text-[10px] text-white/90">Studio sound</span>}
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <Button
+                size="icon-sm"
+                variant="outline"
+                onClick={() => {
+                  const el = takeRef.current;
+                  if (el) {
+                    if (el.paused) void el.play();
+                    else el.pause();
+                  } else setPlaying((p) => !p);
+                }}
+                aria-label={playing ? "Pause" : "Play"}
+              >
+                {playing ? <Pause /> : <Play />}
+              </Button>
+              <span className="text-[12px] text-muted-foreground tnum">{fmtDuration(t)} / {fmtDuration(total)}</span>
+              <span className="ml-auto text-[12px] text-muted-foreground">
+                Final length <span className="font-medium text-foreground tnum">{fmtDuration(kept)}</span>
+              </span>
             </div>
           </div>
-          <div className="mt-3 flex items-center gap-3">
-            <Button
-              size="icon-sm"
-              variant="outline"
-              onClick={() => {
-                const el = takeRef.current;
-                if (el) {
-                  if (el.paused) void el.play();
-                  else el.pause();
-                } else setPlaying((p) => !p);
-              }}
-              aria-label={playing ? "Pause" : "Play"}
-            >
-              {playing ? <Pause /> : <Play />}
-            </Button>
-            <span className="text-[12px] text-muted-foreground tnum">{fmtDuration(t)} / {fmtDuration(total)}</span>
-            <span className="ml-auto text-[12px] text-muted-foreground">
-              Final length <span className="font-medium text-foreground tnum">{fmtDuration(kept)}</span>
-            </span>
-          </div>
+          <LookPanel value={look} onChange={changeLook} brandColors={profile.brandColors} />
         </div>
 
         {/* Transcript */}
@@ -231,19 +311,15 @@ export function EditStep({ video, complete }: StepProps) {
                 <span className="text-[12px] text-muted-foreground">
                   <span className="tnum">{segments.filter((s) => s.removed).length}</span> cuts · saves <span className="tnum">{fmtDuration(total - kept)}</span>
                 </span>
-                <Button size="sm" onClick={doExport}><Upload /> Export</Button>
+                <Button size="sm" onClick={doExport} disabled={!!busy || rendering}><Upload /> Export</Button>
               </div>
             </div>
             <TabsContent value="captions" className="scrollbar-thin mt-2 max-h-[560px] overflow-y-auto rounded-md border border-border bg-background/50 p-4">
-              {take && (
-                <p className="mb-3 rounded-md border border-primary/30 bg-brass-soft/60 px-3 py-2 text-[12px]">
-                  The preview is your real take ({fmtDuration(take.durationSec)}). The transcript and cuts below are still sample data. Once Captions is connected, it will transcribe this take and suggest the cuts.
-                </p>
-              )}
+              <ProcessingNotice analysis={analysis} hasTake={!!take} takeSec={take?.durationSec} onProcess={processTake} />
               <p className="mb-3 text-[12px] text-muted-foreground">
                 Click any phrase to cut or restore it. <span className="text-destructive line-through decoration-destructive/70">Red strikethrough</span> is removed from the final video.
               </p>
-              <div className="text-[15px] leading-[2]">
+              <div className={cn("text-[15px] leading-[2] transition-opacity", busy && "pointer-events-none opacity-40")}>
                 {timeline.map((s) => (
                   <span key={s.id}>
                     <button
@@ -352,25 +428,64 @@ export function EditStep({ video, complete }: StepProps) {
           </div>
         </div>
         <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-4">
-          <Button variant="outline" onClick={() => { setSegments(buildSegments(video)); toast("Auto-cuts re-applied"); }}><Wand2 /> Re-run auto-cut</Button>
-          <Button onClick={doExport}>Finish edit <ArrowRight /></Button>
+          <Button variant="outline" onClick={() => { setSegments(result ? segmentsFromResult(result) : buildSegments(video)); toast("Auto-cuts re-applied"); }}><Wand2 /> Re-run auto-cut</Button>
+          <Button onClick={doExport} disabled={!!busy || rendering}>Finish edit <ArrowRight /></Button>
         </div>
       </div>
 
-      <Dialog open={!!exporting}>
+      <Dialog open={!!dialog}>
         <DialogContent showClose={false} className="sm:max-w-md">
           <DialogHeader>
             <div className="eyebrow">Export</div>
-            <DialogTitle>{exporting && exporting.pct < 60 ? "Rendering your video" : "Uploading"}</DialogTitle>
-            <DialogDescription>{exporting?.phase}</DialogDescription>
+            <DialogTitle>{dialog ? dialog.title : "Rendering your video"}</DialogTitle>
+            <DialogDescription>{dialog ? dialog.phase : ""}</DialogDescription>
           </DialogHeader>
-          <Progress value={exporting?.pct ?? 0} className="h-2" />
+          <Progress value={dialog ? dialog.pct : 0} className="h-2" />
           <div className="flex justify-between text-[12px] text-muted-foreground tnum">
-            <span>{ADVISOR.firm} · {video.title.slice(0, 32)}…</span>
-            <span>{exporting?.pct ?? 0}%</span>
+            <span>{profile.firm} · {video.title.slice(0, 32)}…</span>
+            <span>{dialog ? dialog.pct : 0}%</span>
           </div>
         </DialogContent>
       </Dialog>
     </div>
   );
+}
+
+/** Where the AI edit stands for this take: uploading, processing, done, failed, or not run yet. */
+function ProcessingNotice({ analysis, hasTake, takeSec, onProcess }: { analysis?: PipelineState; hasTake: boolean; takeSec?: number; onProcess: () => void }) {
+  if (analysis?.phase === "uploading" || analysis?.phase === "processing") {
+    return (
+      <div className="mb-3 rounded-md border border-primary/30 bg-brass-soft/60 px-3 py-2.5">
+        <div className="flex items-center justify-between gap-3 text-[12px]">
+          <span className="flex items-center gap-1.5 font-medium"><Sparkles className="size-3.5 animate-pulse text-primary" /> {analysis.status}</span>
+          <span className="text-muted-foreground tnum">{Math.round(analysis.progress * 100)}%</span>
+        </div>
+        <Progress value={analysis.progress * 100} className="mt-2 h-1.5" />
+        <p className="mt-1.5 text-[11px] text-muted-foreground">Your transcript and suggested cuts replace the sample below in a moment.</p>
+      </div>
+    );
+  }
+  if (analysis?.phase === "error") {
+    return (
+      <div className="mb-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-warning-soft px-3 py-2 text-[12px]">
+        <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+        <span className="flex-1">AI Edit couldn’t process this take. {analysis.error}</span>
+        {hasTake && <Button size="xs" variant="outline" onClick={onProcess}><RotateCcw /> Try again</Button>}
+      </div>
+    );
+  }
+  if (analysis?.phase === "done") {
+    return analysis.processor === "mock" ? (
+      <p className="mb-3 text-[11px] text-muted-foreground">Sample processing: timings follow your real take; the words come from your script until a live editor is connected.</p>
+    ) : null;
+  }
+  if (hasTake) {
+    return (
+      <div className="mb-3 flex items-center gap-3 rounded-md border border-primary/30 bg-brass-soft/60 px-3 py-2 text-[12px]">
+        <span className="flex-1">The preview is your real take ({fmtDuration(takeSec ?? 0)}). The transcript below is a sample until AI Edit processes it.</span>
+        <Button size="xs" onClick={onProcess}><Sparkles /> Run AI Edit</Button>
+      </div>
+    );
+  }
+  return null;
 }
