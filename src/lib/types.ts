@@ -149,7 +149,19 @@ export interface AdvisorProfile {
   brandColors: string[];
   /** Uploaded photos (url set) are used on covers; pose-only entries are legacy placeholders. */
   headshots: { id: string; label: string; pose: Pose; url?: string }[];
+  /** The advisor's own b-roll (photos, clips) and music, used by edit styles. */
+  library?: LibraryItem[];
   disclosures: DisclosureVersion[];
+}
+
+export interface LibraryItem {
+  id: string;
+  url: string;
+  kind: "broll" | "music";
+  /** MIME type, e.g. video/mp4, image/jpeg, audio/mpeg */
+  type: string;
+  label: string;
+  addedAt: string;
 }
 
 export interface DisclosureVersion {

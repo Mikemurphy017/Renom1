@@ -43,3 +43,6 @@ next-env.d.ts
 
 # local video storage (uploads, job records)
 /.data/
+
+# speech model (downloaded on npm install)
+/.models

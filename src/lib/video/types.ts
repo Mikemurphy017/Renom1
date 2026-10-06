@@ -5,7 +5,10 @@
 
 export type ProcessorId = "local" | "mock" | "mirage";
 
-export type CaptionStyle = "classic" | "bold" | "minimal";
+import type { MusicMood, StyleId } from "./styles";
+
+/** The edit style (see styles.ts). Older saves used "classic" | "bold" | "minimal". */
+export type CaptionStyle = StyleId;
 export type CaptionPosition = "top" | "middle" | "bottom";
 
 /** What the advisor picks in the Edit step's "Look" panel. */
@@ -23,6 +26,25 @@ export interface OverlayOptions {
   keyPhrases: boolean;
   /** Closing card with the advisor's name, firm and a call to action. */
   endCard: { enabled: boolean; headline: string; cta: string };
+  /** What the style adds beyond captions. Each can be switched off. */
+  extras: StyleExtras;
+}
+
+export interface StyleExtras {
+  /** Punch-in zooms on the big moments. */
+  motion: boolean;
+  /** Keyword cards (headline, backdrop word, banner) on the big moments. */
+  keywordCards: boolean;
+  /** Cutaways to b-roll: the advisor's library first, then stock footage when configured. */
+  broll: boolean;
+  /** Whooshes and pops on cards and zooms. */
+  sfx: boolean;
+  /** Built-in bed, an uploaded track ("media:<id>"), or none. */
+  music: MusicMood | "none" | `media:${string}`;
+  /** 0–1, before ducking under the voice. */
+  musicVolume: number;
+  /** Library media ids the advisor allowed as b-roll for this video. */
+  brollMedia: string[];
 }
 
 /** What the AI edit is allowed to remove, plus audio cleanup. */
@@ -98,6 +120,8 @@ export interface JobResult {
   keyPhrases: string[];
   /** analyze: loudness every 0.1 s (0–1) for the timeline waveform. */
   levels?: number[];
+  /** How caption words were timed: from the voice (speech recognition) or spread over the talking. */
+  timedBy?: "voice" | "script";
   /** render: the stored MP4's upload id and size. */
   outputId?: string;
   sizeBytes?: number;

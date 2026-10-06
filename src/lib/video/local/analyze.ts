@@ -1,10 +1,12 @@
 import { runFfmpeg } from "./ffmpeg";
+import { alignToScript, findRetakes, transcribe } from "./asr";
 import type { EditOptions, SuggestedCut, TimeRange, TranscriptWord } from "../types";
 
 /**
- * Listens to the take: measures loudness every 50 ms, finds the pauses, and
- * lays the script the advisor read over the stretches where they were talking.
- * No speech recognition here, so it doesn't invent retakes or filler words.
+ * Listens to the take: measures loudness every 50 ms to find the pauses, then
+ * recognizes the speech word by word so captions land when each word is said
+ * (spelled like the script where they agree) and restarts become retake cuts.
+ * Without the speech model it lays the script over the talking instead.
  */
 
 const SR = 16000;
@@ -20,11 +22,13 @@ export interface Analysis {
   cuts: SuggestedCut[];
   transcript: TranscriptWord[];
   keyPhrases: string[];
+  /** "voice": word timings from speech recognition; "script": spread over the talking. */
+  timedBy: "voice" | "script";
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
-async function loudness(file: string): Promise<number[]> {
+async function loudness(file: string): Promise<{ db: number[]; samples: Int16Array }> {
   const { stdout } = await runFfmpeg(["-v", "error", "-i", file, "-vn", "-ac", "1", "-ar", String(SR), "-f", "s16le", "pipe:1"], { captureStdout: true });
   const samples = new Int16Array(stdout.buffer, stdout.byteOffset, Math.floor(stdout.byteLength / 2));
   const per = Math.round(SR * WIN);
@@ -36,7 +40,7 @@ async function loudness(file: string): Promise<number[]> {
     const rms = Math.sqrt(sum / Math.max(1, end - i)) / 32768;
     db.push(20 * Math.log10(rms + 1e-9));
   }
-  return db;
+  return { db, samples };
 }
 
 const pct = (xs: number[], p: number) => {
@@ -45,7 +49,7 @@ const pct = (xs: number[], p: number) => {
 };
 
 export async function analyzeTake(file: string, durationSec: number, hasAudio: boolean, script: string[] | undefined, edit: EditOptions): Promise<Analysis> {
-  const db = hasAudio ? await loudness(file) : [];
+  const { db, samples } = hasAudio ? await loudness(file) : { db: [] as number[], samples: new Int16Array(0) };
   const dur = durationSec || db.length * WIN;
 
   // Adaptive threshold between the room's noise floor and the advisor's voice.
@@ -86,11 +90,26 @@ export async function analyzeTake(file: string, durationSec: number, hasAudio: b
   if (dur - t > 0.2) speech.push({ start: t, end: dur });
   if (!speech.length) speech.push({ start: 0, end: dur });
 
-  const transcript = layScript(script, speech);
+  // Word timings from the voice itself when the speech model is available.
+  const heard = hasAudio ? transcribe(samples, speech, dur) : null;
+  // Barely any words recognized over a long take (music, noise, a test tone) means
+  // the recognizer didn't really hear speech: fall back to the script.
+  const scriptWords = (script ?? []).join(" ").split(/\s+/).filter(Boolean).length;
+  const talk = speech.reduce((a, r) => a + (r.end - r.start), 0);
+  const heardEnough = !!heard && heard.length >= Math.max(3, Math.min(scriptWords * 0.25, talk * 0.6));
+  const transcript = heardEnough ? alignToScript(heard!, script) : layScript(script, speech);
+  if (heardEnough && edit.removeBadTakes) {
+    for (const r of findRetakes(heard!)) {
+      const start = Math.max(0, r.start - 0.05);
+      const end = Math.max(start, r.end - 0.08);
+      if (end - start >= 0.4 && !cuts.some((c) => c.start <= start && c.end >= end)) cuts.push({ id: `c${cuts.length}`, kind: "retake", start: round(start), end: round(end) });
+    }
+    cuts.sort((a, b) => a.start - b.start);
+  }
   const levels: number[] = [];
   for (let i = 0; i < db.length; i += 2) levels.push(round(Math.max(0, Math.min(1, (Math.max(db[i], db[i + 1] ?? -90) + 60) / 60))));
 
-  return { durationSec: round(dur), levels, speech, cuts, transcript, keyPhrases: keyPhrasesOf(script) };
+  return { durationSec: round(dur), levels, speech, cuts, transcript, keyPhrases: keyPhrasesOf(transcript.length ? [transcript.map((w) => w.text).join(" ")] : script), timedBy: heardEnough ? "voice" : "script" };
 }
 
 /** Spread the script's words across the talking stretches, weighted by word length. */

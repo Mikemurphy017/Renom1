@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Resolved at runtime to the bundled ffmpeg binary.
-  serverExternalPackages: ["ffmpeg-static"],
+  // Native/binary packages resolved at runtime (ffmpeg, the speech recognizer).
+  serverExternalPackages: ["ffmpeg-static", "sherpa-onnx-node"],
   async redirects() {
     return [
       { source: "/board", destination: "/videos", permanent: false },

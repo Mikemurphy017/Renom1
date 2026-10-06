@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageContainer } from "@/components/shared/page";
 import { HeadshotPicker } from "@/components/settings/headshot-picker";
+import { MediaLibrary } from "@/components/settings/media-library";
 import { BufferCard } from "@/components/buffer/buffer-card";
 import { useStore } from "@/lib/store";
 import { disclosureTemplate, firstDisclosure, initials } from "@/lib/profile";
@@ -21,6 +22,7 @@ import { BRAND } from "@/lib/brand";
 
 const SECTIONS = [
   ["voice", "Your voice"],
+  ["library", "B-roll & music"],
   ["disclosures", "Disclosures"],
   ["publishing", "Publishing"],
   ["approval", "Approval"],
@@ -150,6 +152,10 @@ export default function SettingsPage() {
             <Field label="Headshots" hint="Used on your thumbnails when a frame from the video won’t do">
               <HeadshotPicker />
             </Field>
+          </Section>
+
+          <Section id="library" title="B-roll & music" desc="Your own footage and tracks. Edit styles use them for cutaways and background music.">
+            <MediaLibrary />
           </Section>
 
           <Section id="disclosures" title="Disclosures" desc="Added to every caption automatically and locked. Each change is versioned for your records.">

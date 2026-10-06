@@ -22,7 +22,8 @@ import { analyzeTake, renderFinal, restoreAnalysis, usePipeline, type PipelineSt
 import { cutsFromSegments, defaultOverlays, segmentsFromResult, type Segment } from "@/lib/video/edit-model";
 import { DEFAULT_EDIT, type OverlayOptions } from "@/lib/video/types";
 import type { StepProps } from "../studio-view";
-import { LookPanel, PreviewOverlays, type LookPeek } from "./edit-look";
+import { LookPanel, PreviewOverlays, captionAt, type LookPeek } from "./edit-look";
+import { getStyle, normalizeOverlays } from "@/lib/video/styles";
 
 const scriptLines = (v: Video) => {
   const s = v.script ?? generateScript(v.title, v.format);
@@ -80,7 +81,13 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
   const { profile } = useStore();
   const result = analysis?.result;
   const [segments, setSegments] = useDraft<Segment[]>(video.id, result ? `edit.segments.${result.jobId}` : "edit.segments.none", () => (result ? segmentsFromResult(result) : []));
-  const [look, setLook] = useDraft<OverlayOptions>(video.id, "edit.overlays", () => defaultOverlays(profile, video.format));
+  const [rawLook, setLook] = useDraft<OverlayOptions>(video.id, "edit.overlays", () => defaultOverlays(profile, video.format));
+  // Looks saved before styles existed get upgraded in place.
+  const look = React.useMemo(() => normalizeOverlays(rawLook), [rawLook]);
+  const [stockFootage, setStockFootage] = React.useState(false);
+  React.useEffect(() => {
+    fetch("/api/media").then((r) => r.json()).then((j) => setStockFootage(!!j.stock)).catch(() => {});
+  }, []);
   const [peek, setPeek] = React.useState<LookPeek>(null);
   const render = usePipeline(video.id, "render");
   const [rendering, setRendering] = React.useState(false);
@@ -88,6 +95,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
   const memTake = React.useSyncExternalStore(subscribeTakes, () => getTake(video.id), () => undefined);
   // This tab's take if there is one, otherwise the one saved to platform storage.
   const take = memTake ?? video.take;
+  const frame = useStill(take?.url, (take?.durationSec ?? 2) * 0.3);
   const takeRef = React.useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = React.useState(false);
   const [zoom, setZoom] = React.useState(1.5);
@@ -164,19 +172,15 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
   const toggleSeg = (id: string) => setSegments((ss) => ss.map((s) => (s.id === id ? { ...s, removed: !s.removed } : s)));
 
   // Caption: ~5-word window around progress inside current speech segment
+  // Captions follow the real word timings (the preview plays the original take).
   const caption = React.useMemo(() => {
-    // While the advisor tweaks captions, preview them even over a pause.
-    if (peek === "captions" && (!current || current.kind === "silence" || current.removed)) {
-      const first = timeline.find((s) => s.kind === "speech");
-      return first ? first.text.split(/\s+/).slice(0, 5).map((w, i) => ({ w, on: i === 1 })) : "";
-    }
-    if (!current || current.kind === "silence") return "";
-    const words = current.text.split(/\s+/);
-    const p = (t - current.start) / current.dur;
-    const idx = Math.min(words.length - 1, Math.floor(p * words.length));
-    const startW = Math.floor(idx / 5) * 5;
-    return words.slice(startW, startW + 5).map((w, i) => ({ w, on: startW + i === idx }));
-  }, [current, t, peek, timeline]);
+    const words = result?.transcript ?? [];
+    const st = getStyle(look.captions.style);
+    const live = captionAt(words, t, st, vertical);
+    if (live || peek !== "captions") return live;
+    // While the advisor tweaks the look, show the first line even over a pause.
+    return captionAt(words, words[Math.min(1, words.length - 1)]?.start ?? 0, st, vertical);
+  }, [result, t, peek, look.captions.style, vertical]);
 
   const sourceId = result ? analysis?.sourceId : undefined;
   const changeLook = (next: OverlayOptions, p: LookPeek) => {
@@ -239,7 +243,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
               <span className="text-[12px] text-muted-foreground">Your take, with cuts skipped</span>
             </div>
             <div className="flex justify-center rounded-md bg-[#06101F] p-4">
-              <div className={cn("relative overflow-hidden rounded-md bg-gradient-to-b from-[#2A3B55] to-[#1A2840]", vertical ? "aspect-[9/16] h-[520px] max-h-[60vh]" : "aspect-video w-full")}>
+              <div className={cn("relative overflow-hidden rounded-md bg-gradient-to-b from-[#2A3B55] to-[#1A2840]", vertical ? "aspect-[9/16] h-[520px] max-h-[60vh]" : "aspect-video w-full")} style={{ containerType: "size" }}>
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_30%,#3A4E6E_0%,transparent_70%)]" />
                 {take && (
                   <video
@@ -284,7 +288,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
               </span>
             </div>
           </div>
-          <LookPanel value={look} onChange={changeLook} brandColors={profile.brandColors} />
+          <LookPanel value={look} onChange={changeLook} brandColors={profile.brandColors} frame={frame} stockFootage={stockFootage} />
         </div>
 
         {/* Transcript */}
@@ -456,7 +460,13 @@ function ProcessingNotice({ analysis, hasTake, onProcess }: { analysis?: Pipelin
       </div>
     );
   }
-  return <p className="mb-3 text-[11px] text-muted-foreground">Pauses come from your audio. Caption words follow your script, timed to when you were talking.</p>;
+  return (
+    <p className="mb-3 text-[11px] text-muted-foreground">
+      {analysis.result?.timedBy === "voice"
+        ? "Every caption word is timed to your voice. Restarts are marked as bad takes."
+        : "Pauses come from your audio. Caption words follow your script, timed to when you were talking."}
+    </p>
+  );
 }
 
 /** Real frames from the take along the timeline. */
@@ -512,4 +522,34 @@ function Filmstrip({ src, total, width }: { src?: string; total: number; width: 
       })}
     </div>
   );
+}
+
+/** One still from the take, for the style cards. */
+function useStill(src: string | undefined, at: number) {
+  const [still, setStill] = React.useState<string>();
+  React.useEffect(() => {
+    if (!src) return;
+    let live = true;
+    const v = document.createElement("video");
+    v.muted = true;
+    v.preload = "auto";
+    v.src = src;
+    const grab = () => {
+      const c = document.createElement("canvas");
+      c.height = 280;
+      c.width = Math.round((v.videoWidth / Math.max(1, v.videoHeight)) * 280) || 158;
+      c.getContext("2d")!.drawImage(v, 0, 0, c.width, c.height);
+      if (live) setStill(c.toDataURL("image/jpeg", 0.75));
+    };
+    v.addEventListener("loadeddata", () => {
+      v.addEventListener("seeked", grab, { once: true });
+      v.currentTime = Math.max(0.1, at);
+    }, { once: true });
+    return () => {
+      live = false;
+      v.removeAttribute("src");
+      v.load();
+    };
+  }, [src, at]);
+  return still;
 }

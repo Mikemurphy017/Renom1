@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { objects } from "@/lib/storage/objects";
-import { ACCEPTED_IMAGE_TYPES, MAX_IMAGE_MB, MEDIA_KINDS, mediaKey, mediaUrl, newMediaId, type MediaKind } from "@/lib/storage/media";
+import { stockFootageEnabled } from "@/lib/video/local/broll";
+import { MAX_IMAGE_MB, MAX_MEDIA_MB, MEDIA_KINDS, acceptedTypes, mediaKey, mediaUrl, newMediaId, type MediaKind } from "@/lib/storage/media";
 
 export const dynamic = "force-dynamic";
 
-const MAX_BYTES = MAX_IMAGE_MB * 1024 * 1024;
+const limitFor = (kind: MediaKind) => (kind === "broll" || kind === "music" ? MAX_MEDIA_MB : MAX_IMAGE_MB);
 
-/** Multipart upload of one image: fields `file`, `kind` (headshot | thumbnail | logo). */
+/** Multipart upload of one file: fields `file`, `kind` (headshot | thumbnail | logo: images; broll: images or clips; music: audio). */
 export async function POST(request: Request) {
   const declared = Number(request.headers.get("content-length") ?? 0);
-  if (declared > MAX_BYTES + 256 * 1024) return NextResponse.json({ ok: false, error: `Images can be up to ${MAX_IMAGE_MB} MB` }, { status: 413 });
+  if (declared > MAX_MEDIA_MB * 1024 * 1024 + 256 * 1024) return NextResponse.json({ ok: false, error: `Files can be up to ${MAX_MEDIA_MB} MB` }, { status: 413 });
   let form: FormData;
   try {
     form = await request.formData();
@@ -19,10 +20,12 @@ export async function POST(request: Request) {
   const file = form.get("file");
   const kind = form.get("kind");
   if (!(file instanceof File) || file.size === 0) return NextResponse.json({ ok: false, error: "file is required" }, { status: 400 });
-  const type = file.type.split(";")[0].trim().toLowerCase();
-  if (!ACCEPTED_IMAGE_TYPES.includes(type)) return NextResponse.json({ ok: false, error: "Use a PNG, JPEG or WebP image" }, { status: 415 });
-  if (file.size > MAX_BYTES) return NextResponse.json({ ok: false, error: `Images can be up to ${MAX_IMAGE_MB} MB` }, { status: 413 });
   if (!MEDIA_KINDS.includes(kind as MediaKind)) return NextResponse.json({ ok: false, error: "kind is invalid" }, { status: 400 });
+  const k = kind as MediaKind;
+  const type = file.type.split(";")[0].trim().toLowerCase();
+  if (!acceptedTypes(k).includes(type))
+    return NextResponse.json({ ok: false, error: k === "music" ? "Use an MP3, M4A, WAV or OGG file" : k === "broll" ? "Use a photo (PNG, JPEG, WebP) or a clip (MP4, MOV, WebM)" : "Use a PNG, JPEG or WebP image" }, { status: 415 });
+  if (file.size > limitFor(k) * 1024 * 1024) return NextResponse.json({ ok: false, error: `Files like this can be up to ${limitFor(k)} MB` }, { status: 413 });
 
   const id = newMediaId();
   try {
@@ -34,7 +37,7 @@ export async function POST(request: Request) {
   return NextResponse.json({ ok: true, id, url: mediaUrl(id), storage: objects().kind });
 }
 
-/** Which store files go to, so Settings can say whether they are safe. */
+/** Which store files go to, and whether stock footage is configured. */
 export async function GET() {
-  return NextResponse.json({ storage: objects().kind });
+  return NextResponse.json({ storage: objects().kind, stock: stockFootageEnabled() });
 }

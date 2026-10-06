@@ -68,6 +68,7 @@ async function run(job: LocalJob, req: ProcessRequest, source: StoredUpload) {
           cuts: a.cuts,
           keyPhrases: req.overlays.keyPhrases ? a.keyPhrases : [],
           levels: a.levels,
+          timedBy: a.timedBy,
         };
         return;
       }

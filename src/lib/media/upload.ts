@@ -25,12 +25,12 @@ async function downscale(file: Blob, max = 1800): Promise<Blob> {
   }
 }
 
-/** Save an image to platform storage. */
+/** Save an image (or, for b-roll and music, any accepted file) to platform storage. */
 export async function uploadImage(file: Blob, kind: MediaKind, name = "image"): Promise<UploadedImage> {
   const blob = kind === "headshot" ? await downscale(file) : file;
   const form = new FormData();
   const ext = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
-  form.append("file", new File([blob], `${name}.${ext}`, { type: blob.type || "image/jpeg" }));
+  form.append("file", file instanceof File && blob === file ? file : new File([blob], `${name}.${ext}`, { type: blob.type || "image/jpeg" }));
   form.append("kind", kind);
   const res = await fetch("/api/media", { method: "POST", body: form });
   const body = await res.json().catch(() => ({}));

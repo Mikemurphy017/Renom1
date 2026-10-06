@@ -1,6 +1,6 @@
-import { BRAND } from "@/lib/brand";
 import type { AdvisorProfile, VideoFormat } from "@/lib/types";
 import type { CutKind, JobResult, OverlayOptions, TimeRange } from "./types";
+import { extrasFor, getStyle, type StyleId } from "./styles";
 
 /** One clickable phrase in the Edit step's transcript. Segments are contiguous from 0. */
 export interface Segment {
@@ -12,11 +12,13 @@ export interface Segment {
 }
 
 export function defaultOverlays(profile: AdvisorProfile, format: VideoFormat): OverlayOptions {
+  const style: StyleId = format === "short" ? "focus" : "clarity";
   return {
-    captions: { enabled: true, style: "bold", position: format === "short" ? "middle" : "bottom", color: BRAND.captionColor },
+    captions: { enabled: true, style, position: format === "short" ? "middle" : "bottom", color: getStyle(style).accent },
     lowerThird: { enabled: true, name: profile.name, credentials: profile.credentials, firm: profile.firm },
     keyPhrases: true,
     endCard: { enabled: true, headline: `${profile.name}, ${profile.credentials}`, cta: "Follow for more like this" },
+    extras: extrasFor(style),
   };
 }
 

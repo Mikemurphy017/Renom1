@@ -142,6 +142,23 @@ Everything the platform keeps (recorded takes, rendered videos, headshots, cover
 
 A take uploads as soon as recording stops and is stored on the video (`video.take`), so it plays in Edit and Post after a reload. Buffer gets 7-day signed links to the stored video and cover automatically.
 
+## Edit styles
+
+Edit → **Look** opens a style gallery (Impact, Ignite, Focus, Duo, Volt, Nova, Karaoke, Clarity, Minimal; filter Bold / Polished / Minimal). A style sets the whole look, and every part can be switched off per video:
+
+- **Captions**: font, size, case, how words appear (pop, fade, karaoke fill), what's lit (the spoken word or the key words), glow, a block behind the active word. Position and highlight color are adjustable.
+- **Punch-in zooms** on the big moments.
+- **Keyword cards**: a headline (Impact, Volt), a giant word behind (Ignite), a banner (Focus) or a chip (Clarity, Karaoke).
+- **B-roll** cutaways: the advisor's library first (Settings → B-roll & music), then Pexels stock footage when `PEXELS_API_KEY` is set.
+- **Sound effects**: whoosh, pop, riser, hit, synthesized (`src/lib/video/local/audio-beds.ts`).
+- **Music**: four built-in beds (Calm, Uplift, Pulse, Cinematic), synthesized and royalty-free, or the advisor's own tracks; ducked under the voice automatically.
+
+The big moments come from Claude reading the transcript (`local/beats.ts`), with a fallback that picks numbers and strong words. Styles live in `src/lib/video/styles.ts` (shared by the live preview and the renderer); the caption file is built in `local/ass.ts`. Fonts (all SIL OFL) are in `assets/fonts` for the renderer and `public/fonts` for the preview.
+
+## Word-timed captions
+
+Captions follow the voice: the take is transcribed on the server with an offline speech model (sherpa-onnx zipformer trained on GigaSpeech, int8, ~71 MB), which gives a time for every word. Words are spelled like the script wherever the two agree (names, numbers, punctuation), skipped lines are dropped, ad-libs are kept, and a phrase said twice in a row becomes a retake cut. The model downloads on `npm install` / `npm run build` into `.models/` (`scripts/fetch-asr-model.mjs`); without it the editor falls back to timing the script from the audio.
+
 ## Covers (thumbnails)
 
 Post → Cover builds a long-form (1280×720, YouTube / LinkedIn) and a short-form (1080×1920, Reels / TikTok / Shorts) cover for every video. It picks the sharpest, best-lit frames from the advisor's own take (plus any headshots from Settings), Claude writes the words (task `covers`), and four templates per shape draw them on a canvas (`src/lib/thumbs`). The chosen pair is saved to storage as JPEGs and shown across the app.
@@ -152,7 +169,7 @@ The Record step uses the browser's camera and microphone (https or localhost onl
 
 ## AI edit (captions, cuts, overlays)
 
-Recorded takes are processed by a swappable, server-side **video processor**. The default is the built-in **local** editor (ffmpeg, bundled through `ffmpeg-static`, so production needs no system packages): it measures the take's audio to find the pauses, lays the script over the stretches where the advisor was talking, and renders a real MP4 (H.264/AAC, 1080×1920 or 1920×1080) with the advisor's cuts, burned-in captions, name title, end card and cleaned-up audio. It has no speech recognition, so it doesn't invent retakes or filler words, and caption words follow the script.
+Recorded takes are processed by a swappable, server-side **video processor**. The default is the built-in **local** editor (ffmpeg, bundled through `ffmpeg-static`, so production needs no system packages): it measures the take's audio to find the pauses, lays the script over the stretches where the advisor was talking, and renders a real MP4 (H.264/AAC, 1080×1920 or 1920×1080) with the advisor's cuts, burned-in captions, name title, end card and cleaned-up audio. Speech recognition times every caption word to the voice and finds restarts (see Word-timed captions).
 
 1. Record: the take uploads to storage as soon as recording stops. **Send to AI Edit** (or just opening Edit) (`POST /api/video/upload`) and an `analyze` job starts. The app moves to Edit right away and shows live progress.
 2. Edit: the transcript and suggested cuts come from the job result; the filmstrip and waveform come from the real take. Click to cut/restore, the timeline and **Skip cuts** work against the real take. The **Look** panel sets caption style (Classic / Bold / Minimal), position, highlight color, and the AI overlays (name & credentials lower third, key-phrase emphasis, end card), previewed live and saved per video.
@@ -175,7 +192,7 @@ MIRAGE_VERIFIED=1        # required before the Mirage adapter will make any call
 | `src/lib/video/processor.ts` | The `VideoProcessor` interface and env-based selection |
 | `src/lib/video/local/` | Built-in ffmpeg editor (what runs today): `analyze.ts` pauses + script timing, `render.ts` cuts, captions (ASS), titles, audio, MP4 |
 | `src/lib/video/mock.ts` | Simulated processor for UI work (`VIDEO_PROCESSOR=mock`); returns the original file |
-| `assets/fonts/` | Liberation Sans (OFL), burned into captions and titles |
+| `assets/fonts/` | Caption fonts (OFL): Anton, Montserrat, Bebas Neue, Playfair Display, Liberation Sans |
 | `src/lib/video/mirage/endpoints.ts` | **Every** Mirage path and field mapping, all marked `TODO(mirage-docs)` |
 | `src/lib/video/mirage/index.ts` | Mirage adapter (`fetch` + `x-api-key`), refuses to run until verified |
 | `src/lib/video/storage.ts` | Local disk storage for uploads and job records (`.data/`) |
