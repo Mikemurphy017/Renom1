@@ -1,4 +1,4 @@
-export type StageId = "idea" | "thumbnail" | "script" | "descriptions" | "record" | "edit" | "post";
+export type StageId = "idea" | "script" | "record" | "edit" | "post";
 
 export type VideoFormat = "short" | "long";
 

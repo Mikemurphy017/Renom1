@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Camera, CameraOff, Check, ChevronsDown, ChevronsUp, Clapperboard, Download, ListVideo, Pause, Play, RotateCcw, Sparkles, UserRound, Video as VideoIcon } from "lucide-react";
+import { Settings2, Camera, CameraOff, Check, ChevronsDown, ChevronsUp, Clapperboard, Download, ListVideo, Pause, Play, RotateCcw, Sparkles, UserRound, Video as VideoIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Headshot } from "@/components/shared/headshot";
 import { useStore } from "@/lib/store";
@@ -162,130 +163,8 @@ export function RecordStep({ video, complete }: StepProps) {
   const totalRuntime = queuedVideos.reduce((a, v) => a + v.runtimeSec, 0);
   const vertical = aspect === "9:16";
 
-  return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="min-w-0 space-y-6">
-        {/* Stage */}
-        <div className="overflow-hidden rounded-lg border border-border bg-[#06101F] shadow-soft">
-          <div className={cn("relative flex h-[min(62vh,600px)] items-center px-6 py-6", position === "left" ? "justify-start" : position === "right" ? "justify-end" : "justify-center")}>
-            <div className={cn("relative h-full overflow-hidden rounded-md bg-gradient-to-b from-[#2A3B55] to-[#1A2840] shadow-2xl", vertical ? "aspect-[9/16]" : "aspect-video max-w-full")}>
-              {stream ? (
-                <video ref={videoRef} autoPlay muted playsInline className="absolute inset-0 h-full w-full object-cover" style={{ transform: mirror ? "scaleX(-1)" : undefined }} />
-              ) : (
-                <div className="absolute inset-0" style={{ transform: mirror ? "scaleX(-1)" : undefined }}>
-                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_30%,#3A4E6E_0%,transparent_70%)]" />
-                  <Headshot pose="center" className={cn("absolute bottom-0 left-1/2 -translate-x-1/2", vertical ? "h-[58%]" : "h-[80%]")} />
-                </div>
-              )}
-              {/* Teleprompter */}
-              <div className="absolute inset-x-0 top-0 h-[46%] overflow-hidden" style={{ background: `rgba(6,16,31,${opacity / 100})` }}>
-                <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-[#06101F]/80 to-transparent" />
-                <div className="absolute inset-x-0 top-[38%] z-10 h-px bg-[#D2B07A]/50" />
-                <div
-                  className={cn("px-[7%] pt-[18%] font-medium text-white", align === "center" ? "text-center" : "text-left")}
-                  style={{ fontSize: vertical ? fontSize * 0.62 : fontSize * 0.8, lineHeight: 1.35, transform: `translateY(${-offset}px)` }}
-                >
-                  {lines.map((l, i) => (
-                    <p key={i} className="mb-[0.8em]">{l}</p>
-                  ))}
-                  <p className="text-[#D2B07A]">■ End of script</p>
-                </div>
-              </div>
-              {recording && (
-                <div className="absolute top-3 left-3 z-20 inline-flex items-center gap-1.5 rounded bg-black/55 px-2 py-1 text-[11px] font-semibold text-white tnum">
-                  <span className="size-2 animate-pulse rounded-full bg-[#E5484D]" /> REC {fmtDuration(elapsed)}
-                </div>
-              )}
-              <div className="absolute right-3 bottom-3 z-20 rounded bg-black/45 px-1.5 py-0.5 text-[10px] text-white/80 tnum">{aspect}</div>
-            </div>
-            {!stream && (
-              <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#06101F]/70 p-6 backdrop-blur-[2px]">
-                <div className="max-w-sm text-center text-white">
-                  <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full border border-white/15 bg-white/5">
-                    {capture.error ? <CameraOff className="size-5 text-[#E8CFA4]" /> : <Camera className="size-5 text-[#E8CFA4]" />}
-                  </div>
-                  <p className="font-serif text-xl">{capture.error ? "Camera unavailable" : "Ready when you are"}</p>
-                  <p className="mt-1.5 text-[13px] text-white/70">
-                    {capture.error ?? "Turn on your camera and microphone. Nothing is uploaded until you choose to send a take for editing."}
-                  </p>
-                  <Button className="mt-5" onClick={() => enableCamera()} disabled={capture.starting}>
-                    <Camera /> {capture.starting ? "Waiting for permission…" : capture.error ? "Try again" : "Enable camera"}
-                  </Button>
-                </div>
-              </div>
-            )}
-            {countdown !== null && (
-              <div className="absolute inset-0 z-30 flex items-center justify-center">
-                <span key={countdown} className="font-serif text-[120px] leading-none text-white drop-shadow-lg animate-in zoom-in-50 fade-in-0">{countdown}</span>
-              </div>
-            )}
-          </div>
-          {/* Control bar */}
-          <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-[#0A1729] px-4 py-3 text-white">
-            <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" onClick={() => setPlaying((p) => !p)} aria-label={playing ? "Pause prompter" : "Play prompter"}>
-              {playing ? <Pause /> : <Play />}
-            </Button>
-            <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" onClick={() => setOffset(0)} aria-label="Restart prompter">
-              <RotateCcw />
-            </Button>
-            <div className="mx-1 h-5 w-px bg-white/15" />
-            <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" onClick={() => setSpeed((s) => Math.max(8, s - 6))} aria-label="Slower">
-              <ChevronsDown />
-            </Button>
-            <span className="w-16 text-center text-[12px] text-white/70 tnum">{speed} px/s</span>
-            <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" onClick={() => setSpeed((s) => Math.min(120, s + 6))} aria-label="Faster">
-              <ChevronsUp />
-            </Button>
-            <div className="ml-auto flex items-center gap-4">
-              <span className="hidden text-[12px] text-white/60 sm:inline">
-                Take <span className="tnum">{takes + (recording ? 1 : 0) || 1}</span> · est. <span className="tnum">{fmtDuration(active.runtimeSec)}</span>
-              </span>
-              <button
-                onClick={toggleRecord}
-                className="group flex cursor-pointer items-center gap-2.5 rounded-full border border-white/20 py-1 pr-4 pl-1 transition-colors hover:bg-white/5"
-                aria-label={recording ? "Stop recording" : "Start recording"}
-              >
-                <span className="flex size-8 items-center justify-center rounded-full bg-[#B3261E] ring-2 ring-[#B3261E]/30">
-                  {recording ? <span className="size-3 rounded-[2px] bg-white" /> : <span className="size-3.5 rounded-full bg-white/90" />}
-                </span>
-                <span className="text-[13px] font-medium tnum">{recording ? `Stop · ${fmtDuration(elapsed)}` : "Record"}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Batch queue */}
-        <StepSection
-          title="Batch recording queue"
-          action={
-            <span className="text-[12px] text-muted-foreground">
-              <span className="tnum">{queuedVideos.length}</span> scripts · total est. <span className="font-medium text-foreground tnum">{fmtDuration(totalRuntime)}</span>
-            </span>
-          }
-        >
-          <ul className="divide-y divide-border">
-            {queueCandidates.map((v, i) => (
-              <li key={v.id} className={cn("flex items-center gap-3 py-2.5", v.id === activeId && "")}>
-                <Checkbox checked={queued.includes(v.id)} onCheckedChange={(c) => setQueued((q) => (c ? [...q, v.id] : q.filter((x) => x !== v.id)))} aria-label={`Queue ${v.title}`} />
-                <span className="w-4 text-[12px] text-muted-foreground tnum">{i + 1}</span>
-                <ListVideo className="size-4 text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate text-[13px]">{v.title}</span>
-                <span className="text-[12px] text-muted-foreground">{v.format === "short" ? "9:16" : "16:9"}</span>
-                <span className="w-12 text-right text-[12px] tnum">{fmtDuration(v.runtimeSec)}</span>
-                {v.id === activeId ? (
-                  <span className="inline-flex w-20 items-center justify-end gap-1 text-[12px] font-medium text-primary"><VideoIcon className="size-3.5" /> On deck</span>
-                ) : (
-                  <Button size="xs" variant="ghost" className="w-20" onClick={() => { setActiveId(v.id); setOffset(0); }}>Load</Button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </StepSection>
-      </div>
-
-      {/* Settings */}
-      <aside className="space-y-4">
-        <div className="rounded-lg border border-border bg-card p-4 shadow-soft">
+  const settingsPanel = (
+        <div>
           <Tabs defaultValue="prompter">
             <TabsList className="w-full">
               <TabsTrigger value="prompter" className="flex-1">Teleprompter</TabsTrigger>
@@ -357,15 +236,139 @@ export function RecordStep({ video, complete }: StepProps) {
             </TabsContent>
           </Tabs>
         </div>
-        <div className="rounded-lg border border-border bg-card p-4 text-[12px] text-muted-foreground shadow-soft">
-          <div className="eyebrow mb-2">Tips</div>
-          <ul className="space-y-1.5">
-            <li>Look at the brass line — it sits just under your lens.</li>
-            <li>Pause a beat between sections; AI Edit will trim the gaps.</li>
-            <li>Flubbed a line? Just repeat it. We keep the last take.</li>
-          </ul>
+  );
+
+  return (
+    <div className="space-y-6 pb-10">
+      <div className="mx-auto max-w-[1000px] text-center">
+        <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">Read it like you mean it.</h1>
+        <p className="mt-2 text-[15px] text-muted-foreground">Look at the brass line, just under your lens. Pause between sections; the edit trims the gaps.</p>
+      </div>
+      <div className="mx-auto min-w-0 max-w-[1000px] space-y-6">
+        {/* Stage */}
+        <div className="overflow-hidden rounded-2xl border border-border bg-[#06101F] shadow-soft">
+          <div className={cn("relative flex h-[min(62vh,600px)] items-center px-6 py-6", position === "left" ? "justify-start" : position === "right" ? "justify-end" : "justify-center")}>
+            <div className={cn("relative h-full overflow-hidden rounded-md bg-gradient-to-b from-[#2A3B55] to-[#1A2840] shadow-2xl", vertical ? "aspect-[9/16]" : "aspect-video max-w-full")}>
+              {stream ? (
+                <video ref={videoRef} autoPlay muted playsInline className="absolute inset-0 h-full w-full object-cover" style={{ transform: mirror ? "scaleX(-1)" : undefined }} />
+              ) : (
+                <div className="absolute inset-0" style={{ transform: mirror ? "scaleX(-1)" : undefined }}>
+                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_30%,#3A4E6E_0%,transparent_70%)]" />
+                  <Headshot pose="center" className={cn("absolute bottom-0 left-1/2 -translate-x-1/2", vertical ? "h-[58%]" : "h-[80%]")} />
+                </div>
+              )}
+              {/* Teleprompter */}
+              <div className="absolute inset-x-0 top-0 h-[46%] overflow-hidden" style={{ background: `rgba(6,16,31,${opacity / 100})` }}>
+                <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-[#06101F]/80 to-transparent" />
+                <div className="absolute inset-x-0 top-[38%] z-10 h-px bg-[#D2B07A]/50" />
+                <div
+                  className={cn("px-[7%] pt-[18%] font-medium text-white", align === "center" ? "text-center" : "text-left")}
+                  style={{ fontSize: vertical ? fontSize * 0.62 : fontSize * 0.8, lineHeight: 1.35, transform: `translateY(${-offset}px)` }}
+                >
+                  {lines.map((l, i) => (
+                    <p key={i} className="mb-[0.8em]">{l}</p>
+                  ))}
+                  <p className="text-[#D2B07A]">■ End of script</p>
+                </div>
+              </div>
+              {recording && (
+                <div className="absolute top-3 left-3 z-20 inline-flex items-center gap-1.5 rounded bg-black/55 px-2 py-1 text-[11px] font-semibold text-white tnum">
+                  <span className="size-2 animate-pulse rounded-full bg-[#E5484D]" /> REC {fmtDuration(elapsed)}
+                </div>
+              )}
+              <div className="absolute right-3 bottom-3 z-20 rounded bg-black/45 px-1.5 py-0.5 text-[10px] text-white/80 tnum">{aspect}</div>
+            </div>
+            {!stream && (
+              <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#06101F]/70 p-6 backdrop-blur-[2px]">
+                <div className="max-w-sm text-center text-white">
+                  <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full border border-white/15 bg-white/5">
+                    {capture.error ? <CameraOff className="size-5 text-[#E8CFA4]" /> : <Camera className="size-5 text-[#E8CFA4]" />}
+                  </div>
+                  <p className="font-serif text-xl">{capture.error ? "Camera unavailable" : "Ready when you are"}</p>
+                  <p className="mt-1.5 text-[13px] text-white/70">
+                    {capture.error ?? "Turn on your camera and microphone. Nothing is uploaded until you choose to send a take for editing."}
+                  </p>
+                  <Button className="mt-5" onClick={() => enableCamera()} disabled={capture.starting}>
+                    <Camera /> {capture.starting ? "Waiting for permission…" : capture.error ? "Try again" : "Enable camera"}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {countdown !== null && (
+              <div className="absolute inset-0 z-30 flex items-center justify-center">
+                <span key={countdown} className="font-serif text-[120px] leading-none text-white drop-shadow-lg animate-in zoom-in-50 fade-in-0">{countdown}</span>
+              </div>
+            )}
+          </div>
+          {/* Control bar */}
+          <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-[#0A1729] px-4 py-3 text-white">
+            <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" onClick={() => setPlaying((p) => !p)} aria-label={playing ? "Pause prompter" : "Play prompter"}>
+              {playing ? <Pause /> : <Play />}
+            </Button>
+            <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" onClick={() => setOffset(0)} aria-label="Restart prompter">
+              <RotateCcw />
+            </Button>
+            <div className="mx-1 h-5 w-px bg-white/15" />
+            <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" onClick={() => setSpeed((s) => Math.max(8, s - 6))} aria-label="Slower">
+              <ChevronsDown />
+            </Button>
+            <span className="w-16 text-center text-[12px] text-white/70 tnum">{speed} px/s</span>
+            <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" onClick={() => setSpeed((s) => Math.min(120, s + 6))} aria-label="Faster">
+              <ChevronsUp />
+            </Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" aria-label="Recording settings"><Settings2 /></Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" side="top" className="w-80">{settingsPanel}</PopoverContent>
+            </Popover>
+            <div className="ml-auto flex items-center gap-4">
+              <span className="hidden text-[12px] text-white/60 sm:inline">
+                Take <span className="tnum">{takes + (recording ? 1 : 0) || 1}</span> · est. <span className="tnum">{fmtDuration(active.runtimeSec)}</span>
+              </span>
+              <button
+                onClick={toggleRecord}
+                className="group flex cursor-pointer items-center gap-2.5 rounded-full border border-white/20 py-1 pr-4 pl-1 transition-colors hover:bg-white/5"
+                aria-label={recording ? "Stop recording" : "Start recording"}
+              >
+                <span className="flex size-8 items-center justify-center rounded-full bg-[#B3261E] ring-2 ring-[#B3261E]/30">
+                  {recording ? <span className="size-3 rounded-[2px] bg-white" /> : <span className="size-3.5 rounded-full bg-white/90" />}
+                </span>
+                <span className="text-[13px] font-medium tnum">{recording ? `Stop · ${fmtDuration(elapsed)}` : "Record"}</span>
+              </button>
+            </div>
+          </div>
         </div>
-      </aside>
+
+        {/* Batch queue */}
+        <StepSection
+          title="Recording session"
+          action={
+            <span className="text-[12px] text-muted-foreground">
+              <span className="tnum">{queuedVideos.length}</span> scripts · total est. <span className="font-medium text-foreground tnum">{fmtDuration(totalRuntime)}</span>
+            </span>
+          }
+        >
+          <ul className="divide-y divide-border">
+            {queueCandidates.map((v, i) => (
+              <li key={v.id} className={cn("flex items-center gap-3 py-2.5", v.id === activeId && "")}>
+                <Checkbox checked={queued.includes(v.id)} onCheckedChange={(c) => setQueued((q) => (c ? [...q, v.id] : q.filter((x) => x !== v.id)))} aria-label={`Queue ${v.title}`} />
+                <span className="w-4 text-[12px] text-muted-foreground tnum">{i + 1}</span>
+                <ListVideo className="size-4 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate text-[13px]">{v.title}</span>
+                <span className="text-[12px] text-muted-foreground">{v.format === "short" ? "9:16" : "16:9"}</span>
+                <span className="w-12 text-right text-[12px] tnum">{fmtDuration(v.runtimeSec)}</span>
+                {v.id === activeId ? (
+                  <span className="inline-flex w-20 items-center justify-end gap-1 text-[12px] font-medium text-primary"><VideoIcon className="size-3.5" /> On deck</span>
+                ) : (
+                  <Button size="xs" variant="ghost" className="w-20" onClick={() => { setActiveId(v.id); setOffset(0); }}>Load</Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </StepSection>
+      </div>
+
 
       <Dialog open={doneOpen} onOpenChange={setDoneOpen}>
         <DialogContent className="sm:max-w-xl">

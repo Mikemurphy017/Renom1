@@ -137,9 +137,13 @@ export function EditStep({ video, complete }: StepProps) {
 
   return (
     <div className="space-y-6">
+      <div className="text-center">
+        <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">Cut the pauses. Keep you.</h1>
+        <p className="mt-2 text-[15px] text-muted-foreground">Renom marked the dead air and retakes. Click any phrase to cut or restore it.</p>
+      </div>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
         {/* Preview */}
-        <div className="rounded-lg border border-border bg-card p-4 shadow-soft">
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
           <div className="mb-3 flex items-center justify-between">
             <div className="eyebrow">Preview</div>
             <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
@@ -216,7 +220,7 @@ export function EditStep({ video, complete }: StepProps) {
         </div>
 
         {/* Transcript */}
-        <div className="flex min-h-0 flex-col rounded-lg border border-border bg-card p-4 shadow-soft">
+        <div className="flex min-h-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-soft">
           <Tabs defaultValue="captions" className="min-h-0 flex-1">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <TabsList>
@@ -273,13 +277,12 @@ export function EditStep({ video, complete }: StepProps) {
       </div>
 
       {/* Timeline */}
-      <div className="rounded-lg border border-border bg-card p-4 shadow-soft">
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
         <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-2">
           <div className="eyebrow">Timeline</div>
           {[
             ["Show cuts", showCuts, setShowCuts],
             ["Skip cuts", skipCuts, setSkipCuts],
-            ["Social preview", social, setSocial],
             ["Enhance audio", enhance, setEnhance],
           ].map(([label, val, set]) => (
             <label key={label as string} className="flex items-center gap-2 text-[12px] text-muted-foreground">
@@ -350,7 +353,7 @@ export function EditStep({ video, complete }: StepProps) {
         </div>
         <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-4">
           <Button variant="outline" onClick={() => { setSegments(buildSegments(video)); toast("Auto-cuts re-applied"); }}><Wand2 /> Re-run auto-cut</Button>
-          <Button onClick={doExport}>Export & continue <ArrowRight /></Button>
+          <Button onClick={doExport}>Finish edit <ArrowRight /></Button>
         </div>
       </div>
 

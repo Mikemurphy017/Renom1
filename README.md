@@ -16,26 +16,38 @@ npm run build   # production build
 
 Next.js (App Router) · TypeScript · Tailwind v4 · shadcn/ui-style components on Radix · Lucide · Recharts · Framer Motion · cmdk · sonner · next-themes
 
-## Where things live
+## The product
+
+Five steps, nothing else: **Idea → Script → Record → Edit → Post** (Post covers cover image, captions, approval and scheduling).
+
+| Page | What it's for |
+|---|---|
+| Home | One question ("What do you want to talk about?"), work in progress, three numbers, what's coming up |
+| Videos | Every video, filtered by In progress / Approval / Scheduled / Published |
+| Analyze | Four numbers, one chart, what's working and where |
+| Approve | Review queue (comments pinned to script lines and timestamps) and the books-and-records archive |
+| Settings | Your voice (what Claude writes from), disclosures, Buffer, approval rules, team, plan |
+
+## Claude writes the content
+
+Ideas, scripts and captions are written by Claude (`claude-opus-5-5`, structured outputs, server-side refusal fallback) in a house voice that blends Eugene Schwartz, Joseph Sugarman, Oren Klaff and David Ogilvy, kept inside FINRA 2210 / SEC Marketing Rule guardrails. The voice lives in `src/lib/ai/voice.ts`; the per-task prompts in `src/lib/ai/claude.ts`.
+
+```bash
+ANTHROPIC_API_KEY=...   # in .env.local
+```
+
+Without a key, `/api/write` returns hand-written sample copy in the same voice, labelled "Sample writing" in the UI.
 
 | Path | What |
 |---|---|
-| `src/app/(app)/*` | Pages: Home, Video Board, Studio, Library, Performance, Compliance, Profile, Settings |
-| `src/app/(app)/studio/[id]/[step]` | Studio view for one video at one step |
-| `src/components/studio/steps/*` | One component per step. Each receives `{ video, complete }` |
-| `src/components/agent/*` | Chat panel, request-summary card and the `useAgentSession` hook |
-| `src/lib/ai/types.ts` | **Agent contract** (`AgentClient.stream()` → status / delta / done events) |
-| `src/lib/ai/mock-agent.ts` | Mock streaming agent. Swap `agent` for a real implementation |
-| `src/lib/ai/content.ts` | Mock generators for ideas, thumbnails, scripts and descriptions, plus duplicate detection |
-| `src/lib/store.tsx` | In-memory store. Every mutation is a function you can replace with an API call |
-| `src/lib/mock/*` | Advisor profile, videos, platforms, analytics, compliance queue |
-| `src/app/globals.css` | Design tokens for light mode and dark navy mode |
-
-## Wiring real services later
-
-- **AI**: implement `AgentClient` (for example, a fetch to a streaming route handler) and export it as `agent` from `src/lib/ai/mock-agent.ts`. Move the generators in `content.ts` behind that route.
-- **Platforms / publishing**: `post-step.tsx` → `publish()`; connection state lives in `settings/page.tsx`.
-- **Persistence**: replace `StoreProvider` mutations and `useDraft` (`src/lib/drafts.ts`) with server calls.
+| `src/app/api/write/route.ts` | Streams status lines, then the result (NDJSON) |
+| `src/lib/ai/voice.ts` | The house voice and compliance rules |
+| `src/lib/ai/claude.ts` | Prompts per task and the Claude call |
+| `src/lib/ai/schemas.ts` | Zod schemas for ideas, scripts and captions |
+| `src/lib/ai/samples.ts` | Fallback copy when no key is set |
+| `src/lib/ai/writer.ts` | `useWriter()` client hook |
+| `src/components/studio/steps/*` | The five steps |
+| `src/lib/store.tsx` | In-memory store (videos, reviews, the voice profile) |
 
 ## Buffer (scheduling and publishing)
 

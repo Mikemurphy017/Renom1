@@ -29,3 +29,8 @@ export function useDraft<T>(videoId: string, key: string, initial: T | (() => T)
   );
   return [value, set] as const;
 }
+
+/** Pre-fill a draft before the studio opens (e.g. a topic typed on Home). */
+export function seedDraft<T>(videoId: string, key: string, value: T) {
+  cache.set(`${videoId}:${key}`, value);
+}

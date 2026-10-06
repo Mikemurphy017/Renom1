@@ -5,11 +5,9 @@ import { Download, FileText, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PageContainer, PageHeader, EmptyState } from "@/components/shared/page";
+import { PageContainer, EmptyState } from "@/components/shared/page";
 import { ComplianceBadge } from "@/components/shared/badges";
 import { VideoThumb } from "@/components/shared/video-thumb";
 import { PlatformIcon } from "@/components/shared/platform-icon";
@@ -25,7 +23,7 @@ import { cn, fmtDate, fmtDateTime, relativeTime } from "@/lib/utils";
 const ORDER: ComplianceStatus[] = ["submitted", "changes_requested", "draft", "approved"];
 
 export default function CompliancePage() {
-  const { reviews, getVideo, videos, requireApproval, setRequireApproval } = useStore();
+  const { reviews, getVideo, videos } = useStore();
   const [filter, setFilter] = React.useState<ComplianceStatus | "all">("all");
   const [selected, setSelected] = React.useState<string>(reviews.find((r) => r.status === "changes_requested")?.id ?? reviews[0]?.id);
   const list = reviews.filter((r) => filter === "all" || r.status === filter).sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status));
@@ -64,17 +62,15 @@ export default function CompliancePage() {
   };
 
   return (
-    <PageContainer className="space-y-6">
-      <PageHeader
-        eyebrow="Compliance"
-        title="Review, approve, archive"
-        description="Every script, description and final video is reviewed before it goes out — and every post is archived for books-and-records."
-      />
+    <PageContainer className="max-w-[1200px] space-y-8 pt-10">
+      <div>
+        <h1 className="font-serif text-[40px] leading-tight tracking-tight">Approve</h1>
+        <p className="mt-2 text-[15px] text-muted-foreground">Nothing goes out until it&rsquo;s reviewed. Everything that goes out is archived.</p>
+      </div>
       <Tabs defaultValue="queue">
         <TabsList variant="line">
-          <TabsTrigger value="queue">Approval queue</TabsTrigger>
+          <TabsTrigger value="queue">To review</TabsTrigger>
           <TabsTrigger value="archive">Archive</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
         <TabsContent value="queue" className="space-y-5 pt-3">
@@ -164,41 +160,7 @@ export default function CompliancePage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="settings" className="pt-3">
-          <Card className="max-w-3xl">
-            <CardContent className="divide-y divide-border p-0">
-              {[
-                { t: "Require approval before publishing", d: "Videos can't be published or scheduled until a Compliance Reviewer approves them.", v: requireApproval, s: setRequireApproval },
-              ].map((x) => (
-                <div key={x.t} className="flex items-center justify-between gap-6 px-5 py-4">
-                  <div><div className="text-[14px] font-medium">{x.t}</div><div className="text-[12px] text-muted-foreground">{x.d}</div></div>
-                  <Switch checked={x.v} onCheckedChange={(v) => { x.s(v); toast.success(v ? "Approval required" : "Approval no longer required"); }} />
-                </div>
-              ))}
-              <ToggleRow title="Review descriptions separately" desc="Platform copy goes through its own review, in addition to the video." defaultChecked />
-              <ToggleRow title="Fast-track timely content" desc="Timely videos jump to the top of the queue with a 4-hour target." defaultChecked />
-              <ToggleRow title="Block edits after approval" desc="Any change to an approved script or caption resets it to Draft." defaultChecked />
-              <div className="flex items-center justify-between gap-6 px-5 py-4">
-                <div><div className="text-[14px] font-medium">Default reviewer</div><div className="text-[12px] text-muted-foreground">New submissions are assigned here.</div></div>
-                <Select defaultValue="rl"><SelectTrigger size="sm" className="w-52"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="rl">Ruth Lindqvist (CCO)</SelectItem><SelectItem value="pool">Meridian review pool</SelectItem></SelectContent></Select>
-              </div>
-              <div className="flex items-center justify-between gap-6 px-5 py-4">
-                <div><div className="text-[14px] font-medium">Archive retention</div><div className="text-[12px] text-muted-foreground">How long published posts and approvals are retained.</div></div>
-                <Select defaultValue="7"><SelectTrigger size="sm" className="w-52"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="3">3 years</SelectItem><SelectItem value="6">6 years</SelectItem><SelectItem value="7">7 years</SelectItem></SelectContent></Select>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
     </PageContainer>
-  );
-}
-
-function ToggleRow({ title, desc, defaultChecked }: { title: string; desc: string; defaultChecked?: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-6 px-5 py-4">
-      <div><div className="text-[14px] font-medium">{title}</div><div className="text-[12px] text-muted-foreground">{desc}</div></div>
-      <Switch defaultChecked={defaultChecked} onCheckedChange={() => toast.success("Setting saved")} />
-    </div>
   );
 }

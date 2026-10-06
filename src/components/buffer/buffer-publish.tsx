@@ -41,6 +41,7 @@ type Result = { channelId: string; ok: boolean; message: string; dueAt?: string 
 /** Shared Buffer publishing state for a video (persists while moving between sub-steps). */
 export function useBufferPlan(video: Video, channels: BufferChannel[]) {
   const [mine] = useAdvisorChannels(TEAM[0].id);
+  const { profile } = useStore();
   const [videoUrl, setVideoUrl] = useDraft(video.id, "buffer.videoUrl", "");
   const [plans, setPlans] = useDraft<Record<string, ChannelPlan>>(video.id, "buffer.plans", {});
   const [copies] = useDraft<PlatformCopy[]>(video.id, "desc.copies", []);
@@ -62,7 +63,7 @@ export function useBufferPlan(video: Video, channels: BufferChannel[]) {
     if (plan.text !== undefined) return plan.text;
     const p = platformOf(c);
     const copy = copies.find((x) => x.platform === p) ?? generateDescriptions(video, [getPlatform(p)])[0];
-    return composeCaption(copy, p);
+    return composeCaption(copy, p, profile);
   };
   const dueAtFor = (plan: ChannelPlan) => new Date(`${plan.date}T${plan.time}`);
 
@@ -88,7 +89,7 @@ type Plan = ReturnType<typeof useBufferPlan>;
 export function BufferVideoLink({ plan }: { plan: Plan }) {
   const valid = !plan.videoUrl || /^https:\/\/\S+$/.test(plan.videoUrl);
   return (
-    <div className="mt-4 rounded-lg border border-border p-4">
+    <div className="rounded-2xl border border-border bg-card p-5 shadow-soft">
       <div className="text-[13px] font-semibold">Public video link for Buffer</div>
       <p className="mt-1 text-[12px] text-muted-foreground">
         Buffer downloads the video from a link. Paste a public https:// link to the final MP4 (S3, Dropbox direct link, etc.). Without one, posts are sent to Buffer as drafts so you can attach the file there.
@@ -100,6 +101,7 @@ export function BufferVideoLink({ plan }: { plan: Plan }) {
 }
 
 export function BufferConfigure({ channels, plan, onBack, onNext }: { channels: BufferChannel[]; plan: Plan; onBack: () => void; onNext: () => void }) {
+  const { profile } = useStore();
   const enabledCount = channels.filter((c) => plan.planFor(c).enabled).length;
   return (
     <StepSection
@@ -144,7 +146,7 @@ export function BufferConfigure({ channels, plan, onBack, onNext }: { channels: 
                 <div className="mt-3 md:ml-[276px]">
                   <Textarea rows={6} value={caption} onChange={(e) => plan.setPlan(c.id, { text: e.target.value })} className="text-[13px]" />
                   <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
-                    <span className="inline-flex items-center gap-1"><Lock className="size-3" /> Includes disclosure {activeDisclosure().version} — edit carefully; changes are archived.</span>
+                    <span className="inline-flex items-center gap-1"><Lock className="size-3" /> Includes disclosure {activeDisclosure(profile).version} — edit carefully; changes are archived.</span>
                     <span className={cn("tnum", caption.length > platform.descLimit && "text-destructive")}>{fmtNumber(caption.length)} / {fmtNumber(platform.descLimit)}</span>
                   </div>
                 </div>

@@ -1,22 +1,20 @@
-import { Lightbulb, Image, ScrollText, AlignLeft, Video, Scissors, Send, type LucideIcon } from "lucide-react";
+import { Lightbulb, ScrollText, Video, Scissors, Send, type LucideIcon } from "lucide-react";
 import type { StageId } from "./types";
 
 export interface StageDef {
   id: StageId;
   label: string;
-  verb: string;
   icon: LucideIcon;
-  description: string;
+  /** Shown under the step title in the studio. */
+  prompt: string;
 }
 
 export const STAGES: StageDef[] = [
-  { id: "idea", label: "Idea", verb: "Shape the idea", icon: Lightbulb, description: "Evergreen and timely ideas grounded in your niche." },
-  { id: "thumbnail", label: "Thumbnail", verb: "Design the thumbnail", icon: Image, description: "One headshot, endless poses." },
-  { id: "script", label: "Script", verb: "Write the script", icon: ScrollText, description: "Hook, body and CTA in your voice." },
-  { id: "descriptions", label: "Descriptions", verb: "Write descriptions", icon: AlignLeft, description: "Platform-ready copy with disclosures." },
-  { id: "record", label: "Record", verb: "Record", icon: Video, description: "Teleprompter studio in your browser." },
-  { id: "edit", label: "Edit", verb: "Edit", icon: Scissors, description: "Text-based editing and captions." },
-  { id: "post", label: "Post", verb: "Publish", icon: Send, description: "Review, schedule and publish." },
+  { id: "idea", label: "Idea", icon: Lightbulb, prompt: "What do you want to talk about?" },
+  { id: "script", label: "Script", icon: ScrollText, prompt: "Your words, sharpened." },
+  { id: "record", label: "Record", icon: Video, prompt: "Read it like you mean it." },
+  { id: "edit", label: "Edit", icon: Scissors, prompt: "Cut the pauses. Keep you." },
+  { id: "post", label: "Post", icon: Send, prompt: "Approve it, schedule it, done." },
 ];
 
 export const stageIndex = (id: StageId) => STAGES.findIndex((s) => s.id === id);

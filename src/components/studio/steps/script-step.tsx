@@ -1,25 +1,24 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRight, AudioLines, FileText, Mic, Paperclip, ScrollText, Sparkles, Square, Upload, X, Smartphone, Monitor } from "lucide-react";
+import { ArrowRight, AudioLines, Mic, Monitor, Paperclip, Smartphone, Sparkles, Square, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { EmptyState } from "@/components/shared/page";
-import { AgentPanel } from "@/components/agent/agent-panel";
-import { useAgentSession } from "@/components/agent/use-agent";
-import { useStore } from "@/lib/store";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useStore, voiceProfileOf } from "@/lib/store";
 import { useDraft } from "@/lib/drafts";
-import { estimateRuntime, generateScript } from "@/lib/ai/content";
+import { isAbort, useWriter } from "@/lib/ai/writer";
+import { estimateRuntime } from "@/lib/ai/content";
 import type { Script, VideoFormat } from "@/lib/types";
 import { cn, fmtDuration } from "@/lib/utils";
-import { StepLayout, StepSection, FieldLabel } from "../step-layout";
+import { AskBar, RequestLine, Writing } from "../ask-bar";
+import { StepIntro } from "../step-layout";
 import type { StepProps } from "../studio-view";
 
-function AutoTextarea({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
+function Editable({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
   const ref = React.useRef<HTMLTextAreaElement>(null);
   React.useLayoutEffect(() => {
     const el = ref.current;
@@ -33,34 +32,22 @@ function AutoTextarea({ value, onChange, className }: { value: string; onChange:
       value={value}
       onChange={(e) => onChange(e.target.value)}
       rows={1}
-      className={cn("block w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-2 py-1.5 text-[14px] leading-relaxed outline-none hover:border-border focus:border-ring focus:bg-card", className)}
+      className={cn("block w-full resize-none overflow-hidden rounded-lg bg-transparent px-2 py-1 -mx-2 outline-none transition-colors hover:bg-muted/50 focus:bg-muted/60", className)}
     />
   );
 }
 
-function ScriptSection({ label, tone, children }: { label: string; tone: string; children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-[72px_1fr] gap-3 border-b border-border py-4 last:border-0">
-      <div className="pt-2">
-        <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.12em] uppercase", tone)}>{label}</span>
-      </div>
-      <div className="space-y-1">{children}</div>
-    </div>
-  );
-}
-
 export function ScriptStep({ video, complete }: StepProps) {
-  const { videos } = useStore();
+  const { profile } = useStore();
   const [format, setFormat] = useDraft<VideoFormat>(video.id, "script.format", video.format);
-  const [source, setSource] = useDraft(video.id, "script.source", video.id);
-  const [custom, setCustom] = useDraft(video.id, "script.custom", "");
-  const [memo, setMemo] = useDraft<{ name: string; secs: number } | null>(video.id, "script.memo", null);
-  const [files, setFiles] = useDraft<string[]>(video.id, "script.files", []);
   const [script, setScript] = useDraft<Script | null>(video.id, "script.value", video.script ?? null);
+  const [context, setContext] = useDraft(video.id, "script.context", "");
+  const [memo, setMemo] = useDraft<{ secs: number } | null>(video.id, "script.memo", null);
+  const [files, setFiles] = useDraft<string[]>(video.id, "script.files", []);
+  const [note, setNote] = React.useState<string | null>(null);
   const [recording, setRecording] = React.useState(false);
   const [recSecs, setRecSecs] = React.useState(0);
-  const [pending, setPending] = React.useState(false);
-  const { turns, busy, run } = useAgentSession();
+  const { write, busy, status, source } = useWriter();
 
   React.useEffect(() => {
     if (!recording) return;
@@ -68,170 +55,122 @@ export function ScriptStep({ video, complete }: StepProps) {
     return () => clearInterval(t);
   }, [recording]);
 
-  const ideaOptions = videos.filter((v) => v.status !== "published" && v.outline.length);
-  const ideaTitle = source === "custom" ? custom : videos.find((v) => v.id === source)?.title ?? video.title;
-
-  const generate = () => {
-    if (!ideaTitle.trim()) return toast.error("Add an idea first");
-    setPending(true);
-    run(
-      {
+  const run = async (instruction?: string) => {
+    try {
+      const ctx = [context, memo ? "(The advisor recorded a voice memo; transcription arrives with the Captions integration.)" : "", files.length ? `Attached files: ${files.join(", ")}` : ""].filter(Boolean).join("\n");
+      const out = await write({
         task: "script",
-        summary: {
-          "Content Type": format === "short" ? "Short-form" : "Long-form",
-          "Video Idea": ideaTitle,
-          "Use Profile": "Yes",
-          "Voice Memo": memo ? `${memo.name} (${fmtDuration(memo.secs)})` : "None",
-          "Files Uploaded": files.length ? `${files.length} file${files.length > 1 ? "s" : ""}` : "None",
-        },
-      },
-      {
-        onDone: () => {
-          setScript(generateScript(ideaTitle, format));
-          setPending(false);
-        },
-      }
-    );
+        profile: voiceProfileOf(profile),
+        format,
+        idea: { title: video.title, outline: video.outline.length ? video.outline : [video.title] },
+        context: ctx || undefined,
+        current: instruction && script ? script : undefined,
+        instruction,
+      });
+      setScript({ hook: out.hook, body: out.body, cta: out.cta });
+      setNote(out.note);
+    } catch (e) {
+      if (isAbort(e)) return;
+      toast.error("Couldn’t write the script", { description: (e as Error).message });
+    }
   };
 
   const runtime = script ? estimateRuntime(script) : 0;
   const target = format === "short" ? 60 : 600;
+  const contextCount = (context ? 1 : 0) + (memo ? 1 : 0) + files.length;
 
   return (
-    <StepLayout
-      panel={
-        <AgentPanel
-          turns={turns}
-          busy={busy}
-          onSend={(t) => run({ task: "chat", summary: {}, prompt: t, context: { step: "script" } })}
-          suggestions={script ? ["Make it shorter", "Punchier hook", "More formal"] : []}
-          emptyHint="Choose a format and idea, add a voice memo if you like, then generate."
-        />
-      }
-    >
-      <StepSection title="Script brief">
-        <div className="grid gap-5 lg:grid-cols-2">
-          <div>
-            <FieldLabel>Format</FieldLabel>
-            <ToggleGroup type="single" value={format} onValueChange={(v) => v && setFormat(v as VideoFormat)}>
-              <ToggleGroupItem value="short"><Smartphone /> Short-form · 9:16</ToggleGroupItem>
-              <ToggleGroupItem value="long"><Monitor /> Long-form · 16:9</ToggleGroupItem>
-            </ToggleGroup>
-          </div>
-          <div>
-            <FieldLabel>Idea</FieldLabel>
-            <Select value={source} onValueChange={setSource}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {ideaOptions.map((v) => (
-                  <SelectItem key={v.id} value={v.id}>{v.id === video.id ? `This video — ${v.title}` : v.title}</SelectItem>
-                ))}
-                <SelectItem value="custom">Type a new idea…</SelectItem>
-              </SelectContent>
-            </Select>
-            {source === "custom" && <Input className="mt-2" autoFocus value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="What should this video cover?" />}
-          </div>
-          <div>
-            <FieldLabel hint="Optional">Voice memo</FieldLabel>
-            {memo ? (
-              <div className="flex h-9 items-center gap-2 rounded-md border border-border bg-muted/50 px-3 text-[13px]">
-                <AudioLines className="size-4 text-primary" />
-                <span className="flex-1 truncate">{memo.name}</span>
-                <span className="text-muted-foreground tnum">{fmtDuration(memo.secs)}</span>
-                <button className="cursor-pointer text-muted-foreground hover:text-foreground" onClick={() => setMemo(null)} aria-label="Remove memo"><X className="size-3.5" /></button>
-              </div>
-            ) : recording ? (
-              <div className="flex h-9 items-center gap-3 rounded-md border border-destructive/30 bg-warning-soft px-3 text-[13px]">
-                <span className="size-2 animate-pulse rounded-full bg-[#B3261E]" />
-                <span className="text-destructive tnum">Recording {fmtDuration(recSecs)}</span>
-                <Button size="xs" variant="outline" className="ml-auto" onClick={() => { setRecording(false); setMemo({ name: "Voice memo", secs: Math.max(recSecs, 1) }); }}>
-                  <Square className="size-3" /> Stop
-                </Button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => { setRecSecs(0); setRecording(true); }}><Mic /> Record</Button>
-                <Button variant="outline" size="sm" onClick={() => setMemo({ name: "memo-oct-06.m4a", secs: 94 })}><Upload /> Upload</Button>
-              </div>
-            )}
-          </div>
-          <div>
-            <FieldLabel hint="Optional · PDFs, notes, articles">Files</FieldLabel>
-            <div className="flex flex-wrap items-center gap-2">
-              {files.map((f) => (
-                <span key={f} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 text-[12px]">
-                  <FileText className="size-3.5 text-muted-foreground" /> {f}
-                  <button className="cursor-pointer" onClick={() => setFiles((fs) => fs.filter((x) => x !== f))} aria-label={`Remove ${f}`}><X className="size-3" /></button>
-                </span>
-              ))}
-              <Button variant="outline" size="sm" onClick={() => setFiles((fs) => [...fs, ["2026-planning-notes.pdf", "client-faq.docx", "irs-notice-2026-41.pdf"][fs.length % 3]])}>
-                <Paperclip /> Attach
-              </Button>
-            </div>
-          </div>
-        </div>
-        <div className="mt-5 flex justify-end border-t border-border pt-5">
-          <Button onClick={generate} disabled={busy}><Sparkles /> {script ? "Rewrite script" : "Write script"}</Button>
-        </div>
-      </StepSection>
+    <div className="space-y-8 pb-28">
+      <StepIntro title={video.title} subtitle={script ? "Click any line to edit it. Ask Renom for bigger changes." : "Renom writes it in your voice. You make it yours."} />
 
-      <StepSection
-        title="Script"
-        action={
-          script && (
-            <div className="flex flex-wrap items-center gap-3">
-              <span className={cn("text-[12px] tnum", runtime > target ? "text-destructive" : "text-muted-foreground")}>
-                Est. runtime <span className="font-medium text-foreground">{fmtDuration(runtime)}</span> / {fmtDuration(target)}
-              </span>
-              <VoiceMatch score={92} />
+      <div className="flex flex-wrap items-center gap-2">
+        <ToggleGroup type="single" value={format} onValueChange={(v) => v && setFormat(v as VideoFormat)} className="rounded-full">
+          <ToggleGroupItem value="short" className="rounded-full"><Smartphone /> Short · 9:16</ToggleGroupItem>
+          <ToggleGroupItem value="long" className="rounded-full"><Monitor /> Long · 16:9</ToggleGroupItem>
+        </ToggleGroup>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="rounded-full">
+              <Paperclip /> Add context {contextCount > 0 && <span className="rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground tnum">{contextCount}</span>}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-80 space-y-4">
+            <div>
+              <div className="mb-1.5 text-[12px] font-medium">Notes for Renom</div>
+              <Textarea rows={3} value={context} onChange={(e) => setContext(e.target.value)} placeholder="A story, a client question, a stat you trust…" className="text-[13px]" />
             </div>
-          )
-        }
-      >
-        {pending ? (
-          <div className="space-y-4">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="grid grid-cols-[72px_1fr] gap-3">
-                <Skeleton className="h-4 w-12" />
-                <div className="space-y-2"><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-5/6" /></div>
-              </div>
+            <div>
+              <div className="mb-1.5 text-[12px] font-medium">Voice memo</div>
+              {memo ? (
+                <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-[13px]">
+                  <AudioLines className="size-4 text-primary" /> Memo · <span className="tnum">{fmtDuration(memo.secs)}</span>
+                  <button className="ml-auto cursor-pointer" onClick={() => setMemo(null)} aria-label="Remove memo"><X className="size-3.5" /></button>
+                </div>
+              ) : recording ? (
+                <Button variant="outline" size="sm" className="w-full" onClick={() => { setRecording(false); setMemo({ secs: Math.max(1, recSecs) }); }}>
+                  <Square className="size-3 text-destructive" /> Stop · <span className="tnum">{fmtDuration(recSecs)}</span>
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" className="w-full" onClick={() => { setRecSecs(0); setRecording(true); }}><Mic /> Record a memo</Button>
+              )}
+            </div>
+            <div>
+              <div className="mb-1.5 text-[12px] font-medium">Files</div>
+              {files.map((f) => (
+                <div key={f} className="mb-1 flex items-center gap-2 text-[13px]"><Paperclip className="size-3.5 text-muted-foreground" />{f}<button className="ml-auto cursor-pointer" onClick={() => setFiles(files.filter((x) => x !== f))} aria-label={`Remove ${f}`}><X className="size-3.5" /></button></div>
+              ))}
+              <Button variant="outline" size="sm" className="w-full" onClick={() => setFiles([...files, ["planning-notes.pdf", "client-faq.docx", "irs-notice.pdf"][files.length % 3]])}><Paperclip /> Attach a file</Button>
+            </div>
+          </PopoverContent>
+        </Popover>
+        {script && (
+          <span className="ml-auto flex items-center gap-3 text-[13px] text-muted-foreground">
+            <span className={cn("tnum", runtime > target && "text-destructive")}>{fmtDuration(runtime)} / {fmtDuration(target)}</span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-[12px] font-medium text-success">Sounds like you · <span className="tnum">92%</span></span>
+          </span>
+        )}
+      </div>
+
+      {(busy || script) && (
+        <RequestLine items={[format === "short" ? "Short-form" : "Long-form", `Idea: ${video.title.slice(0, 40)}${video.title.length > 40 ? "…" : ""}`, "Your voice profile", memo ? "Voice memo" : "No voice memo", files.length ? `${files.length} file${files.length > 1 ? "s" : ""}` : "No files"]} source={busy ? null : source} />
+      )}
+
+      {busy && !script ? (
+        <div className="space-y-4 rounded-2xl border border-border bg-card p-8">
+          <Writing status={status} />
+          <Skeleton className="h-6 w-4/5" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-11/12" />
+          <Skeleton className="h-4 w-3/4" />
+        </div>
+      ) : !script ? (
+        <div className="rounded-2xl border border-dashed border-border px-8 py-14 text-center">
+          <p className="font-serif text-2xl">Ready when you are.</p>
+          <p className="mx-auto mt-2 max-w-sm text-[14px] text-muted-foreground">A hook that lands in three seconds, a body written for the ear, and a calm close.</p>
+          <Button className="mt-6 rounded-full px-6" onClick={() => run()}><Sparkles /> Write the script</Button>
+        </div>
+      ) : (
+        <article className={cn("rounded-2xl border border-border bg-card px-6 py-8 shadow-soft sm:px-12 sm:py-12", busy && "opacity-60")}>
+          <div className="mb-2 text-[11px] font-medium tracking-[0.14em] text-primary uppercase">Hook</div>
+          <Editable value={script.hook} onChange={(v) => setScript({ ...script, hook: v })} className="font-serif text-[24px] leading-snug" />
+          <div className="mt-8 mb-2 text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">Body</div>
+          <div className="space-y-3">
+            {script.body.map((b, i) => (
+              <Editable key={i} value={b} onChange={(v) => setScript({ ...script, body: script.body.map((x, j) => (j === i ? v : x)) })} className="text-[17px] leading-relaxed" />
             ))}
           </div>
-        ) : !script ? (
-          <EmptyState icon={ScrollText} title="No script yet" description="Renom writes a hook, body and call to action in your voice — then you edit inline." action={<Button onClick={generate}><Sparkles /> Write script</Button>} />
-        ) : (
-          <>
-            <ScriptSection label="Hook" tone="bg-brass-soft text-[#7d6238] dark:text-primary">
-              <AutoTextarea value={script.hook} onChange={(v) => setScript({ ...script, hook: v })} className="font-serif text-[17px]" />
-            </ScriptSection>
-            <ScriptSection label="Body" tone="bg-secondary text-secondary-foreground">
-              {script.body.map((b, i) => (
-                <AutoTextarea key={i} value={b} onChange={(v) => setScript({ ...script, body: script.body.map((x, j) => (j === i ? v : x)) })} />
-              ))}
-            </ScriptSection>
-            <ScriptSection label="CTA" tone="bg-success-soft text-success">
-              <AutoTextarea value={script.cta} onChange={(v) => setScript({ ...script, cta: v })} />
-            </ScriptSection>
-            <div className="mt-4 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => toast.success("Script saved")}>Save draft</Button>
-              <Button onClick={() => complete({ script, format, runtimeSec: runtime })}>Continue to Descriptions <ArrowRight /></Button>
-            </div>
-          </>
-        )}
-      </StepSection>
-    </StepLayout>
-  );
-}
+          <div className="mt-8 mb-2 text-[11px] font-medium tracking-[0.14em] text-success uppercase">Close</div>
+          <Editable value={script.cta} onChange={(v) => setScript({ ...script, cta: v })} className="text-[17px] leading-relaxed italic" />
+        </article>
+      )}
 
-function VoiceMatch({ score }: { score: number }) {
-  return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-success/25 bg-success-soft px-2.5 py-1 text-[11px] font-medium text-success" title="Compared against your sample writing and past transcripts">
-      <span className="flex items-end gap-px">
-        {[3, 5, 7, 9, 11].map((h, i) => (
-          <span key={i} className={cn("w-[3px] rounded-sm", i < Math.round(score / 20) ? "bg-success" : "bg-success/25")} style={{ height: h }} />
-        ))}
-      </span>
-      Sounds like you · <span className="tnum">{score}%</span>
-    </span>
+      {script && (
+        <div className="flex justify-end">
+          <Button className="rounded-full px-6" onClick={() => complete({ script, format, runtimeSec: runtime })}>Record it <ArrowRight /></Button>
+        </div>
+      )}
+
+      {script && <AskBar busy={busy} status={status} note={note} onAsk={(t) => run(t)} suggestions={["Shorter", "Punchier hook", "More formal", "Add a reframe"]} />}
+    </div>
   );
 }

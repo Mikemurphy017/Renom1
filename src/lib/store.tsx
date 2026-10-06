@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import type { ComplianceStatus, StageId, Video } from "./types";
+import type { AdvisorProfile, ComplianceStatus, StageId, Video } from "./types";
+import { ADVISOR } from "./mock/advisor";
 import { VIDEOS } from "./mock/videos";
 import { REVIEW_QUEUE, type ReviewComment, type ReviewItem } from "./mock/compliance";
 import { TODAY } from "./utils";
@@ -23,6 +24,8 @@ interface Store {
   addComment: (reviewId: string, c: Omit<ReviewComment, "id" | "at" | "resolved">) => void;
   requireApproval: boolean;
   setRequireApproval: (v: boolean) => void;
+  profile: AdvisorProfile;
+  updateProfile: (patch: Partial<AdvisorProfile>) => void;
 }
 
 const StoreContext = React.createContext<Store | null>(null);
@@ -31,6 +34,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [videos, setVideos] = React.useState<Video[]>(VIDEOS);
   const [reviews, setReviews] = React.useState<ReviewItem[]>(REVIEW_QUEUE);
   const [requireApproval, setRequireApproval] = React.useState(true);
+  const [profile, setProfile] = React.useState<AdvisorProfile>(ADVISOR);
 
   const value = React.useMemo<Store>(
     () => ({
@@ -100,8 +104,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         ),
       requireApproval,
       setRequireApproval,
+      profile,
+      updateProfile: (patch) => setProfile((p) => ({ ...p, ...patch })),
     }),
-    [videos, reviews, requireApproval]
+    [videos, reviews, requireApproval, profile]
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
@@ -111,4 +117,19 @@ export function useStore() {
   const ctx = React.useContext(StoreContext);
   if (!ctx) throw new Error("useStore must be used inside <StoreProvider>");
   return ctx;
+}
+
+/** The subset of the profile every writing request sends. */
+export function voiceProfileOf(p: AdvisorProfile) {
+  return {
+    name: p.name,
+    credentials: p.credentials,
+    firm: p.firm,
+    niche: p.niche,
+    idealClient: p.idealClient,
+    bio: p.bio,
+    tone: p.tone,
+    opinions: p.opinions,
+    sampleWriting: p.sampleWriting,
+  };
 }
