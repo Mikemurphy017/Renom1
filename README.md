@@ -133,11 +133,15 @@ npm run buffer -- metrics --json               # raw GraphQL response
 
 A rejected key prints `Buffer rejected the key (HTTP 401)`; a wrong `BUFFER_API_URL` prints `Couldn't reach …`. To point the app or the CLI at a local stand-in, set `BUFFER_API_URL=http://localhost:4555`.
 
+## Sales page
+
+Signed-out visitors to `/` see the sales page (`src/components/marketing/landing.tsx`, served from `/landing` by the middleware); every button leads to `/signup`. It presents the studio as free during early access with a planned price of $200/month (`PLANNED_PRICE`). Signed-in advisors going to `/` land in their studio as before.
+
 ## Accounts (sign in / sign out)
 
 Everything is behind sign-in. Each advisor has an account (email + password) and their studio (profile, videos, reviews, work in progress) is saved to it, so it's the same on every device.
 
-- **Who can create an account:** the first account is open. After that, sign-ups need an invite: a single-use link made on the admin dashboard (optionally locked to one email and emailed for you), or the shared `INVITE_CODE` if you set one. With neither, sign-ups are closed.
+- **Who can create an account:** anyone, while **Anyone can sign up** is on in the admin dashboard (the default, so visitors from the sales page can join). Switch it off to make sign-ups invite only: a single-use link made on the admin dashboard (optionally locked to one email and emailed for you), or the shared `INVITE_CODE` if you set one.
 - **Sessions:** a random token in an `HttpOnly`, `SameSite=Lax` cookie (Secure over https), valid 30 days; only its hash is stored. Sign-out deletes it.
 - **Passwords:** scrypt with a per-user salt; at least 10 characters. Sign-in is throttled (8 tries per email and address per 15 minutes). Change it in Settings → Account.
 - **Storage:** accounts, sessions and each advisor's studio live in the storage bucket (`users/`, `sessions/`, `state/`) next to their videos.

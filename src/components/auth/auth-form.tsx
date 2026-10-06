@@ -99,7 +99,7 @@ export function AuthForm({ mode }: { mode: "signin" | "signup" }) {
   const closed = signup && policy && !policy.open && !linkInvite;
 
   return (
-    <AuthShell title={signup ? "Create your studio." : "Welcome back."} subtitle={signup ? `Your ${BRAND.name} studio, saved to your account and ready on any device.` : `Sign in to your ${BRAND.name} studio.`}>
+    <AuthShell title={signup ? "Create your studio." : "Welcome back."} subtitle={signup ? `Free during early access. Your ${BRAND.name} studio, saved to your account and ready on any device.` : `Sign in to your ${BRAND.name} studio.`}>
 
         {closed ? (
           <div className="mt-8 rounded-2xl border border-border bg-card p-5 text-[14px] text-muted-foreground">

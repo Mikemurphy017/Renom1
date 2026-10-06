@@ -8,9 +8,10 @@ import { getJSON, objects, putJSON } from "@/lib/storage/objects";
  * state/<user id>.json. Passwords are hashed with scrypt; the session cookie
  * holds a random token and only its hash is stored.
  *
- * Who can create an account: the first account is open. After that, new
- * accounts need an invite: a single-use link from the admin dashboard, or
- * INVITE_CODE when set. Without either, sign-ups are closed.
+ * Who can create an account: anyone, while public sign-ups are on (the
+ * default; the admin can switch them off). With them off, the first account
+ * is still open and after that new accounts need an invite: a single-use link
+ * from the admin dashboard, or INVITE_CODE when set.
  *
  * Admins (ADMIN_EMAILS, comma-separated) can see every account, send reset
  * links, disable accounts and create invites.
@@ -96,8 +97,24 @@ export async function ensureIndexed(user: User) {
   if (u) await indexUser(u);
 }
 
+// ── site settings (admin) ──
+export interface SiteSettings {
+  /** Anyone can create an account from the sign-up page. On unless switched off. */
+  openSignup: boolean;
+}
+const SETTINGS = "meta/settings.json";
+export async function getSettings(): Promise<SiteSettings> {
+  const s = await getJSON<Partial<SiteSettings>>(SETTINGS);
+  return { openSignup: s?.openSignup ?? true };
+}
+export async function updateSettings(patch: Partial<SiteSettings>) {
+  const next = { ...(await getSettings()), ...patch };
+  await putJSON(SETTINGS, next);
+  return next;
+}
+
 export async function signupPolicy(): Promise<{ open: boolean; needsCode: boolean }> {
-  if ((await userCount()) === 0) return { open: true, needsCode: false };
+  if ((await userCount()) === 0 || (await getSettings()).openSignup) return { open: true, needsCode: false };
   const invitesOut = (await readInvites()).some(inviteUsable);
   return process.env.INVITE_CODE?.trim() || invitesOut ? { open: true, needsCode: true } : { open: false, needsCode: false };
 }
@@ -119,6 +136,11 @@ export async function createUser(input: { email: string; password: string; name:
   const policy = await signupPolicy();
   if (!policy.open) throw new AuthError("New accounts are by invitation. Ask your administrator for an invite.", 403);
   let invite: Invite | null = null;
+  if (!policy.needsCode && input.invite?.trim()) {
+    // Joined from an invite link while sign-ups are open: still mark it used.
+    const i = (await readInvites()).find((x) => x.id === h40(input.invite!.trim()));
+    if (i && inviteUsable(i) && (!i.email || i.email === email)) invite = i;
+  }
   if (policy.needsCode) {
     const given = (input.invite ?? "").trim();
     const code = process.env.INVITE_CODE?.trim() ?? "";

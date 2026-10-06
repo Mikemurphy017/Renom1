@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, serviceStatus } from "@/lib/auth/admin";
-import { isAdmin, listUsers, loadState, readInvites } from "@/lib/auth/server";
+import { getSettings, isAdmin, listUsers, loadState, readInvites } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -27,5 +27,5 @@ export async function GET(request: Request) {
     }),
   );
   const invites = (await readInvites()).map((i) => ({ ...i, status: i.revokedAt ? "revoked" : i.usedAt ? "used" : Date.parse(i.expiresAt) < Date.now() ? "expired" : "open" }));
-  return NextResponse.json({ users: rows, invites, services: serviceStatus(), envInviteCode: !!process.env.INVITE_CODE?.trim() }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ users: rows, invites, services: serviceStatus(), settings: await getSettings(), envInviteCode: !!process.env.INVITE_CODE?.trim() }, { headers: { "Cache-Control": "no-store" } });
 }

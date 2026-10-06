@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PageContainer, PageHeader, SectionLabel } from "@/components/shared/page";
@@ -48,6 +49,7 @@ interface Data {
   users: Row[];
   invites: InviteRow[];
   services: Service[];
+  settings: { openSignup: boolean };
   envInviteCode: boolean;
 }
 
@@ -260,10 +262,30 @@ function Invites({ data, reload, onLink }: { data: Data; reload: () => Promise<v
     }
   };
 
+  const [open, setOpen] = React.useState(data.settings.openSignup);
+  React.useEffect(() => setOpen(data.settings.openSignup), [data.settings.openSignup]);
+  const toggleOpen = async (v: boolean) => {
+    setOpen(v);
+    try {
+      await call("/api/admin/settings", { method: "POST", body: JSON.stringify({ openSignup: v }) });
+      toast.success(v ? "Anyone can sign up" : "Sign-ups are by invite only");
+    } catch (err) {
+      setOpen(!v);
+      toast.error((err as Error).message);
+    }
+  };
+
   const shown = data.invites.slice(0, 12);
   return (
     <section>
-      <SectionLabel>Invites</SectionLabel>
+      <SectionLabel>Sign-ups & invites</SectionLabel>
+      <label className="mb-5 flex cursor-pointer items-start justify-between gap-4 rounded-2xl border border-border bg-card p-4">
+        <span>
+          <span className="block text-[14px] font-medium">Anyone can sign up</span>
+          <span className="block text-[12px] text-muted-foreground">{open ? "Visitors from the landing page can create an account. Turn off to make sign-ups invite only." : "Only people with an invite can create an account."}</span>
+        </span>
+        <Switch checked={open} onCheckedChange={(v) => void toggleOpen(v)} aria-label="Anyone can sign up" />
+      </label>
       <form onSubmit={create} className="flex flex-col gap-2 sm:flex-row">
         <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="advisor@firm.com (optional)" className="h-10 sm:max-w-xs" />
         <Button type="submit" className="h-10 rounded-full" disabled={busy}>

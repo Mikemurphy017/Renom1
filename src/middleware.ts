@@ -2,10 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isAdmin, SESSION_COOKIE, userForToken } from "@/lib/auth/server";
 
 /**
- * Everything is behind sign-in except the sign-in, password reset pages and the auth API.
+ * Everything is behind sign-in except the sales page, the sign-in and password
+ * reset pages, and the auth API. Signed-out visitors to "/" see the sales page.
  * Runs on the Node.js runtime so it can check the session against the store.
  */
-const PUBLIC = [/^\/signin$/, /^\/signup$/, /^\/forgot$/, /^\/reset$/, /^\/api\/auth\//];
+const PUBLIC = [/^\/signin$/, /^\/signup$/, /^\/forgot$/, /^\/reset$/, /^\/landing$/, /^\/api\/auth\//];
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
@@ -20,9 +21,12 @@ export async function middleware(req: NextRequest) {
   if (user && /^\/admin(\/|$)/.test(pathname) && !isAdmin(user)) return NextResponse.rewrite(new URL("/_admin-not-found", req.url));
   if (user) return NextResponse.next();
 
+  // Signed-out visitors to the home page get the sales page.
+  if (pathname === "/") return NextResponse.rewrite(new URL("/landing", req.url));
+
   if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   const to = new URL("/signin", req.url);
-  if (pathname !== "/") to.searchParams.set("next", pathname + search);
+  to.searchParams.set("next", pathname + search);
   return NextResponse.redirect(to);
 }
 
