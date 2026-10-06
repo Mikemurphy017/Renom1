@@ -52,7 +52,7 @@ export default function AnalyzePage() {
           <h1 className="font-serif text-[40px] leading-tight tracking-tight">Analyze</h1>
           {best && (
             <p className="mt-2 max-w-xl text-[15px] text-muted-foreground">
-              {getPlatform(best.platform).label} turns viewers into conversations best: one inquiry for every {fmtNumber(Math.round(best.views / Math.max(1, best.inquiries)))} views.
+              {getPlatform(best.platform).label} turns viewers into conversations best: one inquiry for every {fmtNumber(Math.round(best.views / Math.max(1, best.inquiries)))} views. <span className="text-[12px] opacity-70">(Sample data)</span>
             </p>
           )}
         </div>
