@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { StoreProvider } from "@/lib/store";
@@ -14,6 +14,18 @@ export const metadata: Metadata = {
   title: `${BRAND.name} — ${BRAND.tagline}`,
   description: BRAND.description,
   applicationName: BRAND.name,
+  appleWebApp: { capable: true, title: BRAND.name, statusBarStyle: "default" },
+};
+
+/** Phones: fill the screen edge to edge (safe areas handled in CSS) and theme the browser bar. */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#F7F5F0" },
+    { media: "(prefers-color-scheme: dark)", color: "#0B1F3A" },
+  ],
 };
 
 const BRAND_CSS = brandCss();

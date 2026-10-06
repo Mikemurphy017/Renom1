@@ -83,7 +83,7 @@ export function Reviewer({ review }: { review: ReviewItem }) {
                     <span className="pt-0.5 text-right text-[11px] text-muted-foreground tnum">{n + 1}</span>
                     <span className="pt-0.5 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">{l.section}</span>
                     <p className="text-[14px] leading-relaxed">{l.text}</p>
-                    <button onClick={() => setAnchor(key)} className={cn("cursor-pointer pt-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100", anchor === key && "text-primary opacity-100")} aria-label="Comment on this line">
+                    <button onClick={() => setAnchor(key)} className={cn("cursor-pointer pt-1 text-muted-foreground touch-show opacity-0 transition-opacity group-hover:opacity-100", anchor === key && "text-primary opacity-100")} aria-label="Comment on this line">
                       <Pin className="size-3.5" />
                     </button>
                   </div>

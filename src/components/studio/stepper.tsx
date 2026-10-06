@@ -11,7 +11,7 @@ export function Stepper({ videoId, current, reached, published }: { videoId: str
   const ci = stageIndex(current);
   const ri = stageIndex(reached);
   return (
-    <ol className="flex items-center justify-center gap-1 sm:gap-2">
+    <ol className="flex w-max min-w-full items-center justify-between gap-1 sm:gap-2 md:w-auto md:justify-center">
       {STAGES.map((s, i) => {
         const done = i < ri || (published && i <= ri);
         const isCurrent = i === ci;
@@ -19,7 +19,7 @@ export function Stepper({ videoId, current, reached, published }: { videoId: str
         const pill = (
           <span
             className={cn(
-              "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] transition-colors",
+              "flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[13px] whitespace-nowrap transition-colors md:px-3",
               isCurrent ? "bg-navy text-navy-foreground dark:bg-primary dark:text-primary-foreground" : done ? "text-foreground hover:bg-card" : "text-muted-foreground"
             )}
           >
@@ -34,7 +34,7 @@ export function Stepper({ videoId, current, reached, published }: { videoId: str
             ) : (
               <span className="cursor-default opacity-60">{pill}</span>
             )}
-            {i < STAGES.length - 1 && <span className={cn("h-px w-3 sm:w-6", i < ri ? "bg-primary/60" : "bg-border")} />}
+            {i < STAGES.length - 1 && <span className={cn("h-px w-2 sm:w-6", i < ri ? "bg-primary/60" : "bg-border")} />}
           </li>
         );
       })}

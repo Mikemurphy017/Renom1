@@ -14,7 +14,7 @@ import { NAV } from "./nav";
 import { useShell } from "./shell-context";
 import { BRAND } from "@/lib/brand";
 
-export function Navbar() {
+export function Navbar({ className }: { className?: string }) {
   const pathname = usePathname();
   const { reviews, profile, requireApproval } = useStore();
   const { openNewVideo, openPalette } = useShell();
@@ -23,10 +23,11 @@ export function Navbar() {
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href) || (href === "/videos" && pathname.startsWith("/studio")));
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-[1200px] items-center gap-6 px-4 sm:px-6">
+    <header className={cn("sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-xl", className)}>
+      <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-6 px-4 pt-[env(safe-area-inset-top)] sm:px-6 md:h-16">
         <Link href="/" aria-label={`${BRAND.name} home`}><Logo /></Link>
-        <nav className="flex flex-1 items-center justify-center gap-1">
+        {/* Phones use the tab bar at the bottom instead. */}
+        <nav className="hidden flex-1 items-center justify-center gap-1 md:flex">
           {NAV.map((n) => {
             const active = isActive(n.href);
             return (
@@ -36,8 +37,7 @@ export function Navbar() {
                 className={cn("relative flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[14px] transition-colors", active ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
               >
                 {active && <motion.span layoutId="nav-pill" className="absolute inset-0 rounded-full bg-card shadow-soft ring-1 ring-border" transition={{ type: "spring", bounce: 0.15, duration: 0.4 }} />}
-                <n.icon className="relative size-4 sm:hidden" />
-                <span className="relative hidden sm:inline">{n.href === "/approve" && !requireApproval ? "Archive" : n.label}</span>
+                <span className="relative">{n.href === "/approve" && !requireApproval ? "Archive" : n.label}</span>
                 {n.href === "/approve" && waiting > 0 && (
                   <span className="relative ml-0.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground tnum">{waiting}</span>
                 )}
@@ -45,9 +45,9 @@ export function Navbar() {
             );
           })}
         </nav>
-        <div className="flex items-center gap-2">
-          <Button size="sm" className="rounded-full px-4" onClick={openNewVideo}>
-            <Plus /> <span className="hidden sm:inline">New video</span>
+        <div className="ml-auto flex items-center gap-2 md:ml-0">
+          <Button size="sm" className="hidden rounded-full px-4 md:inline-flex" onClick={openNewVideo}>
+            <Plus /> New video
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger className="flex size-9 cursor-pointer items-center justify-center rounded-full bg-gradient-to-br from-[#D2B07A] to-[#9C7A47] font-serif text-[13px] text-[#0B1F3A] outline-none focus-visible:ring-2 focus-visible:ring-ring/50" aria-label="Account">

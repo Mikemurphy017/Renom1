@@ -137,7 +137,7 @@ export default function SettingsPage() {
                   <li key={i} className="group flex items-start gap-3 rounded-lg border border-border bg-card px-3 py-2.5 text-[14px]">
                     <span className="font-serif text-primary tnum">{String(i + 1).padStart(2, "0")}</span>
                     <span className="flex-1">{o}</span>
-                    <button type="button" className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100" onClick={() => updateProfile({ opinions: p.opinions.filter((_, j) => j !== i) })} aria-label="Remove"><X className="size-3.5" /></button>
+                    <button type="button" className="cursor-pointer touch-show text-muted-foreground opacity-0 group-hover:opacity-100" onClick={() => updateProfile({ opinions: p.opinions.filter((_, j) => j !== i) })} aria-label="Remove"><X className="size-3.5" /></button>
                   </li>
                 ))}
               </ul>

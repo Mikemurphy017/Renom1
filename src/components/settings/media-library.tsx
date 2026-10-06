@@ -106,7 +106,7 @@ function UploadTile({ busy, onClick }: { busy: boolean; onClick: () => void }) {
 
 function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button type="button" aria-label={`Remove ${label}`} onClick={onClick} className="absolute top-1.5 right-1.5 flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/55 text-white opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100">
+    <button type="button" aria-label={`Remove ${label}`} onClick={onClick} className="absolute top-1.5 right-1.5 flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/55 text-white touch-show opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100">
       <X className="size-3" />
     </button>
   );

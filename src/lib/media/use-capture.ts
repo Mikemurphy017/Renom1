@@ -99,11 +99,15 @@ export function useCapture() {
       }
       setStarting(true);
       try {
+        // A phone held upright records portrait: ask for a tall frame so a 9:16
+        // video uses the whole sensor instead of a narrow slice of a wide one.
+        const portrait = typeof window !== "undefined" && window.matchMedia?.("(orientation: portrait) and (pointer: coarse)").matches;
         const s = await navigator.mediaDevices.getUserMedia({
           video: {
             deviceId: opts.cameraId ? { exact: opts.cameraId } : undefined,
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            facingMode: opts.cameraId ? undefined : { ideal: "user" },
+            width: { ideal: portrait ? 1080 : 1920 },
+            height: { ideal: portrait ? 1920 : 1080 },
             frameRate: { ideal: 30 },
           },
           audio: {

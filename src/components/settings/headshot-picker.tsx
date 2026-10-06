@@ -48,7 +48,7 @@ export function HeadshotPicker({ compact }: { compact?: boolean }) {
             <button
               type="button"
               onClick={() => updateProfile({ headshots: [h, ...photos.filter((x) => x.id !== h.id)] })}
-              className="absolute inset-x-1.5 bottom-1.5 cursor-pointer rounded-md bg-black/55 py-0.5 text-[10px] font-medium text-white opacity-0 backdrop-blur-sm transition group-hover:opacity-100 focus-visible:opacity-100"
+              className="absolute inset-x-1.5 bottom-1.5 cursor-pointer rounded-md bg-black/55 py-0.5 text-[10px] font-medium text-white touch-show opacity-0 backdrop-blur-sm transition group-hover:opacity-100 focus-visible:opacity-100"
             >
               Make primary
             </button>
@@ -57,7 +57,7 @@ export function HeadshotPicker({ compact }: { compact?: boolean }) {
             type="button"
             aria-label={`Remove ${h.label}`}
             onClick={() => updateProfile({ headshots: photos.filter((x) => x.id !== h.id) })}
-            className="absolute top-1.5 right-1.5 flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/55 text-white opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100"
+            className="absolute top-1.5 right-1.5 flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/55 text-white touch-show opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100"
           >
             <X className="size-3" />
           </button>

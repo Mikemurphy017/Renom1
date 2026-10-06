@@ -105,6 +105,8 @@ export function RecordStep({ video, complete }: StepProps) {
   };
 
   const beginRecording = () => {
+    // Phones: bring the whole camera frame into view for the take.
+    if (window.matchMedia?.("(max-width: 767px)").matches) window.scrollTo({ top: 0, behavior: "smooth" });
     try {
       capture.startRecording(aspect);
     } catch (e) {
@@ -239,15 +241,16 @@ export function RecordStep({ video, complete }: StepProps) {
 
   return (
     <div className="space-y-6 pb-10">
-      <div className="mx-auto max-w-[1000px] text-center">
+      <div className="mx-auto hidden max-w-[1000px] text-center sm:block">
         <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">Read it like you mean it.</h1>
         <p className="mt-2 text-[15px] text-muted-foreground">Look at the brass line, just under your lens. Pause between sections; the edit trims the gaps.</p>
       </div>
       <div className="mx-auto min-w-0 max-w-[1000px] space-y-6">
         {/* Stage */}
-        <div data-prompter-scope className="overflow-hidden rounded-2xl border border-border bg-[#06101F] shadow-soft">
-          <div className={cn("relative flex h-[min(62vh,600px)] items-center px-6 py-6", position === "left" ? "justify-start" : position === "right" ? "justify-end" : "justify-center")}>
-            <div className={cn("relative h-full overflow-hidden rounded-md bg-gradient-to-b from-[#2A3B55] to-[#1A2840] shadow-2xl", vertical ? "aspect-[9/16]" : "aspect-video max-w-full")}>
+        {/* Phones: edge to edge, as tall as the screen allows. */}
+        <div data-prompter-scope className="-mx-4 -mt-2 overflow-hidden border-y border-border bg-[#06101F] shadow-soft sm:mx-0 sm:mt-0 sm:rounded-2xl sm:border">
+          <div className={cn("relative flex h-[calc(100dvh-15.5rem)] min-h-[380px] items-center px-0 py-0 sm:h-[min(62vh,600px)] sm:px-6 sm:py-6", position === "left" ? "justify-start" : position === "right" ? "justify-end" : "justify-center")}>
+            <div className={cn("relative overflow-hidden bg-gradient-to-b from-[#2A3B55] to-[#1A2840] shadow-2xl sm:h-full sm:rounded-md", vertical ? "aspect-[9/16] h-full max-w-full" : "aspect-video w-full sm:w-auto sm:max-w-full")}>
               {stream ? (
                 <video ref={videoRef} autoPlay muted playsInline className="absolute inset-0 h-full w-full object-cover" style={{ transform: mirror ? "scaleX(-1)" : undefined }} />
               ) : (

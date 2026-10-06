@@ -229,9 +229,9 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
   const pxPerSec = 14 * zoom;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20 md:pb-0">
       <div className="text-center">
-        <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">Cut the pauses. Keep you.</h1>
+        <h1 className="font-serif text-[30px] leading-tight tracking-tight sm:text-[40px]">Cut the pauses. Keep you.</h1>
         <p className="mt-2 text-[15px] text-muted-foreground">{BRAND.name} found the pauses in your audio. Click any phrase to cut or restore it, pick your look, then finish.</p>
       </div>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
@@ -416,6 +416,16 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
         <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-4">
           <Button variant="outline" disabled={!result} onClick={() => { if (result) setSegments(segmentsFromResult(result)); toast("Auto-cuts re-applied"); }}><Wand2 /> Re-run auto-cut</Button>
           <Button onClick={doExport} disabled={!!busy || rendering || !sourceId}>Finish edit <ArrowRight /></Button>
+        </div>
+      </div>
+
+      {/* Phones: finishing is always one tap away. */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-background/90 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur-xl md:hidden">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1 text-[12px] text-muted-foreground">
+            <span className="tnum">{segments.filter((x) => x.removed).length}</span> cuts · final <span className="font-medium text-foreground tnum">{fmtDuration(kept)}</span>
+          </div>
+          <Button className="rounded-full px-5" onClick={doExport} disabled={!!busy || rendering || !sourceId}>Finish edit <ArrowRight /></Button>
         </div>
       </div>
 
