@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Check, ChevronsDown, ChevronsUp, Clapperboard, ListVideo, Pause, Play, RotateCcw, Sparkles, UserRound, Video as VideoIcon } from "lucide-react";
+import { Camera, CameraOff, Check, ChevronsDown, ChevronsUp, Clapperboard, Download, ListVideo, Pause, Play, RotateCcw, Sparkles, UserRound, Video as VideoIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -17,6 +17,8 @@ import { useStore } from "@/lib/store";
 import { generateScript } from "@/lib/ai/content";
 import type { Script, Video } from "@/lib/types";
 import { cn, fmtDuration } from "@/lib/utils";
+import { useCapture } from "@/lib/media/use-capture";
+import { getTake, saveTake, takeExtension } from "@/lib/media/takes";
 import { StepSection, FieldLabel } from "../step-layout";
 import type { StepProps } from "../studio-view";
 
@@ -25,21 +27,15 @@ const scriptText = (v: Video) => {
   return [s.hook, ...s.body, s.cta];
 };
 
-function MicMeter({ active }: { active: boolean }) {
-  const [lvl, setLvl] = React.useState(0.2);
-  React.useEffect(() => {
-    const t = setInterval(() => setLvl(active ? 0.35 + Math.random() * 0.6 : 0.08 + Math.random() * 0.15), 120);
-    return () => clearInterval(t);
-  }, [active]);
+function MicMeter({ level, live }: { level: number; live: boolean }) {
   return (
     <div className="flex h-2 gap-[2px]" aria-label="Microphone level">
       {Array.from({ length: 20 }).map((_, i) => (
-        <span key={i} className={cn("flex-1 rounded-[1px] transition-colors", i / 20 < lvl ? (i > 16 ? "bg-destructive" : i > 12 ? "bg-primary" : "bg-success") : "bg-muted")} />
+        <span key={i} className={cn("flex-1 rounded-[1px] transition-colors duration-75", live && i / 20 < level ? (i > 16 ? "bg-destructive" : i > 12 ? "bg-primary" : "bg-success") : "bg-muted")} />
       ))}
     </div>
   );
 }
-
 export function RecordStep({ video, complete }: StepProps) {
   const router = useRouter();
   const { videos, updateVideo } = useStore();
@@ -61,10 +57,13 @@ export function RecordStep({ video, complete }: StepProps) {
   const [aspect, setAspect] = React.useState<"9:16" | "16:9">(active.format === "short" ? "9:16" : "16:9");
   const [position, setPosition] = React.useState("center");
   const [mirror, setMirror] = React.useState(true);
-  const [cam, setCam] = React.useState("FaceTime HD Camera");
-  const [mic, setMic] = React.useState("Shure MV7+");
-  const [stream, setStream] = React.useState<MediaStream | null>(null);
+  const capture = useCapture();
+  const { stream } = capture;
+  const [cam, setCam] = React.useState<string>("");
+  const [mic, setMic] = React.useState<string>("");
   const videoRef = React.useRef<HTMLVideoElement>(null);
+  const [countdown, setCountdown] = React.useState<number | null>(null);
+  const [lastTake, setLastTake] = React.useState(() => getTake(video.id));
 
   // runtime
   const [playing, setPlaying] = React.useState(false);
@@ -95,33 +94,68 @@ export function RecordStep({ video, complete }: StepProps) {
     return () => clearInterval(t);
   }, [recording]);
 
+  // Attach the live stream whenever the <video> element or stream changes.
   React.useEffect(() => {
     if (videoRef.current && stream) videoRef.current.srcObject = stream;
-    return () => stream?.getTracks().forEach((t) => t.stop());
   }, [stream]);
 
-  const enableCamera = async () => {
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      setStream(s);
-      toast.success("Camera connected");
-    } catch {
-      toast("Camera unavailable", { description: "Using the preview stand-in instead." });
-    }
+  // Keep the dropdowns in sync with the devices the browser actually picked.
+  React.useEffect(() => {
+    if (!stream) return;
+    const v = stream.getVideoTracks()[0]?.getSettings().deviceId;
+    const a = stream.getAudioTracks()[0]?.getSettings().deviceId;
+    if (v) setCam(v);
+    if (a) setMic(a);
+  }, [stream]);
+
+  const enableCamera = async (opts?: { cameraId?: string; micId?: string }) => {
+    const ok = await capture.start(opts ?? { cameraId: cam || undefined, micId: mic || undefined });
+    if (ok && !opts) toast.success("Camera and microphone connected");
   };
 
-  const toggleRecord = () => {
+  const beginRecording = () => {
+    try {
+      capture.startRecording(aspect);
+    } catch (e) {
+      toast.error("Couldn't start recording", { description: (e as Error).message });
+      return;
+    }
+    setElapsed(0);
+    setOffset(0);
+    setRecording(true);
+    setPlaying(true);
+  };
+
+  const toggleRecord = async () => {
     if (recording) {
       setRecording(false);
       setPlaying(false);
-      setTakes((t) => t + 1);
-      setDoneOpen(true);
-    } else {
-      setElapsed(0);
-      setOffset(0);
-      setRecording(true);
-      setPlaying(true);
+      try {
+        const r = await capture.stopRecording();
+        saveTake(active.id, { ...r, recordedAt: new Date().toISOString() });
+        setLastTake(getTake(active.id));
+        setTakes((t) => t + 1);
+        setDoneOpen(true);
+      } catch (e) {
+        toast.error("Recording failed", { description: (e as Error).message });
+      }
+      return;
     }
+    if (countdown !== null) return;
+    if (!stream) {
+      toast("Turn on your camera first", { description: "Click “Enable camera” and allow access when your browser asks." });
+      return;
+    }
+    if (!capture.supported) {
+      toast.error("This browser can't record video", { description: "Use a current version of Chrome, Edge, Safari or Firefox." });
+      return;
+    }
+    for (let n = 3; n > 0; n--) {
+      setCountdown(n);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    setCountdown(null);
+    beginRecording();
   };
 
   const queuedVideos = queueCandidates.filter((v) => queued.includes(v.id));
@@ -165,9 +199,25 @@ export function RecordStep({ video, complete }: StepProps) {
               <div className="absolute right-3 bottom-3 z-20 rounded bg-black/45 px-1.5 py-0.5 text-[10px] text-white/80 tnum">{aspect}</div>
             </div>
             {!stream && (
-              <Button variant="outline" size="sm" className="absolute top-4 right-4 border-white/15 bg-white/5 text-white hover:bg-white/10" onClick={enableCamera}>
-                <Camera /> Enable camera
-              </Button>
+              <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#06101F]/70 p-6 backdrop-blur-[2px]">
+                <div className="max-w-sm text-center text-white">
+                  <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full border border-white/15 bg-white/5">
+                    {capture.error ? <CameraOff className="size-5 text-[#E8CFA4]" /> : <Camera className="size-5 text-[#E8CFA4]" />}
+                  </div>
+                  <p className="font-serif text-xl">{capture.error ? "Camera unavailable" : "Ready when you are"}</p>
+                  <p className="mt-1.5 text-[13px] text-white/70">
+                    {capture.error ?? "Turn on your camera and microphone. Nothing is uploaded until you choose to send a take for editing."}
+                  </p>
+                  <Button className="mt-5" onClick={() => enableCamera()} disabled={capture.starting}>
+                    <Camera /> {capture.starting ? "Waiting for permission…" : capture.error ? "Try again" : "Enable camera"}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {countdown !== null && (
+              <div className="absolute inset-0 z-30 flex items-center justify-center">
+                <span key={countdown} className="font-serif text-[120px] leading-none text-white drop-shadow-lg animate-in zoom-in-50 fade-in-0">{countdown}</span>
+              </div>
             )}
           </div>
           {/* Control bar */}
@@ -287,22 +337,22 @@ export function RecordStep({ video, complete }: StepProps) {
               </div>
               <div>
                 <FieldLabel>Camera</FieldLabel>
-                <Select value={cam} onValueChange={setCam}>
-                  <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
+                <Select value={cam} onValueChange={(v) => { setCam(v); if (stream) enableCamera({ cameraId: v, micId: mic || undefined }); }} disabled={recording || !capture.cameras.length}>
+                  <SelectTrigger size="sm"><SelectValue placeholder="Enable camera to choose" /></SelectTrigger>
                   <SelectContent>
-                    {["FaceTime HD Camera", "Sony ZV-E10 (USB)", "Elgato Facecam Pro"].map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {capture.cameras.map((c) => <SelectItem key={c.deviceId} value={c.deviceId}>{c.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div>
                 <FieldLabel>Microphone</FieldLabel>
-                <Select value={mic} onValueChange={setMic}>
-                  <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
+                <Select value={mic} onValueChange={(v) => { setMic(v); if (stream) enableCamera({ cameraId: cam || undefined, micId: v }); }} disabled={recording || !capture.mics.length}>
+                  <SelectTrigger size="sm"><SelectValue placeholder="Enable camera to choose" /></SelectTrigger>
                   <SelectContent>
-                    {["Shure MV7+", "MacBook Pro Microphone", "Rode Wireless GO II"].map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {capture.mics.map((c) => <SelectItem key={c.deviceId} value={c.deviceId}>{c.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <div className="mt-2.5"><MicMeter active={recording} /></div>
+                <div className="mt-2.5"><MicMeter level={capture.level} live={!!stream} /></div>
               </div>
             </TabsContent>
           </Tabs>
@@ -320,10 +370,30 @@ export function RecordStep({ video, complete }: StepProps) {
       <Dialog open={doneOpen} onOpenChange={setDoneOpen}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <div className="eyebrow">Take {takes} saved · <span className="tnum">{fmtDuration(Math.max(elapsed, 1))}</span></div>
+            <div className="eyebrow">Take {takes} saved · <span className="tnum">{fmtDuration(Math.max(lastTake?.durationSec ?? elapsed, 1))}</span></div>
             <DialogTitle>Nice work. Who should edit this one?</DialogTitle>
-            <DialogDescription>You can always re-record — every take is kept in the Library.</DialogDescription>
+            <DialogDescription>Watch it back, download it, or send it on for editing.</DialogDescription>
           </DialogHeader>
+          {lastTake && (
+            <div className="flex items-start gap-4 rounded-lg border border-border bg-muted/40 p-3">
+              <video src={lastTake.url} controls playsInline className={cn("rounded-md bg-black", lastTake.height > lastTake.width ? "h-48" : "w-56")} />
+              <div className="min-w-0 flex-1 space-y-1 text-[12px] text-muted-foreground">
+                <div className="text-[13px] font-medium text-foreground">Take {takes}</div>
+                <div className="tnum">{lastTake.width}×{lastTake.height} · {fmtDuration(lastTake.durationSec)} · {(lastTake.blob.size / 1_000_000).toFixed(1)} MB</div>
+                <div>{lastTake.mimeType}</div>
+                <div className="flex gap-2 pt-2">
+                  <Button size="xs" variant="outline" asChild>
+                    <a href={lastTake.url} download={`${active.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-take-${takes}.${takeExtension(lastTake.mimeType)}`}>
+                      <Download /> Download
+                    </a>
+                  </Button>
+                  <Button size="xs" variant="ghost" onClick={() => { setDoneOpen(false); setOffset(0); }}>
+                    <RotateCcw /> Re-record
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="grid gap-3 sm:grid-cols-2">
             <button
               onClick={() => {

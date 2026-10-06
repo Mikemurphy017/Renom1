@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Headshot } from "@/components/shared/headshot";
 import { useDraft } from "@/lib/drafts";
+import { getTake, subscribeTakes } from "@/lib/media/takes";
 import { generateScript } from "@/lib/ai/content";
 import { ADVISOR } from "@/lib/mock/advisor";
 import type { Video } from "@/lib/types";
@@ -52,6 +53,8 @@ const KIND_LABEL: Record<Segment["kind"], string> = { speech: "", silence: "Dead
 export function EditStep({ video, complete }: StepProps) {
   const [segments, setSegments] = useDraft<Segment[]>(video.id, "edit.segments", () => buildSegments(video));
   const [t, setT] = React.useState(0);
+  const take = React.useSyncExternalStore(subscribeTakes, () => getTake(video.id), () => undefined);
+  const takeRef = React.useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = React.useState(false);
   const [zoom, setZoom] = React.useState(1.5);
   const [showCuts, setShowCuts] = React.useState(true);
@@ -80,6 +83,13 @@ export function EditStep({ video, complete }: StepProps) {
     const tick = (now: number) => {
       const dt = (now - last) / 1000;
       last = now;
+      const el = takeRef.current;
+      if (el) {
+        // Real take drives the playhead.
+        setT(Math.min(total - 0.01, el.currentTime));
+        raf = requestAnimationFrame(tick);
+        return;
+      }
       setT((prev) => {
         let next = prev + dt;
         if (skipCuts) {
@@ -139,7 +149,19 @@ export function EditStep({ video, complete }: StepProps) {
           <div className="flex justify-center rounded-md bg-[#06101F] p-4">
             <div className={cn("relative overflow-hidden rounded-md bg-gradient-to-b from-[#2A3B55] to-[#1A2840]", vertical ? "aspect-[9/16] h-[520px] max-h-[60vh]" : "aspect-video w-full")}>
               <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_30%,#3A4E6E_0%,transparent_70%)]" />
-              <Headshot pose={current?.kind === "speech" && Math.floor(t / 4) % 3 === 1 ? "point" : "center"} className={cn("absolute bottom-0 left-1/2 -translate-x-1/2", vertical ? "h-[62%]" : "h-[85%]")} />
+              {take ? (
+                <video
+                  ref={takeRef}
+                  src={take.url}
+                  playsInline
+                  className="absolute inset-0 h-full w-full object-cover"
+                  onPlay={() => setPlaying(true)}
+                  onPause={() => setPlaying(false)}
+                  onEnded={() => setPlaying(false)}
+                />
+              ) : (
+                <Headshot pose={current?.kind === "speech" && Math.floor(t / 4) % 3 === 1 ? "point" : "center"} className={cn("absolute bottom-0 left-1/2 -translate-x-1/2", vertical ? "h-[62%]" : "h-[85%]")} />
+              )}
               {caption && (
                 <div className={cn("absolute inset-x-[8%] text-center", vertical ? "top-[56%]" : "bottom-[12%]")}>
                   <span className="rounded-md bg-black/35 px-2 py-1 text-[17px] leading-snug font-extrabold tracking-tight text-white uppercase [text-shadow:0_2px_8px_rgba(0,0,0,.5)]">
@@ -172,7 +194,18 @@ export function EditStep({ video, complete }: StepProps) {
             </div>
           </div>
           <div className="mt-3 flex items-center gap-3">
-            <Button size="icon-sm" variant="outline" onClick={() => setPlaying((p) => !p)} aria-label={playing ? "Pause" : "Play"}>
+            <Button
+              size="icon-sm"
+              variant="outline"
+              onClick={() => {
+                const el = takeRef.current;
+                if (el) {
+                  if (el.paused) void el.play();
+                  else el.pause();
+                } else setPlaying((p) => !p);
+              }}
+              aria-label={playing ? "Pause" : "Play"}
+            >
               {playing ? <Pause /> : <Play />}
             </Button>
             <span className="text-[12px] text-muted-foreground tnum">{fmtDuration(t)} / {fmtDuration(total)}</span>
@@ -198,6 +231,11 @@ export function EditStep({ video, complete }: StepProps) {
               </div>
             </div>
             <TabsContent value="captions" className="scrollbar-thin mt-2 max-h-[560px] overflow-y-auto rounded-md border border-border bg-background/50 p-4">
+              {take && (
+                <p className="mb-3 rounded-md border border-primary/30 bg-brass-soft/60 px-3 py-2 text-[12px]">
+                  The preview is your real take ({fmtDuration(take.durationSec)}). The transcript and cuts below are still sample data. Once Captions is connected, it will transcribe this take and suggest the cuts.
+                </p>
+              )}
               <p className="mb-3 text-[12px] text-muted-foreground">
                 Click any phrase to cut or restore it. <span className="text-destructive line-through decoration-destructive/70">Red strikethrough</span> is removed from the final video.
               </p>
@@ -260,7 +298,9 @@ export function EditStep({ video, complete }: StepProps) {
             style={{ width: Math.max(total * pxPerSec, 600) }}
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
-              setT(Math.max(0, Math.min(total - 0.01, (e.clientX - r.left) / pxPerSec)));
+              const next = Math.max(0, Math.min(total - 0.01, (e.clientX - r.left) / pxPerSec));
+              setT(next);
+              if (takeRef.current) takeRef.current.currentTime = Math.min(next, takeRef.current.duration || next);
             }}
           >
             {/* ruler */}
