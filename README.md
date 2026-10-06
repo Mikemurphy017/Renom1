@@ -16,6 +16,15 @@ npm run build   # production build
 
 Next.js (App Router) · TypeScript · Tailwind v4 · shadcn/ui-style components on Radix · Lucide · Recharts · Framer Motion · cmdk · sonner · next-themes
 
+## Operator setup (once, for every studio)
+
+Claude and Buffer are platform services: you set the keys once on the server that hosts the app, and every advisor's studio uses them automatically. Advisors never see or enter a key.
+
+- Local: put them in `.env.local` (copy `.env.example`) and restart.
+- Hosted (Vercel, Railway, etc.): add the same names as environment variables in the hosting dashboard and redeploy.
+
+If a key is missing, advisors see "being switched on" instead of an error, and the server log says which variable to set.
+
 ## First run
 
 The app starts empty. The first visit opens a short setup at `/welcome` (name, practice, who you help, your voice, your opinions, your disclosure and reviewer, and a check of the Claude and Buffer connections). Your answers become the profile Claude writes from; change them any time in Settings.

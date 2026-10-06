@@ -238,15 +238,14 @@ export default function WelcomePage() {
 
             {step === "connect" && (
               <>
-                <h1 className="font-serif text-[40px] leading-tight tracking-tight">Two connections.</h1>
-                <p className="-mt-4 text-[15px] text-muted-foreground">Claude writes. Buffer publishes. Keys live in <code className="font-mono text-[13px]">.env.local</code> on the computer running {BRAND.name}, never in the browser.</p>
-                <Status state={claude} ok="Claude is connected. It will write in your voice." off="Claude isn’t connected">
-                  Add <code className="font-mono">ANTHROPIC_API_KEY=…</code> to <code className="font-mono">.env.local</code> and restart. Until then, writing is turned off.
+                <h1 className="font-serif text-[40px] leading-tight tracking-tight">Already connected.</h1>
+                <p className="-mt-4 text-[15px] text-muted-foreground">Your studio comes with Claude for writing and Buffer for publishing. Nothing to install, no keys to manage.</p>
+                <Status state={claude} ok="Claude writes your ideas, scripts and captions." off="Writing is being switched on">
+                  Your {BRAND.name} administrator turns writing on once for every studio. You can finish setup now; it starts working as soon as it&rsquo;s on.
                 </Status>
-                <Status state={buffer.loading ? null : buffer.connected} ok={`Buffer is connected${buffer.status && "organization" in buffer.status ? `: ${buffer.status.organization.name}` : ""}.`} off="Buffer isn’t connected">
-                  Add a personal key from publish.buffer.com/settings/api as <code className="font-mono">BUFFER_API_KEY=…</code> and restart. Until then you can still post by hand.
+                <Status state={buffer.loading ? null : buffer.connected} ok={`Buffer publishes for you${buffer.status && "organization" in buffer.status ? `: ${buffer.status.organization.name}` : ""}.`} off="Publishing is being switched on">
+                  Your administrator connects Buffer for every studio. Until then you can post by hand and keep the record here.
                 </Status>
-                <p className="text-[13px] text-muted-foreground">You can finish setup either way and connect later in Settings.</p>
               </>
             )}
 

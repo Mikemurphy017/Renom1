@@ -103,10 +103,10 @@ export default function SettingsPage() {
             <div className={cn("flex items-start gap-3 rounded-xl border px-4 py-3 text-[13px]", claude ? "border-success/25 bg-success-soft" : "border-border bg-card")}>
               {claude ? <Sparkles className="mt-0.5 size-4 text-success" /> : <CircleAlert className="mt-0.5 size-4 text-muted-foreground" />}
               <div>
-                <div className="font-medium">{claude === null ? "Checking the writer…" : claude ? "Claude is writing your content" : "Sample mode: Claude isn't connected yet"}</div>
+                <div className="font-medium">{claude === null ? "Checking the writer…" : claude ? "Claude writes your content" : "Writing is being switched on"}</div>
                 <div className="mt-0.5 text-muted-foreground">
                   House style: Eugene Schwartz&rsquo;s market awareness, Joseph Sugarman&rsquo;s slippery slide, Oren Klaff&rsquo;s frame control and David Ogilvy&rsquo;s specifics, kept inside FINRA 2210 and SEC Marketing Rule guardrails.
-                  {claude === false && <> Add <code className="font-mono text-[12px]">ANTHROPIC_API_KEY</code> to <code className="font-mono text-[12px]">.env.local</code> to turn it on.</>}
+                  {claude === false && <> Included with every studio; your administrator turns it on once for everyone.</>}
                 </div>
               </div>
             </div>

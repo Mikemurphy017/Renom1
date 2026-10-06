@@ -29,7 +29,8 @@ export async function POST(request: Request) {
   }
   if (typeof parsed === "string") return Response.json({ error: parsed }, { status: 400 });
   if (!claudeConfigured()) {
-    return Response.json({ error: "Claude isn’t connected. Add ANTHROPIC_API_KEY to .env.local and restart the app." }, { status: 503 });
+    console.warn("[write] ANTHROPIC_API_KEY is not set on the server; writing is off for every studio.");
+    return Response.json({ error: "Writing isn’t switched on for this studio yet. Your administrator turns it on once for everyone." }, { status: 503 });
   }
   const req = parsed;
 
@@ -50,7 +51,10 @@ export async function POST(request: Request) {
         send({ type: "result", data, source: "claude" });
       } catch (e) {
         let message = (e as Error).message || "Something went wrong";
-        if (e instanceof Anthropic.AuthenticationError) message = "The Claude API key was rejected. Check ANTHROPIC_API_KEY.";
+        if (e instanceof Anthropic.AuthenticationError) {
+          console.error("[write] Claude rejected the server's ANTHROPIC_API_KEY.");
+          message = "Writing is temporarily unavailable. Please try again later.";
+        }
         else if (e instanceof Anthropic.RateLimitError) message = "Claude is busy right now. Try again in a moment.";
         else if (e instanceof Anthropic.APIConnectionError) message = "Couldn’t reach Claude. Check the network connection.";
         else if (e instanceof Anthropic.APIError) message = `Claude returned an error (${e.status}).`;
