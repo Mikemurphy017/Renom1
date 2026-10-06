@@ -21,7 +21,8 @@ import { cn, fmtDate, fmtDateTime, relativeTime } from "@/lib/utils";
 const ORDER: ComplianceStatus[] = ["submitted", "changes_requested", "draft", "approved"];
 
 export default function CompliancePage() {
-  const { reviews, getVideo, videos } = useStore();
+  const { reviews, getVideo, videos, requireApproval } = useStore();
+  const showQueue = requireApproval || reviews.length > 0;
   const [filter, setFilter] = React.useState<ComplianceStatus | "all">("all");
   const [selected, setSelected] = React.useState<string>(reviews.find((r) => r.status === "changes_requested")?.id ?? reviews[0]?.id);
   const list = reviews.filter((r) => filter === "all" || r.status === filter).sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status));
@@ -63,12 +64,12 @@ export default function CompliancePage() {
   return (
     <PageContainer className="max-w-[1200px] space-y-8 pt-10">
       <div>
-        <h1 className="font-serif text-[40px] leading-tight tracking-tight">Approve</h1>
-        <p className="mt-2 text-[15px] text-muted-foreground">Nothing goes out until it&rsquo;s reviewed. Everything that goes out is archived.</p>
+        <h1 className="font-serif text-[40px] leading-tight tracking-tight">{requireApproval ? "Approve" : "Archive"}</h1>
+        <p className="mt-2 text-[15px] text-muted-foreground">{requireApproval ? "Nothing goes out until it’s reviewed. Everything that goes out is archived." : "Everything that goes out is archived: the exact caption and disclosure, for your records."}</p>
       </div>
-      <Tabs defaultValue="queue">
+      <Tabs defaultValue={showQueue ? "queue" : "archive"}>
         <TabsList variant="line">
-          <TabsTrigger value="queue">To review</TabsTrigger>
+          {showQueue && <TabsTrigger value="queue">To review</TabsTrigger>}
           <TabsTrigger value="archive">Archive</TabsTrigger>
         </TabsList>
 

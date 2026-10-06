@@ -96,7 +96,7 @@ export function PostStep({ video }: StepProps) {
   return (
     <div className="mx-auto max-w-[1000px] space-y-8 pb-28">
       <div className="text-center">
-        <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">{["Pick a cover.", "Say it once, everywhere.", "Approve it, schedule it, done."][sub]}</h1>
+        <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">{["Pick a cover.", "Say it once, everywhere.", requireApproval ? "Approve it, schedule it, done." : "Schedule it, or save it as a draft."][sub]}</h1>
         <div className="mt-5 flex justify-center">
           <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card p-1">
             {SUB.map((s, i) => (

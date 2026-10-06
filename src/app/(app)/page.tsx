@@ -26,7 +26,7 @@ function greeting() {
 }
 
 export default function HomePage() {
-  const { videos, reviews, profile } = useStore();
+  const { videos, reviews, profile, requireApproval } = useStore();
   const start = useStartVideo();
   const [topic, setTopic] = React.useState("");
   const [format, setFormat] = React.useState<VideoFormat>("short");
@@ -104,7 +104,7 @@ export default function HomePage() {
           {[
             ["1", "Say what’s on your mind", "One sentence. Claude turns it into ideas in your voice, then writes the script."],
             ["2", "Record and trim", "Read from the teleprompter. The edit marks the pauses and retakes for you."],
-            ["3", "Approve and post", "Captions for every platform, your disclosure locked on, scheduled through Buffer."],
+            ["3", requireApproval ? "Approve and post" : "Post", "Captions for every platform, your disclosure locked on, scheduled or saved as drafts in Buffer."],
           ].map(([n, t, d]) => (
             <div key={n} className="rounded-2xl border border-border bg-card p-5">
               <div className="font-serif text-2xl text-primary">{n}</div>
@@ -146,7 +146,9 @@ export default function HomePage() {
         {[
           { label: "Views this week", value: views7 !== undefined ? fmtCompact(views7) : "—", sub: buffer.connected ? (week.loading ? "Loading from Buffer…" : "from Buffer, all channels") : "Connect Buffer to see views", href: buffer.connected ? "/analyze" : "/settings#publishing" },
           { label: "Published or scheduled", value: String(published), sub: published ? "videos from this studio" : "your first one is a few steps away", href: "/videos" },
-          { label: "Waiting on approval", value: String(waiting), sub: needsChanges ? `${needsChanges} sent back for changes` : "nothing sent back", href: "/approve" },
+          requireApproval
+            ? { label: "Waiting on approval", value: String(waiting), sub: needsChanges ? `${needsChanges} sent back for changes` : "nothing sent back", href: "/approve" }
+            : { label: "Drafts", value: String(videos.filter((v) => v.status === "draft").length), sub: "saved, not posted yet", href: "/videos?filter=drafts" },
         ].map((s) => (
           <Link key={s.label} href={s.href} className="group rounded-2xl border border-border bg-card px-5 py-4 transition-colors hover:border-primary/40">
             <div className="flex items-center justify-between text-[13px] text-muted-foreground">

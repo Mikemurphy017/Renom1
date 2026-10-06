@@ -16,7 +16,7 @@ import { BRAND } from "@/lib/brand";
 
 export function Navbar() {
   const pathname = usePathname();
-  const { reviews, profile } = useStore();
+  const { reviews, profile, requireApproval } = useStore();
   const { openNewVideo, openPalette } = useShell();
   const { resolvedTheme, setTheme } = useTheme();
   const waiting = reviews.filter((r) => r.status === "submitted").length;
@@ -37,7 +37,7 @@ export function Navbar() {
               >
                 {active && <motion.span layoutId="nav-pill" className="absolute inset-0 rounded-full bg-card shadow-soft ring-1 ring-border" transition={{ type: "spring", bounce: 0.15, duration: 0.4 }} />}
                 <n.icon className="relative size-4 sm:hidden" />
-                <span className="relative hidden sm:inline">{n.label}</span>
+                <span className="relative hidden sm:inline">{n.href === "/approve" && !requireApproval ? "Archive" : n.label}</span>
                 {n.href === "/approve" && waiting > 0 && (
                   <span className="relative ml-0.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground tnum">{waiting}</span>
                 )}

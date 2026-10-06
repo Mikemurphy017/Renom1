@@ -57,7 +57,7 @@ export default function WelcomePage() {
   const [p, setP] = React.useState<AdvisorProfile>(EMPTY_PROFILE);
   const [opinion, setOpinion] = React.useState("");
   const [disclosure, setDisclosure] = React.useState("");
-  const [requireApproval, setRequireApproval] = React.useState(true);
+  const [requireApproval, setRequireApproval] = React.useState(false);
   const [reviewer, setReviewer] = React.useState("");
   const [claude, setClaude] = React.useState<boolean | null>(null);
   const [photoBusy, setPhotoBusy] = React.useState(false);

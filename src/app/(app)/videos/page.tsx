@@ -37,7 +37,7 @@ function statusLine(v: Video) {
 }
 
 export default function VideosPage() {
-  const { videos } = useStore();
+  const { videos, requireApproval } = useStore();
   const { openNewVideo } = useShell();
   const [filter, setFilter] = React.useState<Filter>("all");
   const [q, setQ] = React.useState("");
@@ -70,7 +70,7 @@ export default function VideosPage() {
           ["approval", "Approval"],
           ["scheduled", "Scheduled"],
           ["published", "Published"],
-        ] as const).map(([f, label]) => (
+        ] as const).filter(([f]) => f !== "approval" || requireApproval || count("approval") > 0).map(([f, label]) => (
           <ToggleGroupItem key={f} value={f} className="rounded-full px-3.5">
             {label} <span className="text-[11px] text-muted-foreground tnum">{count(f)}</span>
           </ToggleGroupItem>

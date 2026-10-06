@@ -35,7 +35,7 @@ const INITIAL: Persisted = {
   onboarded: false,
   videos: [],
   reviews: [],
-  requireApproval: true,
+  requireApproval: false,
   reviewer: "",
   profile: EMPTY_PROFILE,
   team: [],
