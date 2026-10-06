@@ -24,7 +24,6 @@ export interface Beat {
 }
 
 const NAVY = "#0B1F3A";
-const STOP = new Set("a an the and or but of for to in on at by with your you my our we i it is are was be this that these those from as if so do does not no yes".split(" "));
 
 export const assColor = (hex: string, alpha = 0) => {
   const h = /^#?([0-9a-f]{6})$/i.exec(hex)?.[1] ?? "FFFFFF";
@@ -49,24 +48,6 @@ interface Look {
   accent: string;
 }
 
-/** Override tags for one caption word. */
-function wordTags(l: Look, o: { active: boolean; emph: boolean; visible: boolean; boxed?: boolean }) {
-  const { st } = l;
-  const ef = o.emph && st.emphasisFont ? st.emphasisFont : null;
-  const font = ef?.family ?? st.font.family;
-  const size = Math.round(l.base * (ef ? ef.scale : 1));
-  const italic = ef?.italic ?? st.font.italic ?? false;
-  const lit = (o.active && st.highlight === "spoken") || (o.emph && st.highlight === "key");
-  const color = o.boxed ? NAVY : lit && !st.activeBox ? l.accent : st.text;
-  const bump = o.active && st.highlight === "spoken" && st.animation === "pop" ? 108 : 100;
-  return `{\\fn${font}\\fs${size}\\i${italic ? 1 : 0}\\c${assColor(color)}\\bord${o.boxed ? 0 : st.outline.width}\\fscx${bump}\\fscy${bump}\\alpha${o.visible ? "&H00&" : "&HFF&"}\\fsp${st.font.tracking ?? 0}}`;
-}
-
-const caseFor = (l: Look, text: string, emph: boolean) => {
-  const upper = emph && l.st.emphasisFont?.upper !== undefined ? l.st.emphasisFont.upper : l.st.font.upper;
-  return upper ? text.toUpperCase() : text;
-};
-
 export function buildAss(o: { W: number; H: number; outDur: number; words: TimedWord[]; keyWords: Set<string>; beats: Beat[]; overlays: OverlayOptions }) {
   const { W, H, overlays: ov } = o;
   const vertical = H > W;
@@ -74,6 +55,8 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
   const accent = ov.captions.color || st.accent;
   const l: Look = { st, W, H, vertical, base: Math.round((vertical ? 88 : 66) * st.font.size), accent };
   const out = assColor(st.outline.color);
+  const capAlign = ov.captions.position === "top" ? 8 : ov.captions.position === "middle" ? 5 : 2;
+  const capMarginV = ov.captions.position === "middle" ? 0 : Math.round(H * (vertical ? (ov.captions.position === "bottom" ? 0.2 : 0.12) : 0.08));
 
   const lines: string[] = [
     "[Script Info]",
@@ -85,10 +68,9 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    // Captions. Clarity sits on a soft band (opaque box); the rest are outlined text.
-    st.id === "clarity"
-      ? `Style: Cap,${st.font.family},${l.base},&H00FFFFFF,&H00FFFFFF,&H64000000,&H64000000,0,0,0,0,100,100,0,0,3,16,0,5,90,90,0,1`
-      : `Style: Cap,${st.font.family},${l.base},&H00FFFFFF,&H00FFFFFF,${out},&H80000000,0,0,0,0,100,100,0,0,1,${st.outline.width},${st.outline.width ? 2 : 0},5,80,80,0,1`,
+    // Captions: the original look for every style (big bold caps, heavy outline,
+    // the spoken word lit). Styles change everything around the captions.
+    `Style: Cap,Liberation Sans,${vertical ? 84 : 76},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,7,3,${capAlign},70,70,${capMarginV},1`,
     `Style: CapBox,${st.font.family},${l.base},&H00FFFFFF,&H00FFFFFF,&H00FFFFFF,&H00FFFFFF,0,0,0,0,100,100,0,0,3,${Math.round(l.base * 0.16)},0,5,80,80,0,1`,
     // Karaoke fills Secondary → Primary as each word is said.
     `Style: Kara,${st.font.family},${l.base},${assColor(accent)},${assColor(st.text)},${out},&H80000000,0,0,0,0,100,100,0,0,1,${st.outline.width},2,5,80,80,0,1`,
@@ -106,12 +88,13 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
   const ec = ov.endCard;
   const endCardAt = ec.enabled && o.outDur >= 6 && (ec.headline.trim() || ec.cta.trim()) ? o.outDur - 3 : Infinity;
   const cap = ov.captions;
-  const posY = cap.position === "top" ? H * 0.2 : cap.position === "middle" ? H * (vertical ? 0.56 : 0.5) : H * (vertical ? 0.74 : 0.85);
-  const pos = `\\an5\\pos(${Math.round(W / 2)},${Math.round(posY)})`;
 
   // ── captions ──
+  // Up to 3 words on screen (5 on horizontal), the spoken word lit and slightly
+  // larger, key figures in the highlight color.
   if (cap.enabled && o.words.length) {
-    const per = st.words[vertical ? 0 : 1];
+    // White on white wouldn't show: a white highlight uses the original brass.
+    const hl = assColor(/^#?f{6}$/i.test(accent) ? "#D9B97E" : accent);
     const chunks: TimedWord[][] = [];
     let cur: TimedWord[] = [];
     for (const w of o.words) {
@@ -121,57 +104,25 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
         cur = [];
       }
       cur.push(w);
-      if (cur.length >= per || /[.!?,;:]["”]?$/.test(w.text)) {
+      if (cur.length >= (vertical ? 3 : 5) || /[.!?,;:]["”]?$/.test(w.text)) {
         chunks.push(cur);
         cur = [];
       }
     }
     if (cur.length) chunks.push(cur);
-
     chunks.forEach((c, ci) => {
-      const chunkEnd = Math.min(chunks[ci + 1]?.[0].start ?? c.at(-1)!.end + 0.5, c.at(-1)!.end + 0.7, endCardAt);
-      if (c[0].start >= chunkEnd) return;
-      // Emphasis: the key words in this line, else its strongest word.
-      let emph = new Set(c.map((w, i) => (o.keyWords.has(normWord(w.text)) ? i : -1)).filter((i) => i >= 0));
-      if (st.highlight === "key" && !emph.size) {
-        const best = c.map((w, i) => ({ i, n: normWord(w.text) })).filter((x) => !STOP.has(x.n)).sort((a, b) => b.n.length - a.n.length)[0];
-        if (best) emph = new Set([best.i]);
-      }
-      const intro = st.animation === "pop" ? "\\fscx70\\fscy70\\t(0,110,\\fscx104\\fscy104)\\t(110,180,\\fscx100\\fscy100)" : st.animation === "fade" || st.animation === "slide" ? "\\fad(140,0)" : "";
-
-      if (st.animation === "karaoke") {
-        const body = c
-          .map((w, i) => {
-            const next = c[i + 1]?.start ?? w.end;
-            return `{\\kf${Math.max(1, Math.round((next - w.start) * 100))}}${esc(caseFor(l, w.text, false))}`;
-          })
-          .join(" ");
-        ev(1, c[0].start, chunkEnd, "Kara", `{${pos}}${body}`);
-        return;
-      }
-
-      // Pop/slide styles reveal words as they're said; the others show the whole line.
-      const progressive = st.animation === "pop" || st.animation === "slide";
+      const chunkEnd = Math.min(chunks[ci + 1]?.[0].start ?? c.at(-1)!.end + 0.4, c.at(-1)!.end + 0.6, endCardAt);
       c.forEach((w, wi) => {
         const a = w.start;
         const b = Math.min(wi < c.length - 1 ? c[wi + 1].start : chunkEnd, endCardAt);
-        if (b <= a) return;
-        const animate = wi === 0 ? intro : "";
-        const state = (xi: number) => ({ active: xi === wi, emph: emph.has(xi), visible: !progressive || xi <= wi });
-        const render = (fn: (xi: number, s: ReturnType<typeof state>) => string) => c.map((x, xi) => fn(xi, state(xi)) + esc(caseFor(l, x.text, emph.has(xi)))).join(" ");
-
-        // Active word on a white block (Focus).
-        if (st.activeBox) {
-          ev(0, a, b, "CapBox", `{${pos}${animate}}` + render((xi, s) => wordTags(l, { ...s, visible: xi === wi, boxed: false }).replace("\\bord", "\\3a&H00&\\bord") ));
-        }
-        // Glow under the lit words.
-        if (st.glow) {
-          ev(0, a, b, "Cap", `{${pos}${animate}}` + render((xi, s) => {
-            const lit = (s.active && st.highlight === "spoken") || (s.emph && st.highlight === "key");
-            return wordTags(l, s).replace(/\\alpha&H..&/, lit && s.visible ? `\\1a&HFF&\\3a&H40&\\3c${assColor(l.accent)}\\bord${Math.round(l.base * 0.14)}\\blur${Math.round(l.base * 0.12)}` : "\\alpha&HFF&");
-          }));
-        }
-        ev(1, a, b, "Cap", `{${pos}${animate}}` + render((xi, s) => wordTags(l, { ...s, boxed: st.activeBox && xi === wi })));
+        const text = c
+          .map((x, xi) => {
+            const lit = xi === wi;
+            const t = esc(x.text.toUpperCase());
+            return lit || o.keyWords.has(normWord(x.text)) ? `{\\c${hl}${lit ? "\\fscx108\\fscy108" : ""}}${t}{\\r}` : t;
+          })
+          .join(" ");
+        ev(1, a, b, "Cap", text);
       });
     });
   }

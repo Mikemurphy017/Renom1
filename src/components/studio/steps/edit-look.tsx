@@ -185,7 +185,6 @@ function Row({ label, hint, checked, onChange, disabled, icon: Icon }: { label: 
 
 // ── caption rendering (cards + live preview share it) ─────────────────────────
 
-const STOP = new Set("a an the and or but of for to in on at by with your you my our we i it is are was be this that these those from as if so do does not".split(" "));
 const clean = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{N}$%]/gu, "");
 
 interface Word {
@@ -195,44 +194,23 @@ interface Word {
   past: boolean;
 }
 
-/** One caption line in a style, sized relative to the frame height (cqh units). */
-export function StyledCaption({ style, words, accent, keys, frameH }: { style: StyleDef; words: Word[]; accent: string; keys: Set<string>; frameH: number }) {
-  const base = ((frameH > 1500 ? 88 : 66) * style.font.size) / frameH; // fraction of frame height
-  let emph = new Set(words.map((x, i) => (keys.has(clean(x.w)) ? i : -1)).filter((i) => i >= 0));
-  if (style.highlight === "key" && !emph.size) {
-    const best = words.map((x, i) => ({ i, n: clean(x.w) })).filter((x) => !STOP.has(x.n)).sort((a, b) => b.n.length - a.n.length)[0];
-    if (best) emph = new Set([best.i]);
-  }
-  const progressive = style.animation === "pop" || style.animation === "slide";
-  const outline = style.outline.width ? `0 0 ${style.outline.width * 0.6}px ${style.outline.color}, 0 2px 0 ${style.outline.color}, 0 -1px 0 ${style.outline.color}, 1px 0 0 ${style.outline.color}, -1px 0 0 ${style.outline.color}` : undefined;
+/**
+ * One caption line, drawn the way the renderer burns it in: big bold caps with a
+ * heavy outline, the spoken word lit and slightly larger, key figures in the
+ * highlight color. Sized relative to the frame height (cqh units).
+ */
+export function StyledCaption({ words, accent, keys, frameH }: { style?: StyleDef; words: Word[]; accent: string; keys: Set<string>; frameH: number }) {
+  const size = (frameH > 1500 ? 84 : 76) / frameH;
+  const hl = /^#?f{6}$/i.test(accent) ? "#D9B97E" : accent;
+  const outline = "0 0 0.09em #000, 0.05em 0.05em 0 #000, -0.05em 0.05em 0 #000, 0.05em -0.05em 0 #000, -0.05em -0.05em 0 #000, 0 0.08em 0.06em rgba(0,0,0,.55)";
   return (
-    <span
-      className={cn("inline leading-[1.15]", style.id === "clarity" && "rounded-[0.3em] bg-black/45 box-decoration-clone px-[0.35em] py-[0.1em]")}
-      style={{ fontFamily: `"${style.font.family}", system-ui, sans-serif`, fontWeight: style.font.weight, fontSize: `${base * 100}cqh`, letterSpacing: style.font.tracking ? `${style.font.tracking * 0.02}em` : undefined, color: style.text, textShadow: outline }}
-    >
+    <span className="inline leading-[1.2]" style={{ fontFamily: '"Liberation Sans", Arial, Helvetica, sans-serif', fontWeight: 700, fontSize: `${size * 100}cqh`, color: "#FFFFFF", textShadow: outline }}>
       {words.map((x, i) => {
-        const isEmph = emph.has(i);
-        const ef = isEmph ? style.emphasisFont : undefined;
-        const lit = (x.on && style.highlight === "spoken") || (isEmph && style.highlight === "key") || (style.animation === "karaoke" && x.past);
-        const upper = ef?.upper ?? style.font.upper;
-        const boxed = style.activeBox && x.on;
+        const lit = x.on || keys.has(clean(x.w));
         return (
           <React.Fragment key={i}>
-            <span
-              className={cn("inline-block transition-transform duration-100", boxed && "rounded-[0.12em] px-[0.12em]")}
-              style={{
-                opacity: progressive && !x.past && !x.on ? 0 : 1,
-                fontFamily: ef ? `"${ef.family}", system-ui, sans-serif` : undefined,
-                fontWeight: ef?.weight,
-                fontStyle: (ef?.italic ?? style.font.italic) ? "italic" : undefined,
-                fontSize: ef ? `${ef.scale}em` : undefined,
-                color: boxed ? "#0B1F3A" : lit && !style.activeBox ? accent : undefined,
-                background: boxed ? "#FFFFFF" : undefined,
-                textShadow: boxed ? "none" : lit && style.glow ? `0 0 0.25em ${accent}, 0 0 0.5em ${accent}${outline ? ", " + outline : ""}` : undefined,
-                transform: x.on && style.animation === "pop" && style.highlight === "spoken" ? "scale(1.08)" : undefined,
-              }}
-            >
-              {upper ? x.w.toUpperCase() : x.w}
+            <span className="inline-block" style={{ color: lit ? hl : undefined, transform: x.on ? "scale(1.08)" : undefined }}>
+              {x.w.toUpperCase()}
             </span>{" "}
           </React.Fragment>
         );
@@ -253,7 +231,7 @@ function StyleCard({ style, frame, selected, onClick }: { style: StyleDef; frame
         {style.card === "backdrop" && <span className="absolute inset-x-0 top-[12%] text-center font-[Anton] text-[22cqh] leading-none tracking-tight text-transparent" style={{ WebkitTextStroke: `1px ${style.accent}`, fontFamily: "Anton" }}>65</span>}
         {style.card === "banner" && <span className="absolute inset-x-0 top-[66%] bg-[#2347E6] py-[2cqh] text-center text-[9cqh] font-black text-white" style={{ fontFamily: '"Montserrat Black"' }}>BRACKET</span>}
         <div className="absolute inset-x-[6%] top-[40%] text-center">
-          <StyledCaption style={style} words={SAMPLE.slice(0, Math.max(3, Math.min(5, style.words[0] + 1))).map((w, i) => ({ w, on: i === 1, past: i <= 1 }))} accent={style.accent} keys={new Set(["65"])} frameH={1920 * 0.62} />
+          <StyledCaption style={style} words={SAMPLE.slice(0, Math.max(3, Math.min(5, style.words[0] + 1))).map((w, i) => ({ w, on: i === 1, past: i <= 1 }))} accent={style.accent} keys={new Set(["65"])} frameH={1920 * 1.25} />
         </div>
         <span className="absolute inset-x-0 bottom-[5%] text-center text-[11px] font-semibold text-white drop-shadow">{style.name}</span>
         {selected && <span className="absolute top-1.5 right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="size-2.5" /></span>}
@@ -265,7 +243,7 @@ function StyleCard({ style, frame, selected, onClick }: { style: StyleDef; frame
 /** Caption words on screen at time t (source timeline), chunked like the renderer. */
 export function captionAt(transcript: TranscriptWord[], t: number, style: StyleDef, vertical: boolean): Word[] | null {
   if (!transcript.length) return null;
-  const per = style.words[vertical ? 0 : 1];
+  const per = vertical ? 3 : 5;
   let chunk: TranscriptWord[] = [];
   let found: TranscriptWord[] | null = null;
   for (const w of transcript) {
