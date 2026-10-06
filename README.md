@@ -137,12 +137,28 @@ A rejected key prints `Buffer rejected the key (HTTP 401)`; a wrong `BUFFER_API_
 
 Everything is behind sign-in. Each advisor has an account (email + password) and their studio (profile, videos, reviews, work in progress) is saved to it, so it's the same on every device.
 
-- **Who can create an account:** the first account is open. After that, sign-ups need `INVITE_CODE` (set it in Railway and share it with the people you want to invite); with no code set, sign-ups are closed.
+- **Who can create an account:** the first account is open. After that, sign-ups need an invite: a single-use link made on the admin dashboard (optionally locked to one email and emailed for you), or the shared `INVITE_CODE` if you set one. With neither, sign-ups are closed.
 - **Sessions:** a random token in an `HttpOnly`, `SameSite=Lax` cookie (Secure over https), valid 30 days; only its hash is stored. Sign-out deletes it.
 - **Passwords:** scrypt with a per-user salt; at least 10 characters. Sign-in is throttled (8 tries per email and address per 15 minutes). Change it in Settings → Account.
 - **Storage:** accounts, sessions and each advisor's studio live in the storage bucket (`users/`, `sessions/`, `state/`) next to their videos.
 - **Gate:** `src/middleware.ts` (Node runtime) checks the session on every page and API call; signed-out visitors go to `/signin`, API calls get 401.
 - **First sign-in on a browser that already has work** (from before accounts existed) moves that work into the account.
+
+### Password reset by email
+
+"Forgot password?" on the sign-in page (`/forgot`) emails a link to `/reset`. The link works once, expires in 60 minutes and stops working if the password changes another way. Setting the new password signs the account out on every other device and signs this one in. The request always answers the same way, so it can't be used to find out which emails have accounts.
+
+Email is sent with **Resend** (`RESEND_API_KEY` + `EMAIL_FROM`, the sender on a domain you've verified in Resend) or any **SMTP** server (`SMTP_URL`, e.g. `smtps://user:pass@smtp.gmail.com:465`, plus `EMAIL_FROM`). Links use `APP_URL` (on Railway, `RAILWAY_PUBLIC_DOMAIN` is used when `APP_URL` isn't set), never the request's Host header. Without email set up, the sign-in page says to ask the administrator, who can make a reset link on the admin dashboard.
+
+### Admin dashboard (`/admin`)
+
+Only the emails in `ADMIN_EMAILS` (comma-separated; defaults to mike@bluestonepartnersllc.com) can open it; for everyone else the page is a 404 and `/api/admin/*` answers 403. It shows:
+
+- **Accounts:** name, email, firm, videos, last sign-in, last activity, set-up status. Per account: send a password reset (emailed, plus a copyable link valid 24 hours), sign out everywhere, disable/enable (disabling signs them out at once), delete (removes the account and its saved studio; recorded files stay in storage). You can't disable or delete your own account.
+- **Invites:** create single-use invite links (optionally for one email, sent by email), see which were used and by whom, revoke open ones.
+- **Services:** storage, Claude, Buffer, email, speech recognition and stock b-roll, with a "Send test email" button.
+
+The admin link is in the avatar menu for admins.
 
 ## Storage (videos, headshots, covers)
 

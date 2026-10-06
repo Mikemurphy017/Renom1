@@ -44,6 +44,8 @@ export interface Account {
   id: string;
   email: string;
   name: string;
+  /** Can open the admin dashboard. */
+  admin?: boolean;
 }
 
 interface Store {

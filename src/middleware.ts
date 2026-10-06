@@ -1,11 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, userForToken } from "@/lib/auth/server";
+import { isAdmin, SESSION_COOKIE, userForToken } from "@/lib/auth/server";
 
 /**
- * Everything is behind sign-in except the sign-in pages and the auth API.
+ * Everything is behind sign-in except the sign-in, password reset pages and the auth API.
  * Runs on the Node.js runtime so it can check the session against the store.
  */
-const PUBLIC = [/^\/signin$/, /^\/signup$/, /^\/api\/auth\//];
+const PUBLIC = [/^\/signin$/, /^\/signup$/, /^\/forgot$/, /^\/reset$/, /^\/api\/auth\//];
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
@@ -13,9 +13,11 @@ export async function middleware(req: NextRequest) {
 
   if (PUBLIC.some((p) => p.test(pathname))) {
     // Already signed in: skip the sign-in pages.
-    if (user && (pathname === "/signin" || pathname === "/signup")) return NextResponse.redirect(new URL("/", req.url));
+    if (user && (pathname === "/signin" || pathname === "/signup" || pathname === "/forgot")) return NextResponse.redirect(new URL("/", req.url));
     return NextResponse.next();
   }
+  // The admin pages don't exist for anyone else (the page and its API check again).
+  if (user && /^\/admin(\/|$)/.test(pathname) && !isAdmin(user)) return NextResponse.rewrite(new URL("/_admin-not-found", req.url));
   if (user) return NextResponse.next();
 
   if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Sign in first." }, { status: 401 });

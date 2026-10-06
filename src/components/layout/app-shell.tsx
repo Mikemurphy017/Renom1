@@ -30,10 +30,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // First run: send people to setup before anything else.
+  // First run: send people to setup before anything else (the admin dashboard excepted).
+  const needsSetup = hydrated && !onboarded && !pathname.startsWith("/admin");
   React.useEffect(() => {
-    if (hydrated && !onboarded) router.replace("/welcome");
-  }, [hydrated, onboarded, router]);
+    if (needsSetup) router.replace("/welcome");
+  }, [needsSetup, router]);
 
   const ctx = React.useMemo(() => ({ openPalette: () => setPalette(true), openNewVideo: () => setNewVideo(true) }), []);
 
@@ -42,7 +43,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen flex-col">
         {/* In the studio, phones get the studio header only. */}
         <Navbar className={cn(inStudio && "hidden md:block")} />
-        <main className={cn("flex-1", !inStudio && "pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0")}>{hydrated && onboarded ? children : null}</main>
+        <main className={cn("flex-1", !inStudio && "pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0")}>{hydrated && !needsSetup ? children : null}</main>
       </div>
       {!inStudio && <TabBar />}
       <CommandPalette open={palette} onOpenChange={setPalette} onNewVideo={() => setNewVideo(true)} />
