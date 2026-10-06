@@ -59,11 +59,59 @@ BUFFER_ORGANIZATION_ID=...         # optional; defaults to the first org on the 
 # BUFFER_API_URL=https://api.buffer.com   # optional override
 ```
 
-- `GET /api/buffer/status` returns the org, channels and upcoming scheduled posts. `POST /api/buffer/posts` creates one post. The key never reaches the browser.
 - Settings → Connected platforms shows the Buffer channels. Check the ones that post as the advisor and they're pre-selected in the Post step (saved per browser for now).
 - Buffer fetches video from a public https link. Without one, posts are sent to Buffer as drafts so the file can be attached there.
 - Social accounts themselves are connected in Buffer, not in Renom.
-- Without a key, the Post step falls back to simulated publishing.
+- Without a key, the Post step falls back to simulated publishing, Analyze shows sample numbers, and the Buffer actions are hidden.
+
+**What it does in the app**
+
+| Where | What |
+|---|---|
+| Post step | Schedules, queues or publishes to the advisor's Buffer channels (drafts when there's no public video link) |
+| Home → Coming up | Each Buffer post has a **⋯** menu: **Reschedule** (date and time), **Move to top of queue** (queued posts only; posts set for a fixed time can't be moved), **Delete** (asks first) |
+| Idea step | **Save for later** saves to Videos and offers **Send to Buffer Ideas** (title + outline, marked AI-assisted, tagged with the advisor's channel networks) |
+| Analyze | The four headline numbers come from Buffer (`aggregatedPostMetrics`, all channels, for the 30/60-day range), labelled "From Buffer" with the org and last update. The chart and lists stay labelled "Sample data" |
+
+**How auth works.** Everything goes through `src/lib/buffer/server.ts`, which POSTs GraphQL to `BUFFER_API_URL` (default `https://api.buffer.com`) with `Authorization: Bearer $BUFFER_API_KEY`. It runs only on the server (route handlers), so the key never reaches the browser, and it is never logged. Locally the key comes from `.env.local`, which is git-ignored. The organization is `BUFFER_ORGANIZATION_ID`, or the first one on the account. All names (fields, inputs, enums) come from Buffer's GraphQL schema.
+
+**API routes** (all JSON; errors are `{ ok: false, error }` with a 4xx/5xx status; ids are Buffer's 24-character hex ids):
+
+| Route | What |
+|---|---|
+| `GET /api/buffer/status` | Org, channels, upcoming scheduled posts (with `shareMode` and `allowedActions`) |
+| `GET /api/buffer/posts` | List posts. Query: `status` (comma list of `draft,error,needs_approval,scheduled,sending,sent`), `channelId`, `tagId`, `from`/`to` (ISO, bound `dueAt`), `sort=dueAt\|createdAt`, `direction=asc\|desc`, `first` (1–100, default 20), `after` (cursor from `pageInfo.endCursor`) → `{ ok, posts, pageInfo }` |
+| `POST /api/buffer/posts` | Create one post `{ channelId, service, text, mode: now\|schedule\|queue, dueAt?, videoUrl?, thumbnailUrl?, title?, draft? }` |
+| `GET /api/buffer/posts/:id` | One post, with tags, metrics and allowed actions |
+| `PATCH /api/buffer/posts/:id` | `{ text?, dueAt? }`: change the text and/or reschedule to a set time (`dueAt` must be in the future) |
+| `DELETE /api/buffer/posts/:id` | Delete a post → `{ ok, id }` |
+| `POST /api/buffer/posts/:id/queue` | `{ position: "top" \| "bottom" }`: move a queued post |
+| `GET /api/buffer/metrics` | `?days=30` (1–365) or `?from=ISO&to=ISO` (≤ 366 days), optional `channelId` → `{ ok, organization, range, metrics: [{ type, name, value, unit, description }], metricsUpdatedAt }`. `percentage` values are already percents (0.33 = 0.33%) |
+| `GET /api/buffer/ideas` | `?first&after` → `{ ok, ideas, groups, pageInfo }` |
+| `POST /api/buffer/ideas` | `{ title, text?, services?, date?, groupId?, aiAssisted? }` → `{ ok, idea }` |
+
+| Path | What |
+|---|---|
+| `src/lib/buffer/server.ts` | GraphQL client: status, `createBufferPost`, `listPosts`, `getPost`, `editPost`, `deletePost`, `movePostInQueue`, `getAggregatedMetrics`, `listIdeas`, `createIdea`, `listTags` |
+| `src/lib/buffer/types.ts` | Shared types |
+| `src/lib/buffer/route.ts` | Route validation and JSON error helpers |
+| `src/lib/buffer/use-buffer.ts` | Client hooks and calls (`useBuffer`, `useBufferMetrics`, reschedule / move / delete / create idea) |
+| `src/components/buffer/post-menu.tsx` | The Coming up ⋯ menu and its dialogs |
+
+**Test your key from the terminal.** `scripts/buffer.mjs` is a small read-only CLI with no dependencies. It reads `.env.local` itself and sends the same Bearer header as the app, without printing the key:
+
+```bash
+npm run buffer -- account                      # is the key valid? which orgs?
+npm run buffer -- channels
+npm run buffer -- posts --status scheduled     # also: --channel <id> --first 10 --sort createdAt --desc --after <cursor>
+npm run buffer -- post <id>
+npm run buffer -- metrics --days 30            # also: --channel <id>
+npm run buffer -- ideas
+npm run buffer -- tags
+npm run buffer -- metrics --json               # raw GraphQL response
+```
+
+A rejected key prints `Buffer rejected the key (HTTP 401)`; a wrong `BUFFER_API_URL` prints `Couldn't reach …`. To point the app or the CLI at a local stand-in, set `BUFFER_API_URL=http://localhost:4555`.
 
 ## Recording
 

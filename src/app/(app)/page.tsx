@@ -12,7 +12,8 @@ import { PlatformIcon } from "@/components/shared/platform-icon";
 import { useStartVideo } from "@/components/layout/use-start-video";
 import { useStore } from "@/lib/store";
 import { useBuffer } from "@/lib/buffer/use-buffer";
-import { platformForService } from "@/lib/buffer/types";
+import { platformForService, type BufferScheduledPost } from "@/lib/buffer/types";
+import { BufferPostMenu } from "@/components/buffer/post-menu";
 import { DAILY_VIEWS } from "@/lib/mock/analytics";
 import { getStage, stageIndex } from "@/lib/stages";
 import { inPipeline, isPublished, videoTotals } from "@/lib/selectors";
@@ -40,12 +41,13 @@ export default function HomePage() {
   const leads = videos.filter(isPublished).reduce((a, v) => a + videoTotals(v).inquiries, 0);
 
   const bufferStatus = buffer.status && "channels" in buffer.status ? buffer.status : null;
-  const upcoming = [
+  type Upcoming = { id: string; at: string; title: string; platforms: PlatformId[]; href: string; source: string; buffer?: BufferScheduledPost };
+  const upcoming: Upcoming[] = [
     ...videos.filter((v) => v.scheduledFor && new Date(v.scheduledFor) >= TODAY).map((v) => ({ id: v.id, at: v.scheduledFor!, title: v.title, platforms: v.platforms, href: `/studio/${v.id}/${v.stage}`, source: BRAND.name })),
     ...(bufferStatus?.upcoming ?? []).flatMap((p) => {
       const pl = platformForService(p.channelService, "long");
       const ch = bufferStatus!.channels.find((c) => c.id === p.channelId);
-      return p.dueAt && pl ? [{ id: p.id, at: p.dueAt, title: p.text.split("\n")[0], platforms: [pl] as PlatformId[], href: "https://publish.buffer.com", source: `Buffer · ${ch?.displayName ?? ch?.name}` }] : [];
+      return p.dueAt && pl ? [{ id: p.id, at: p.dueAt, title: p.text.split("\n")[0], platforms: [pl] as PlatformId[], href: "https://publish.buffer.com", source: `Buffer · ${ch?.displayName ?? ch?.name}`, buffer: p }] : [];
     }),
   ]
     .sort((a, b) => a.at.localeCompare(b.at))
@@ -165,12 +167,13 @@ export default function HomePage() {
                 </>
               );
               return (
-                <li key={u.id}>
+                <li key={u.id} className="flex items-center hover:bg-muted/50">
                   {external ? (
-                    <a href={u.href} target="_blank" rel="noreferrer" className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/50">{inner}</a>
+                    <a href={u.href} target="_blank" rel="noreferrer" className="flex min-w-0 flex-1 items-center gap-4 py-3.5 pl-5 pr-3">{inner}</a>
                   ) : (
-                    <Link href={u.href} className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/50">{inner}</Link>
+                    <Link href={u.href} className="flex min-w-0 flex-1 items-center gap-4 py-3.5 pl-5 pr-5">{inner}</Link>
                   )}
+                  {u.buffer && <div className="pr-3"><BufferPostMenu post={u.buffer} title={u.title} /></div>}
                 </li>
               );
             })}

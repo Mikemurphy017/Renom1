@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { bufferConfigured, createBufferPost } from "@/lib/buffer/server";
-import type { BufferService, CreateBufferPostRequest } from "@/lib/buffer/types";
+import { bufferConfigured, createBufferPost, listPosts } from "@/lib/buffer/server";
+import { fail, fromError, isBufferId, listParam, notConnected, parseDate, SERVICES } from "@/lib/buffer/route";
+import { BUFFER_POST_STATUSES, type BufferPostStatus, type CreateBufferPostRequest, type ListBufferPostsParams } from "@/lib/buffer/types";
 
 export const dynamic = "force-dynamic";
-
-const SERVICES: BufferService[] = ["bluesky", "facebook", "googlebusiness", "instagram", "linkedin", "mastodon", "pinterest", "startPage", "substack", "threads", "tiktok", "twitter", "whatsapp", "youtube"];
 const isHttpsUrl = (u: unknown) => {
   if (typeof u !== "string") return false;
   try {
@@ -14,6 +13,58 @@ const isHttpsUrl = (u: unknown) => {
   }
 };
 
+/**
+ * GET /api/buffer/posts?status=scheduled,sent&channelId=…&tagId=…&from=ISO&to=ISO&sort=dueAt|createdAt&direction=asc|desc&first=20&after=cursor
+ * Lists posts in the organization, newest page first by the chosen sort. `from`/`to` bound dueAt.
+ */
+export async function GET(request: Request) {
+  const off = notConnected();
+  if (off) return off;
+  const q = new URL(request.url).searchParams;
+  const errors: string[] = [];
+
+  const status = listParam(q, "status");
+  if (status.some((s) => !(BUFFER_POST_STATUSES as readonly string[]).includes(s))) errors.push(`status must be one of ${BUFFER_POST_STATUSES.join(", ")}`);
+  const channelIds = listParam(q, "channelId");
+  if (!channelIds.every(isBufferId)) errors.push("channelId is invalid");
+  const tagIds = listParam(q, "tagId");
+  if (!tagIds.every(isBufferId)) errors.push("tagId is invalid");
+
+  const from = q.get("from") ? parseDate(q.get("from")) : undefined;
+  const to = q.get("to") ? parseDate(q.get("to")) : undefined;
+  if (from === null) errors.push("from must be a date");
+  if (to === null) errors.push("to must be a date");
+  if (from && to && from > to) errors.push("from must be before to");
+
+  const sort = q.get("sort") ?? "dueAt";
+  if (!["dueAt", "createdAt"].includes(sort)) errors.push("sort must be dueAt or createdAt");
+  const direction = q.get("direction") ?? "asc";
+  if (!["asc", "desc"].includes(direction)) errors.push("direction must be asc or desc");
+  const first = q.has("first") ? Number(q.get("first")) : 20;
+  if (!Number.isInteger(first) || first < 1 || first > 100) errors.push("first must be 1–100");
+  const after = q.get("after") ?? undefined;
+  if (after !== undefined && !/^[A-Za-z0-9+/=_-]{1,512}$/.test(after)) errors.push("after is invalid");
+  if (errors.length) return fail(errors.join("; "));
+
+  try {
+    const params: ListBufferPostsParams = {
+      status: status as BufferPostStatus[],
+      channelIds,
+      tagIds,
+      dueFrom: from ?? undefined,
+      dueTo: to ?? undefined,
+      sort: sort as ListBufferPostsParams["sort"],
+      direction: direction as ListBufferPostsParams["direction"],
+      first,
+      after,
+    };
+    return NextResponse.json({ ok: true, ...(await listPosts(params)) });
+  } catch (e) {
+    return fromError(e);
+  }
+}
+
+/** POST /api/buffer/posts creates one post (see CreateBufferPostRequest). */
 export async function POST(request: Request) {
   if (!bufferConfigured()) return NextResponse.json({ ok: false, error: "Buffer is not connected" }, { status: 503 });
 
@@ -25,7 +76,7 @@ export async function POST(request: Request) {
   }
 
   const errors: string[] = [];
-  if (typeof body.channelId !== "string" || !/^[a-f\d]{24}$/i.test(body.channelId)) errors.push("channelId is invalid");
+  if (!isBufferId(body.channelId)) errors.push("channelId is invalid");
   if (!body.service || !SERVICES.includes(body.service)) errors.push("service is invalid");
   if (typeof body.text !== "string" || !body.text.trim()) errors.push("text is required");
   else if (body.text.length > 10000) errors.push("text is too long");

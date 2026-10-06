@@ -12,11 +12,23 @@ import { useStore } from "@/lib/store";
 import { DAILY_VIEWS } from "@/lib/mock/analytics";
 import { getPlatform } from "@/lib/mock/platforms";
 import { isPublished, platformTotals, videoTotals } from "@/lib/selectors";
-import { fmtCompact, fmtDuration, fmtNumber, fmtPct } from "@/lib/utils";
+import { fmtCompact, fmtDate, fmtDateTime, fmtDuration, fmtNumber, fmtPct } from "@/lib/utils";
+import { useBuffer, useBufferMetrics } from "@/lib/buffer/use-buffer";
+import type { BufferMetric } from "@/lib/buffer/types";
+import { Skeleton } from "@/components/ui/skeleton";
+
+/** The Buffer numbers worth a tile, in order; the rest go in one quiet line. */
+const HEADLINE = ["impressions", "views", "reach", "engagementRate", "postCount"];
+const fmtMetric = (m: BufferMetric) => (m.unit === "percentage" ? fmtPct(m.value, 2) : fmtCompact(m.value));
 
 export default function AnalyzePage() {
   const { videos } = useStore();
   const [range, setRange] = React.useState<"30" | "60">("30");
+  const buffer = useBuffer();
+  const live = useBufferMetrics(Number(range), buffer.connected);
+  const liveTiles = live.data ? HEADLINE.map((t) => live.data!.metrics.find((m) => m.type === t)).filter((m): m is BufferMetric => !!m).slice(0, 4) : [];
+  const liveRest = live.data ? live.data.metrics.filter((m) => !liveTiles.includes(m) && m.unit === "count") : [];
+  const showLive = liveTiles.length > 0;
   const published = videos.filter(isPublished);
   const totals = published.map(videoTotals);
   const views = totals.reduce((a, t) => a + t.views, 0);
@@ -50,28 +62,63 @@ export default function AnalyzePage() {
         </ToggleGroup>
       </div>
 
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {[
-          ["Views", fmtCompact(views)],
-          ["Avg. watch time", fmtDuration(weighted("watchTimeSec"))],
-          ["Engagement", fmtPct(weighted("engagementRate"))],
-          ["Leads", String(leads)],
-        ].map(([label, value]) => (
-          <div key={label} className="rounded-2xl border border-border bg-card px-5 py-4">
-            <div className="text-[13px] text-muted-foreground">{label}</div>
-            <div className="mt-1 font-serif text-[34px] leading-tight tnum">{value}</div>
-          </div>
-        ))}
+      <section>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {live.loading
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="space-y-3 rounded-2xl border border-border bg-card px-5 py-4">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-8 w-24" />
+                </div>
+              ))
+            : (showLive
+                ? liveTiles.map((m) => [m.name, fmtMetric(m), m.description] as const)
+                : ([
+                    ["Views", fmtCompact(views), undefined],
+                    ["Avg. watch time", fmtDuration(weighted("watchTimeSec")), undefined],
+                    ["Engagement", fmtPct(weighted("engagementRate")), undefined],
+                    ["Leads", String(leads), undefined],
+                  ] as const)
+              ).map(([label, value, hint]) => (
+                <div key={label} className="rounded-2xl border border-border bg-card px-5 py-4" title={hint}>
+                  <div className="text-[13px] text-muted-foreground">{label}</div>
+                  <div className="mt-1 font-serif text-[34px] leading-tight tnum">{value}</div>
+                </div>
+              ))}
+        </div>
+        <p className="mt-3 flex flex-wrap items-center gap-x-2 text-[12px] text-muted-foreground" data-testid="metrics-source">
+          {showLive ? (
+            <>
+              <span className="inline-flex items-center gap-1.5 font-medium text-foreground"><span className="size-1.5 rounded-full bg-success" /> From Buffer</span>
+              <span>· {live.data!.organization.name} · all channels · {fmtDate(live.data!.range.start)} – {fmtDate(live.data!.range.end)}</span>
+              {liveRest.length > 0 && <span className="tnum">· {liveRest.map((m) => `${m.name} ${fmtMetric(m)}`).join(" · ")}</span>}
+              {live.data!.metricsUpdatedAt && <span>· updated {fmtDateTime(live.data!.metricsUpdatedAt)}</span>}
+            </>
+          ) : live.loading ? (
+            <span>Loading Buffer numbers…</span>
+          ) : (
+            <span>
+              Sample data
+              {live.error
+                ? ` · Buffer numbers unavailable: ${live.error}`
+                : buffer.connected
+                  ? " · Buffer has no published posts in this range"
+                  : buffer.status && "error" in buffer.status
+                    ? " · couldn’t reach Buffer"
+                    : " · connect Buffer in Settings for real numbers"}
+            </span>
+          )}
+        </p>
       </section>
 
       <section className="rounded-2xl border border-border bg-card p-6">
-        <div className="mb-4 text-[13px] text-muted-foreground">Views across every platform</div>
+        <div className="mb-4 flex justify-between text-[13px] text-muted-foreground">Views across every platform <span className="text-[12px]">Sample data</span></div>
         <ViewsChart data={series} height={260} />
       </section>
 
       <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
         <section>
-          <h2 className="mb-4 font-serif text-2xl">What&rsquo;s working</h2>
+          <h2 className="mb-4 flex items-baseline justify-between font-serif text-2xl">What&rsquo;s working <span className="font-sans text-[12px] text-muted-foreground">Sample data</span></h2>
           <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
             {ranked.map(({ v, t, top }) => (
               <li key={v.id}>
@@ -93,7 +140,7 @@ export default function AnalyzePage() {
           </ul>
         </section>
         <section>
-          <h2 className="mb-4 font-serif text-2xl">Where</h2>
+          <h2 className="mb-4 flex items-baseline justify-between font-serif text-2xl">Where <span className="font-sans text-[12px] text-muted-foreground">Sample data</span></h2>
           <div className="rounded-2xl border border-border bg-card p-5">
             <PlatformBars data={byPlatform.map((p) => ({ label: getPlatform(p.platform).label, value: p.views }))} format={fmtCompact} height={220} />
             <ul className="mt-4 space-y-2 border-t border-border pt-4 text-[13px]" style={{ ["--pi-bg" as string]: "var(--card)" }}>

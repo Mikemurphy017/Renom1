@@ -1,7 +1,18 @@
 "use client";
 
 import * as React from "react";
-import type { BufferStatus, CreateBufferPostRequest, CreateBufferPostResponse } from "./types";
+import type {
+  BufferApi,
+  BufferIdea,
+  BufferMetricsResult,
+  BufferPost,
+  BufferQueuePosition,
+  BufferStatus,
+  CreateBufferIdeaRequest,
+  CreateBufferPostRequest,
+  CreateBufferPostResponse,
+  EditBufferPostRequest,
+} from "./types";
 
 let cache: BufferStatus | null = null;
 let inflight: Promise<BufferStatus> | null = null;
@@ -44,6 +55,57 @@ export async function createBufferPost(req: CreateBufferPostRequest): Promise<Cr
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
+}
+
+async function call<T>(url: string, init?: RequestInit): Promise<BufferApi<T>> {
+  try {
+    const res = await fetch(url, {
+      cache: "no-store",
+      ...init,
+      headers: init?.body ? { "Content-Type": "application/json" } : undefined,
+    });
+    return (await res.json()) as BufferApi<T>;
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Reschedule a post to a set time and refresh the shared status (Coming up, Settings). */
+export async function rescheduleBufferPost(id: string, dueAt: Date) {
+  const body: EditBufferPostRequest = { dueAt: dueAt.toISOString() };
+  const r = await call<{ post: BufferPost }>(`/api/buffer/posts/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+  if (r.ok) load(true);
+  return r;
+}
+
+export async function moveBufferPost(id: string, position: BufferQueuePosition) {
+  const r = await call<{ post: BufferPost }>(`/api/buffer/posts/${id}/queue`, { method: "POST", body: JSON.stringify({ position }) });
+  if (r.ok) load(true);
+  return r;
+}
+
+export async function deleteBufferPost(id: string) {
+  const r = await call<{ id: string }>(`/api/buffer/posts/${id}`, { method: "DELETE" });
+  if (r.ok) load(true);
+  return r;
+}
+
+export const createBufferIdea = (req: CreateBufferIdeaRequest) =>
+  call<{ idea: BufferIdea }>("/api/buffer/ideas", { method: "POST", body: JSON.stringify(req) });
+
+/** Aggregated Buffer metrics for the last `days` days (only fetched while `enabled`). */
+export function useBufferMetrics(days: number, enabled: boolean) {
+  const [state, setState] = React.useState<{ days: number; result: BufferApi<BufferMetricsResult> } | null>(null);
+  React.useEffect(() => {
+    if (!enabled) return;
+    let live = true;
+    call<BufferMetricsResult>(`/api/buffer/metrics?days=${days}`).then((result) => live && setState({ days, result }));
+    return () => {
+      live = false;
+    };
+  }, [days, enabled]);
+  const current = state?.days === days ? state.result : null;
+  return { data: current?.ok ? current : null, error: current && !current.ok ? current.error : null, loading: enabled && !current };
 }
 
 /** Which Buffer channels post as each advisor (per browser for now). */
