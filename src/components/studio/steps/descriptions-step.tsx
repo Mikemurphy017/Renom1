@@ -16,22 +16,15 @@ import { useAgentSession } from "@/components/agent/use-agent";
 import { useDraft } from "@/lib/drafts";
 import { generateDescriptions, type PlatformCopy } from "@/lib/ai/content";
 import { PLATFORMS, getPlatform } from "@/lib/mock/platforms";
-import { ADVISOR } from "@/lib/mock/advisor";
+import { activeDisclosure, disclosureFor } from "@/lib/compose";
 import type { PlatformId } from "@/lib/types";
 import { cn, fmtNumber } from "@/lib/utils";
 import { stageIndex } from "@/lib/stages";
 import { StepLayout, StepSection, FieldLabel } from "../step-layout";
 import type { StepProps } from "../studio-view";
 
-const disclosure = ADVISOR.disclosures.find((d) => d.active)!;
-const firmLine = `${ADVISOR.name}, ${ADVISOR.credentials} · ${ADVISOR.firm} · ${ADVISOR.city}`;
-const LOCKED = `${firmLine}\n\n${disclosure.text}`;
-/** X can't fit the full disclosure; we link to it instead. */
-const LOCKED_SHORT = `Disclosures: halewealth.example/disclosures`;
-
-function lockedFor(p: PlatformId) {
-  return p === "x" ? LOCKED_SHORT : LOCKED;
-}
+const disclosure = activeDisclosure();
+const lockedFor = disclosureFor;
 
 function Counter({ used, limit }: { used: number; limit: number }) {
   const pct = Math.min(100, (used / limit) * 100);

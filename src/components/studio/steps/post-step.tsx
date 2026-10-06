@@ -19,9 +19,12 @@ import { useDraft } from "@/lib/drafts";
 import { generateDescriptions, type PlatformCopy } from "@/lib/ai/content";
 import { PLATFORMS, getPlatform } from "@/lib/mock/platforms";
 import { ADVISOR } from "@/lib/mock/advisor";
-import type { Platform, PlatformId, Video } from "@/lib/types";
+import type { PlatformId } from "@/lib/types";
 import { cn, fmtDateTime, fmtDuration, sleep, TODAY } from "@/lib/utils";
 import { StepSection } from "../step-layout";
+import { notesFor } from "./post-notes";
+import { useBuffer } from "@/lib/buffer/use-buffer";
+import { BufferConfigure, BufferReview, BufferVideoLink, useBufferPlan } from "@/components/buffer/buffer-publish";
 import type { StepProps } from "../studio-view";
 
 interface PlatformPlan {
@@ -29,23 +32,6 @@ interface PlatformPlan {
   mode: "now" | "schedule";
   date: string;
   time: string;
-}
-
-type Note = { level: "info" | "warn" | "block"; text: string };
-
-function notesFor(p: Platform, v: Video, useThumb: boolean): Note[] {
-  const n: Note[] = [];
-  const sizeMB = v.format === "short" ? 48 : 420;
-  if (!p.connected) n.push({ level: "block", text: `${p.label} isn't connected. Connect it in Settings to publish.` });
-  if (sizeMB > p.maxFileMB) n.push({ level: "block", text: `File is ${sizeMB} MB — over the ${p.maxFileMB} MB limit.` });
-  else n.push({ level: "info", text: `${sizeMB} MB MP4 · within the ${p.maxFileMB >= 1000 ? `${p.maxFileMB / 1000} GB` : `${p.maxFileMB} MB`} limit.` });
-  if (useThumb && !p.customThumbnail) n.push({ level: "warn", text: `${p.label} does not support custom thumbnails — it will be ignored.` });
-  if (p.id === "linkedin" && v.format === "short") n.push({ level: "warn", text: "LinkedIn recommends 16:9 — your 9:16 video will display with side bars on desktop." });
-  if (p.id === "youtube" && v.format === "short") n.push({ level: "warn", text: "Vertical video under 3 minutes will be classified as a Short." });
-  if ((p.id === "youtube_shorts" || p.id === "instagram" || p.id === "tiktok") && v.format === "long") n.push({ level: "block", text: `${p.label} expects 9:16 vertical video. Choose a 16:9 platform or re-record.` });
-  if (p.id === "facebook") n.push({ level: "info", text: "Plays as a Reel in feed; 4:5 crop is applied automatically." });
-  if (p.id === "x" && v.runtimeSec > 140) n.push({ level: "block", text: "X limits video to 2:20 for standard accounts." });
-  return n;
 }
 
 const SUBSTEPS = ["Select Content", "Configure Post", "Review & Publish"];
@@ -80,6 +66,14 @@ export function PostStep({ video }: StepProps) {
   const setPlan = (id: PlatformId, patch: Partial<PlatformPlan>) => setPlans((ps) => ({ ...ps, [id]: { ...ps[id], ...patch } }));
   const blocked = enabled.some((p) => notesFor(p, video, useThumb).some((n) => n.level === "block"));
   const needsApproval = requireApproval && video.compliance !== "approved";
+  const buffer = useBuffer();
+  const bufferChannels = buffer.status && buffer.status.configured && "channels" in buffer.status ? buffer.status.channels : [];
+  const bufferOn = buffer.connected;
+  const bplan = useBufferPlan(video, bufferChannels);
+  const previewChannel = bufferOn ? bufferChannels.find((c) => bplan.planFor(c).enabled) : undefined;
+  const pvPlatform: PlatformId = previewChannel ? bplan.platformOf(previewChannel) : previewPlatform;
+  const pvHandle = previewChannel ? previewChannel.displayName ?? previewChannel.name : getPlatform(previewPlatform).handle ?? "halewealth";
+  const pvText = previewChannel ? bplan.captionFor(previewChannel) : copies.find((c) => c.platform === previewPlatform)?.description ?? video.title;
 
   const publish = async () => {
     setPublishing(0);
@@ -179,13 +173,24 @@ export function PostStep({ video }: StepProps) {
               </div>
             </div>
           </div>
+          {bufferOn ? (
+            <BufferVideoLink plan={bplan} />
+          ) : (
+            !buffer.loading && (
+              <p className="mt-4 rounded-md border border-border bg-muted/50 px-3 py-2 text-[12px] text-muted-foreground">
+                Buffer isn&rsquo;t connected, so publishing below is simulated. <Link href="/settings#platforms" className="text-primary hover:underline">Connect Buffer</Link>
+              </p>
+            )
+          )}
           <div className="mt-5 flex justify-end border-t border-border pt-5">
             <Button onClick={() => setSub(1)}>Configure post <ArrowRight /></Button>
           </div>
         </StepSection>
       )}
 
-      {sub === 1 && (
+      {sub === 1 && bufferOn && <BufferConfigure channels={bufferChannels} plan={bplan} onBack={() => setSub(0)} onNext={() => setSub(2)} />}
+
+      {sub === 1 && !bufferOn && (
         <StepSection title="Configure post" action={<Link href="/settings#platforms" className="inline-flex items-center gap-1 text-[12px] text-primary hover:underline"><Plus className="size-3" /> Connect more platforms</Link>}>
           <div className="divide-y divide-border">
             {PLATFORMS.map((p) => {
@@ -250,17 +255,20 @@ export function PostStep({ video }: StepProps) {
                 <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/75 to-transparent" />
                 <div className="absolute inset-x-3 bottom-4 text-white">
                   <div className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ ["--pi-bg" as string]: "#000" }}>
-                    <PlatformIcon id={previewPlatform} className="size-3.5" /> {getPlatform(previewPlatform).handle ?? "halewealth"}
+                    <PlatformIcon id={pvPlatform} className="size-3.5" /> {pvHandle}
                   </div>
-                  <p className="mt-1 line-clamp-3 text-[10px] opacity-90">{copies.find((c) => c.platform === previewPlatform)?.description ?? video.title}</p>
+                  <p className="mt-1 line-clamp-3 text-[10px] opacity-90">{pvText}</p>
                 </div>
-                {preview === "thumbnail" && useThumb && !getPlatform(previewPlatform).customThumbnail && (
-                  <div className="absolute inset-x-3 top-3 rounded-md bg-black/70 px-2 py-1.5 text-[10px] text-white">Custom thumbnail ignored on {getPlatform(previewPlatform).label}</div>
+                {preview === "thumbnail" && useThumb && !getPlatform(pvPlatform).customThumbnail && (
+                  <div className="absolute inset-x-3 top-3 rounded-md bg-black/70 px-2 py-1.5 text-[10px] text-white">Custom thumbnail ignored on {getPlatform(pvPlatform).label}</div>
                 )}
               </div>
             </div>
           </div>
 
+          {bufferOn ? (
+            <BufferReview video={video} channels={bufferChannels} plan={bplan} onEdit={() => setSub(1)} />
+          ) : (
           <div className="space-y-3">
             {needsApproval && (
               <div className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive/25 bg-warning-soft px-4 py-3">
@@ -326,6 +334,7 @@ export function PostStep({ video }: StepProps) {
               </div>
             )}
           </div>
+          )}
         </div>
       )}
     </div>

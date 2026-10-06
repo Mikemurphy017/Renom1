@@ -10,7 +10,9 @@ import { VideoThumb } from "@/components/shared/video-thumb";
 import { PlatformIcon } from "@/components/shared/platform-icon";
 import { ViewsChart } from "@/components/charts/views-chart";
 import { PipelineBar } from "@/components/home/pipeline-bar";
-import { CalendarMini } from "@/components/home/calendar-mini";
+import { CalendarMini, type CalendarExtra } from "@/components/home/calendar-mini";
+import { useBuffer } from "@/lib/buffer/use-buffer";
+import { platformForService } from "@/lib/buffer/types";
 import { useStore } from "@/lib/store";
 import { ADVISOR } from "@/lib/mock/advisor";
 import { DAILY_VIEWS } from "@/lib/mock/analytics";
@@ -30,6 +32,14 @@ export default function HomePage() {
   const upNext = [...pipeline].sort((a, b) => stageIndex(b.stage) - stageIndex(a.stage) || a.lastEdited.localeCompare(b.lastEdited)).slice(0, 3);
   const top = [...published].sort((a, b) => videoTotals(b).views - videoTotals(a).views).slice(0, 4);
   const last30 = DAILY_VIEWS.slice(-30);
+  const buffer = useBuffer();
+  const bufferStatus = buffer.status && "channels" in buffer.status ? buffer.status : null;
+  const bufferPosts: CalendarExtra[] = (bufferStatus?.upcoming ?? []).flatMap((p) => {
+    const platform = platformForService(p.channelService, "long");
+    if (!p.dueAt || !platform) return [];
+    const ch = bufferStatus!.channels.find((c) => c.id === p.channelId);
+    return [{ id: p.id, at: p.dueAt, platform, label: p.text.split("\n")[0].slice(0, 120), source: `Buffer · ${ch?.displayName ?? ch?.name ?? p.channelService}` }];
+  });
 
   return (
     <PageContainer className="space-y-8">
@@ -186,13 +196,13 @@ export default function HomePage() {
         <SectionLabel
           action={
             <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              <CalendarDays className="size-3.5" /> Next 14 days
+              <CalendarDays className="size-3.5" /> Next 14 days{bufferStatus ? ` · includes ${bufferPosts.length} Buffer posts` : ""}
             </span>
           }
         >
           This fortnight
         </SectionLabel>
-        <CalendarMini videos={videos} />
+        <CalendarMini videos={videos} extra={bufferPosts} />
       </div>
 
     </PageContainer>

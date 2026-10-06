@@ -37,6 +37,26 @@ Next.js (App Router) · TypeScript · Tailwind v4 · shadcn/ui-style components 
 - **Platforms / publishing**: `post-step.tsx` → `publish()`; connection state lives in `settings/page.tsx`.
 - **Persistence**: replace `StoreProvider` mutations and `useDraft` (`src/lib/drafts.ts`) with server calls.
 
+## Buffer (scheduling and publishing)
+
+The Post step publishes through Buffer when a key is configured. Add to `.env.local` (git-ignored):
+
+```bash
+BUFFER_API_KEY=...                 # publish.buffer.com/settings/api
+BUFFER_ORGANIZATION_ID=...         # optional; defaults to the first org on the account
+# BUFFER_API_URL=https://api.buffer.com   # optional override
+```
+
+- `GET /api/buffer/status` returns the org, channels and upcoming scheduled posts. `POST /api/buffer/posts` creates one post. The key never reaches the browser.
+- Settings → Connected platforms shows the Buffer channels. Check the ones that post as the advisor and they're pre-selected in the Post step (saved per browser for now).
+- Buffer fetches video from a public https link. Without one, posts are sent to Buffer as drafts so the file can be attached there.
+- Social accounts themselves are connected in Buffer, not in Renom.
+- Without a key, the Post step falls back to simulated publishing.
+
+## Recording
+
+The Record step uses the browser's camera and microphone (https or localhost only). Takes stay in memory for the session and can be downloaded.
+
 ## Shortcuts
 
 - `⌘K` / `Ctrl+K`: command palette (jump to any video, step or page)

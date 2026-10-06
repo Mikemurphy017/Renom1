@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PageContainer, PageHeader } from "@/components/shared/page";
 import { PlatformIcon } from "@/components/shared/platform-icon";
 import { PLATFORMS } from "@/lib/mock/platforms";
+import { BufferCard } from "@/components/buffer/buffer-card";
 import { TEAM } from "@/lib/mock/advisor";
 import { cn, sleep } from "@/lib/utils";
 
@@ -55,7 +56,9 @@ export default function SettingsPage() {
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="platforms" className="pt-3">
+        <TabsContent value="platforms" className="space-y-6 pt-3">
+          <BufferCard />
+          <div className="eyebrow">Direct connections (preview)</div>
           <div className="grid gap-3 md:grid-cols-2" id="platforms">
             {PLATFORMS.map((p) => {
               const on = connected[p.id];

@@ -1,21 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import type { Video } from "@/lib/types";
+import type { PlatformId, Video } from "@/lib/types";
+import { PlatformIcon } from "@/components/shared/platform-icon";
+
+export interface CalendarExtra {
+  id: string;
+  at: string;
+  platform: PlatformId;
+  label: string;
+  source: string;
+}
 import { TODAY, cn } from "@/lib/utils";
 import { PlatformTile } from "@/components/shared/platform-icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-export function CalendarMini({ videos, days = 14 }: { videos: Video[]; days?: number }) {
+export function CalendarMini({ videos, extra = [], days = 14 }: { videos: Video[]; extra?: CalendarExtra[]; days?: number }) {
   const cells = Array.from({ length: days }, (_, i) => {
     const d = new Date(TODAY);
     d.setDate(d.getDate() + i);
     const key = d.toDateString();
-    return { d, items: videos.filter((v) => v.scheduledFor && new Date(v.scheduledFor).toDateString() === key) };
+    return { d, items: videos.filter((v) => v.scheduledFor && new Date(v.scheduledFor).toDateString() === key), more: extra.filter((x) => new Date(x.at).toDateString() === key) };
   });
   return (
     <div className="grid grid-cols-7 gap-px overflow-hidden rounded-md border border-border bg-border">
-      {cells.map(({ d, items }, i) => (
+      {cells.map(({ d, items, more }, i) => (
         <div key={i} className={cn("min-h-[92px] bg-card p-2", i === 0 && "bg-brass-soft/40")}>
           <div className="flex items-baseline justify-between">
             <span className="text-[10px] tracking-wider text-muted-foreground uppercase">{d.toLocaleDateString("en-US", { weekday: "short" })}</span>
@@ -37,6 +46,20 @@ export function CalendarMini({ videos, days = 14 }: { videos: Video[]; days?: nu
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-56">{v.title}</TooltipContent>
+              </Tooltip>
+            ))}
+            {more.map((x) => (
+              <Tooltip key={x.id}>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1 rounded-[5px] border border-dashed border-border px-1 py-0.5 text-[10px] text-muted-foreground" style={{ ["--pi-bg" as string]: "var(--card)" }}>
+                    <PlatformIcon id={x.platform} className="size-3" />
+                    <span className="truncate tnum">{new Date(x.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-64">
+                  <div className="text-[11px] opacity-70">{x.source}</div>
+                  {x.label}
+                </TooltipContent>
               </Tooltip>
             ))}
           </div>
