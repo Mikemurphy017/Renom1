@@ -112,19 +112,27 @@ function metadataFor(req: CreateBufferPostRequest) {
   }
 }
 
+/** Networks don't take custom thumbnail images; Buffer can only pick a frame, and only on these. */
+const FRAME_THUMBNAIL_SERVICES = new Set(["instagram", "tiktok", "pinterest"]);
+
+function videoMetadataFor(req: CreateBufferPostRequest) {
+  const m: { title?: string; thumbnailOffset?: number } = {};
+  if (req.title) m.title = req.title.slice(0, 100);
+  if (req.thumbnailOffsetMs !== undefined && FRAME_THUMBNAIL_SERVICES.has(req.service)) m.thumbnailOffset = Math.max(0, Math.round(req.thumbnailOffsetMs));
+  return Object.keys(m).length ? m : undefined;
+}
+
 export async function createBufferPost(req: CreateBufferPostRequest): Promise<CreateBufferPostResponse> {
   const input: Record<string, unknown> = {
     channelId: req.channelId,
     text: req.text,
     schedulingType: "automatic",
-    mode: req.mode === "now" ? "shareNow" : req.mode === "queue" ? "addToQueue" : "customScheduled",
-    assets: req.videoUrl
-      ? [{ video: { url: req.videoUrl, thumbnailUrl: req.thumbnailUrl || undefined, metadata: req.title ? { title: req.title.slice(0, 100) } : undefined } }]
-      : [],
+    mode: req.mode === "now" ? "shareNow" : req.mode === "schedule" ? "customScheduled" : "addToQueue",
+    assets: req.videoUrl ? [{ video: { url: req.videoUrl, metadata: videoMetadataFor(req) } }] : [],
     source: "renom",
   };
   if (req.mode === "schedule") input.dueAt = req.dueAt;
-  if (req.draft) input.saveToDraft = true;
+  if (req.draft || req.mode === "draft") input.saveToDraft = true;
   const metadata = metadataFor(req);
   if (metadata) input.metadata = metadata;
 

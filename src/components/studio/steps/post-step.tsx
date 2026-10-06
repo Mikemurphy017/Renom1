@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Check, CircleCheck, Hash, Lock, Send, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bookmark, Check, CircleCheck, Hash, Lock, Send, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +31,7 @@ import type { StepProps } from "../studio-view";
 const SUB = ["Cover", "Caption", "Schedule"] as const;
 
 export function PostStep({ video }: StepProps) {
-  const { profile, requireApproval, submitForReview, reviewer } = useStore();
+  const { profile, updateVideo, requireApproval, submitForReview, reviewer } = useStore();
   const vertical = video.format === "short";
   const [sub, setSub] = useDraft(video.id, "post.sub", 0);
 
@@ -83,6 +84,14 @@ export function PostStep({ video }: StepProps) {
   const bplan = useBufferPlan(video, bufferChannels);
   const [bufferPhase, setBufferPhase] = React.useState<"configure" | "review">("configure");
   const needsApproval = requireApproval && video.compliance !== "approved";
+  // Buffer drafts don't go out, so they can be saved before approval.
+  const [bufferDrafts, setBufferDrafts] = React.useState(false);
+  const router = useRouter();
+  const saveDraft = () => {
+    updateVideo(video.id, { status: "draft" });
+    toast.success("Saved as a draft", { description: "It’s in Videos → Drafts. Nothing has been posted." });
+    router.push("/videos?filter=drafts");
+  };
 
   return (
     <div className="mx-auto max-w-[1000px] space-y-8 pb-28">
@@ -102,6 +111,11 @@ export function PostStep({ video }: StepProps) {
             ))}
           </div>
         </div>
+        {video.status !== "published" && (
+          <button onClick={saveDraft} className="mt-3 inline-flex cursor-pointer items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground">
+            <Bookmark className="size-3.5" /> Save as draft and finish later
+          </button>
+        )}
       </div>
 
       {sub === 0 && <CoverStudio video={video} onDone={() => setSub(1)} />}
@@ -172,8 +186,13 @@ export function PostStep({ video }: StepProps) {
 
       {sub === 2 && (
         <>
-          {needsApproval ? (
-            <ApprovalGate status={video.compliance} onSubmit={() => { submitForReview(video.id); toast.success("Sent for approval", { description: reviewer ? `${reviewer} has it.` : "It’s in the Approve queue." }); }} />
+          {needsApproval && !bufferDrafts ? (
+            <ApprovalGate
+              status={video.compliance}
+              onSubmit={() => { submitForReview(video.id); toast.success("Sent for approval", { description: reviewer ? `${reviewer} has it.` : "It’s in the Approve queue." }); }}
+              onSaveDraft={saveDraft}
+              onBufferDrafts={bufferOn ? () => setBufferDrafts(true) : undefined}
+            />
           ) : bufferOn ? (
             <>
               {bufferPhase === "configure" ? (
@@ -245,7 +264,7 @@ function CaptionEditor({ platform, copy, update }: { platform: PlatformId; copy?
   );
 }
 
-function ApprovalGate({ status, onSubmit }: { status: string; onSubmit: () => void }) {
+function ApprovalGate({ status, onSubmit, onSaveDraft, onBufferDrafts }: { status: string; onSubmit: () => void; onSaveDraft: () => void; onBufferDrafts?: () => void }) {
   const waiting = status === "submitted";
   return (
     <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-8 text-center shadow-soft">
@@ -261,6 +280,10 @@ function ApprovalGate({ status, onSubmit }: { status: string; onSubmit: () => vo
         ) : (
           <Button className="rounded-full px-6" onClick={onSubmit}><Send /> {status === "changes_requested" ? "Send back for approval" : "Send for approval"}</Button>
         )}
+      </div>
+      <div className="mt-5 flex flex-wrap justify-center gap-x-4 gap-y-1 border-t border-border pt-4 text-[13px]">
+        {onBufferDrafts && <button onClick={onBufferDrafts} className="cursor-pointer text-primary hover:underline">Save to Buffer drafts meanwhile</button>}
+        <button onClick={onSaveDraft} className="cursor-pointer text-muted-foreground hover:text-foreground">Save as draft here</button>
       </div>
     </div>
   );

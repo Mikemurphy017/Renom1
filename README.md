@@ -101,7 +101,7 @@ BUFFER_ORGANIZATION_ID=...         # optional; defaults to the first org on the 
 |---|---|
 | `GET /api/buffer/status` | Org, channels, upcoming scheduled posts (with `shareMode` and `allowedActions`) |
 | `GET /api/buffer/posts` | List posts. Query: `status` (comma list of `draft,error,needs_approval,scheduled,sending,sent`), `channelId`, `tagId`, `from`/`to` (ISO, bound `dueAt`), `sort=dueAt\|createdAt`, `direction=asc\|desc`, `first` (1–100, default 20), `after` (cursor from `pageInfo.endCursor`) → `{ ok, posts, pageInfo }` |
-| `POST /api/buffer/posts` | Create one post `{ channelId, service, text, mode: now\|schedule\|queue, dueAt?, videoUrl?, thumbnailUrl?, title?, draft? }` |
+| `POST /api/buffer/posts` | Create one post `{ channelId, service, text, mode: draft\|now\|schedule\|queue, dueAt?, videoUrl?, thumbnailOffsetMs?, title? }` — networks don't accept custom thumbnail images; `thumbnailOffsetMs` picks the cover frame on Instagram, TikTok and Pinterest |
 | `GET /api/buffer/posts/:id` | One post, with tags, metrics and allowed actions |
 | `PATCH /api/buffer/posts/:id` | `{ text?, dueAt? }`: change the text and/or reschedule to a set time (`dueAt` must be in the future) |
 | `DELETE /api/buffer/posts/:id` | Delete a post → `{ ok, id }` |

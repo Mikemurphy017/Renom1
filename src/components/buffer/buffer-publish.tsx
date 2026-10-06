@@ -55,18 +55,6 @@ export function useBufferPlan(video: Video, channels: BufferChannel[]) {
       live = false;
     };
   }, [videoUrl, storedVideo, setVideoUrl]);
-  const [thumbLinks, setThumbLinks] = React.useState<Partial<Record<"long" | "short", string>>>({});
-  const longCover = video.covers?.long?.url;
-  const shortCover = video.covers?.short?.url;
-  React.useEffect(() => {
-    let live = true;
-    Promise.all([longCover ? publicLinkFor(longCover) : null, shortCover ? publicLinkFor(shortCover) : null]).then(
-      ([long, short]) => live && setThumbLinks({ long: long ?? undefined, short: short ?? undefined })
-    );
-    return () => {
-      live = false;
-    };
-  }, [longCover, shortCover]);
   const [copies] = useDraft<PlatformCopy[]>(video.id, "desc.copies", []);
 
   const base = video.scheduledFor ? new Date(video.scheduledFor) : new Date(TODAY.getTime() + 2 * 86400000);
@@ -76,7 +64,7 @@ export function useBufferPlan(video: Video, channels: BufferChannel[]) {
   };
 
   const planFor = (c: BufferChannel): ChannelPlan =>
-    plans[c.id] ?? { enabled: mine.includes(c.id), mode: "schedule", ...defaultDate() };
+    plans[c.id] ?? { enabled: mine.includes(c.id), mode: "draft", ...defaultDate() };
   const setPlan = (id: string, patch: Partial<ChannelPlan>) =>
     setPlans((ps) => ({ ...ps, [id]: { ...(ps[id] ?? planFor(channels.find((c) => c.id === id)!)), ...patch } }));
 
@@ -89,9 +77,10 @@ export function useBufferPlan(video: Video, channels: BufferChannel[]) {
     return composeCaption(copy, p, profile);
   };
   const dueAtFor = (plan: ChannelPlan) => new Date(`${plan.date}T${plan.time}`);
-  const thumbnailFor = (c: BufferChannel) => {
+  /** Networks pick a frame, not an image: point them at the frame the cover was made from. */
+  const thumbnailOffsetFor = (c: BufferChannel) => {
     const p = getPlatform(platformOf(c));
-    return p.customThumbnail ? thumbLinks[p.aspect === "9:16" ? "short" : "long"] : undefined;
+    return video.covers?.[p.aspect === "9:16" ? "short" : "long"]?.frameMs ?? video.covers?.[video.format]?.frameMs;
   };
 
   const notesForChannel = (c: BufferChannel): Note[] => {
@@ -108,7 +97,7 @@ export function useBufferPlan(video: Video, channels: BufferChannel[]) {
     return notes;
   };
 
-  return { videoUrl, setVideoUrl, planFor, setPlan, captionFor, platformOf, dueAtFor, notesForChannel, thumbnailFor };
+  return { videoUrl, setVideoUrl, planFor, setPlan, captionFor, platformOf, dueAtFor, notesForChannel, thumbnailOffsetFor };
 }
 
 type Plan = ReturnType<typeof useBufferPlan>;
@@ -154,6 +143,7 @@ export function BufferConfigure({ channels, plan, onBack, onNext }: { channels: 
                 {p.enabled && (
                   <div className="flex flex-wrap items-center gap-2">
                     <ToggleGroup type="single" value={p.mode} onValueChange={(v) => v && plan.setPlan(c.id, { mode: v as BufferMode })}>
+                      <ToggleGroupItem value="draft">Save as draft</ToggleGroupItem>
                       <ToggleGroupItem value="now">Publish now</ToggleGroupItem>
                       <ToggleGroupItem value="schedule">Schedule</ToggleGroupItem>
                       <ToggleGroupItem value="queue">Add to queue</ToggleGroupItem>
@@ -165,6 +155,7 @@ export function BufferConfigure({ channels, plan, onBack, onNext }: { channels: 
                         <span className="text-[11px] text-muted-foreground">{localTz()}</span>
                       </>
                     )}
+                    {p.mode === "draft" && <span className="text-[12px] text-muted-foreground">Waits in Buffer&rsquo;s Drafts. Nothing posts until you schedule it.</span>}
                     {p.mode === "queue" && <span className="text-[12px] text-muted-foreground">Next open slot in this channel&rsquo;s Buffer schedule</span>}
                   </div>
                 )}
@@ -196,7 +187,9 @@ export function BufferReview({ video, channels, plan, onEdit }: { video: Video; 
   const enabled = channels.filter((c) => plan.planFor(c).enabled);
   const [progress, setProgress] = React.useState<number | null>(null);
   const [results, setResults] = React.useState<Result[] | null>(null);
-  const needsApproval = requireApproval && video.compliance !== "approved";
+  // A Buffer draft doesn't go out, so it can wait for approval; anything that posts can't.
+  const allDrafts = !plan.videoUrl || enabled.every((c) => plan.planFor(c).mode === "draft");
+  const needsApproval = requireApproval && video.compliance !== "approved" && !allDrafts;
   const blocked = enabled.some((c) => plan.notesForChannel(c).some((n) => n.level === "block"));
 
   const publish = async () => {
@@ -212,9 +205,9 @@ export function BufferReview({ video, channels, plan, onEdit }: { video: Video; 
         mode: p.mode,
         dueAt: p.mode === "schedule" ? plan.dueAtFor(p).toISOString() : undefined,
         videoUrl: plan.videoUrl || undefined,
-        thumbnailUrl: plan.videoUrl ? plan.thumbnailFor(c) : undefined,
+        thumbnailOffsetMs: plan.videoUrl ? plan.thumbnailOffsetFor(c) : undefined,
         title: platform === "youtube" || platform === "youtube_shorts" || platform === "tiktok" ? video.title : undefined,
-        draft: !plan.videoUrl,
+        draft: !plan.videoUrl || p.mode === "draft",
       });
       out.push(
         r.ok
@@ -231,7 +224,7 @@ export function BufferReview({ video, channels, plan, onEdit }: { video: Video; 
       const firstDue = okResults.map((r) => r.dueAt).filter(Boolean).sort()[0];
       updateVideo(video.id, {
         platforms: Array.from(new Set(enabled.map((c) => plan.platformOf(c)))),
-        status: publishedNow ? "published" : "scheduled",
+        status: publishedNow ? "published" : allDrafts ? "draft" : "scheduled",
         publishedAt: publishedNow ? new Date().toISOString() : video.publishedAt,
         scheduledFor: firstDue ?? video.scheduledFor,
         posts: [
@@ -246,13 +239,13 @@ export function BufferReview({ video, channels, plan, onEdit }: { video: Video; 
               caption: plan.captionFor(c),
               disclosureVersion: activeDisclosure(profile)?.version ?? "none",
               at: r.dueAt ?? new Date().toISOString(),
-              how: (!plan.videoUrl ? "buffer-draft" : mode === "now" ? "buffer-now" : mode === "queue" ? "buffer-queue" : "buffer-scheduled") as "buffer-now",
+              how: (!plan.videoUrl || mode === "draft" ? "buffer-draft" : mode === "now" ? "buffer-now" : mode === "queue" ? "buffer-queue" : "buffer-scheduled") as "buffer-now",
             }];
           }),
         ],
       });
     }
-    if (okResults.length === out.length) toast.success("Sent to Buffer", { description: `${out.length} post${out.length > 1 ? "s" : ""} created.` });
+    if (okResults.length === out.length) toast.success(allDrafts ? "Saved to Buffer drafts" : "Sent to Buffer", { description: `${out.length} post${out.length > 1 ? "s" : ""} ${allDrafts ? "waiting in Drafts. Nothing has been posted." : "created."}` });
     else if (okResults.length) toast.warning("Some posts failed", { description: `${okResults.length} of ${out.length} reached Buffer.` });
     else toast.error("Buffer didn't accept the posts", { description: out[0]?.message });
   };
@@ -320,7 +313,7 @@ export function BufferReview({ video, channels, plan, onEdit }: { video: Video; 
                 <div className="text-[11px] text-muted-foreground">{getPlatform(plan.platformOf(c)).label} · preferred aspect <span className="tnum">{getPlatform(plan.platformOf(c)).aspect}</span> · via Buffer</div>
               </div>
               <span className="text-[12px] text-muted-foreground tnum">
-                {p.mode === "now" ? "Publish now" : p.mode === "queue" ? "Next queue slot" : <span className="inline-flex items-center gap-1"><Clock className="size-3" /> {fmtDateTime(plan.dueAtFor(p).toISOString())}</span>}
+                {p.mode === "draft" ? "Draft in Buffer" : p.mode === "now" ? "Publish now" : p.mode === "queue" ? "Next queue slot" : <span className="inline-flex items-center gap-1"><Clock className="size-3" /> {fmtDateTime(plan.dueAtFor(p).toISOString())}</span>}
               </span>
               <ReadyPill ok={ok} />
             </div>
@@ -339,7 +332,7 @@ export function BufferReview({ video, channels, plan, onEdit }: { video: Video; 
       <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
         <Button variant="outline" onClick={onEdit}>Edit</Button>
         <Button onClick={publish} disabled={blocked || needsApproval || progress !== null}>
-          {needsApproval ? <Lock /> : <Send />} {plan.videoUrl ? "Confirm & Publish" : "Send drafts to Buffer"}
+          {needsApproval ? <Lock /> : <Send />} {allDrafts ? "Save drafts to Buffer" : "Confirm & Publish"}
         </Button>
       </div>
       {progress !== null && (

@@ -80,14 +80,14 @@ export async function POST(request: Request) {
   if (!body.service || !SERVICES.includes(body.service)) errors.push("service is invalid");
   if (typeof body.text !== "string" || !body.text.trim()) errors.push("text is required");
   else if (body.text.length > 10000) errors.push("text is too long");
-  if (!body.mode || !["now", "schedule", "queue"].includes(body.mode)) errors.push("mode is invalid");
+  if (!body.mode || !["draft", "now", "schedule", "queue"].includes(body.mode)) errors.push("mode is invalid");
   if (body.mode === "schedule") {
     const t = body.dueAt ? Date.parse(body.dueAt) : NaN;
     if (Number.isNaN(t)) errors.push("dueAt is required to schedule");
     else if (t < Date.now() + 60_000) errors.push("dueAt must be in the future");
   }
   if (body.videoUrl && !isHttpsUrl(body.videoUrl)) errors.push("videoUrl must be a public https:// link");
-  if (body.thumbnailUrl && !isHttpsUrl(body.thumbnailUrl)) errors.push("thumbnailUrl must be a public https:// link");
+  if (body.thumbnailOffsetMs !== undefined && !(Number.isInteger(body.thumbnailOffsetMs) && body.thumbnailOffsetMs >= 0 && body.thumbnailOffsetMs < 3_600_000)) errors.push("thumbnailOffsetMs is invalid");
   if (errors.length) return NextResponse.json({ ok: false, error: errors.join("; ") }, { status: 400 });
 
   const result = await createBufferPost({
@@ -97,7 +97,7 @@ export async function POST(request: Request) {
     mode: body.mode!,
     dueAt: body.mode === "schedule" ? new Date(body.dueAt!).toISOString() : undefined,
     videoUrl: body.videoUrl || undefined,
-    thumbnailUrl: body.thumbnailUrl || undefined,
+    thumbnailOffsetMs: body.thumbnailOffsetMs,
     title: typeof body.title === "string" ? body.title : undefined,
     draft: !!body.draft,
   });

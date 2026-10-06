@@ -147,7 +147,8 @@ export type BufferStatus =
     }
   | { configured: true; error: string };
 
-export type BufferMode = "now" | "schedule" | "queue";
+/** "draft" saves the post in Buffer for review; nothing goes out until someone schedules it there. */
+export type BufferMode = "draft" | "now" | "schedule" | "queue";
 
 export interface CreateBufferPostRequest {
   channelId: string;
@@ -156,7 +157,8 @@ export interface CreateBufferPostRequest {
   mode: BufferMode;
   dueAt?: string;
   videoUrl?: string;
-  thumbnailUrl?: string;
+  /** Cover frame, as milliseconds into the video (Instagram, TikTok and Pinterest only). */
+  thumbnailOffsetMs?: number;
   title?: string;
   /** Send to Buffer as a draft instead of scheduling it. */
   draft?: boolean;

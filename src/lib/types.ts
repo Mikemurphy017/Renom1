@@ -15,7 +15,8 @@ export type Category =
 
 export type ComplianceStatus = "draft" | "submitted" | "changes_requested" | "approved";
 
-export type VideoStatus = "in_progress" | "scheduled" | "published";
+/** "draft": finished and saved, not posted anywhere yet. */
+export type VideoStatus = "in_progress" | "draft" | "scheduled" | "published";
 
 export type ThumbStyle = "navy" | "ivory" | "brass" | "slate";
 export type Pose = "center" | "left" | "right" | "point" | "think" | "crossed";
@@ -91,6 +92,8 @@ export interface CoverImage {
   url: string;
   headline: string;
   template: string;
+  /** When the photo is a frame of the take: where it is, so networks that pick a frame can match. */
+  frameMs?: number;
   createdAt: string;
 }
 

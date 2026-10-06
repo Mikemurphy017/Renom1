@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Clapperboard, Clock, Eye, Plus, Search } from "lucide-react";
+import { Bookmark, Clapperboard, Clock, Eye, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -16,11 +16,12 @@ import { videoTotals } from "@/lib/selectors";
 import type { Video } from "@/lib/types";
 import { fmtCompact, fmtDate, fmtDateTime, relativeTime } from "@/lib/utils";
 
-type Filter = "all" | "progress" | "approval" | "scheduled" | "published";
+type Filter = "all" | "progress" | "drafts" | "approval" | "scheduled" | "published";
 
 const matches: Record<Filter, (v: Video) => boolean> = {
   all: () => true,
   progress: (v) => v.status === "in_progress",
+  drafts: (v) => v.status === "draft",
   approval: (v) => v.status !== "published" && (v.compliance === "submitted" || v.compliance === "changes_requested"),
   scheduled: (v) => v.status === "scheduled",
   published: (v) => v.status === "published",
@@ -29,6 +30,7 @@ const matches: Record<Filter, (v: Video) => boolean> = {
 function statusLine(v: Video) {
   if (v.status === "published") return <span className="inline-flex items-center gap-1 tnum"><Eye className="size-3.5" /> {fmtCompact(videoTotals(v).views)} · {fmtDate(v.publishedAt!)}</span>;
   if (v.status === "scheduled" && v.scheduledFor) return <span className="inline-flex items-center gap-1 tnum"><Clock className="size-3.5" /> {fmtDateTime(v.scheduledFor)}</span>;
+  if (v.status === "draft") return <span className="inline-flex items-center gap-1"><Bookmark className="size-3.5" /> Draft · {v.posts?.some((p) => p.how === "buffer-draft") ? "in Buffer" : "not posted"}</span>;
   if (v.compliance === "changes_requested") return <span className="text-destructive">Changes requested</span>;
   if (v.compliance === "submitted") return <span>Waiting on approval</span>;
   return <span>{getStage(v.stage).label} · {relativeTime(v.lastEdited)}</span>;
@@ -39,6 +41,11 @@ export default function VideosPage() {
   const { openNewVideo } = useShell();
   const [filter, setFilter] = React.useState<Filter>("all");
   const [q, setQ] = React.useState("");
+  // Deep link from "Save as draft": /videos?filter=drafts
+  React.useEffect(() => {
+    const f = new URLSearchParams(window.location.search).get("filter");
+    if (f && f in matches) setFilter(f as Filter);
+  }, []);
   const list = videos
     .filter(matches[filter])
     .filter((v) => !q || v.title.toLowerCase().includes(q.toLowerCase()))
@@ -59,6 +66,7 @@ export default function VideosPage() {
         {([
           ["all", "All"],
           ["progress", "In progress"],
+          ["drafts", "Drafts"],
           ["approval", "Approval"],
           ["scheduled", "Scheduled"],
           ["published", "Published"],

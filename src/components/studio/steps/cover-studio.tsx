@@ -165,7 +165,15 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
         const t = TEMPLATES[s].find((x) => x.id === o.template) ?? TEMPLATES[s][k];
         const blob = await toJpeg(await renderCover(t, { ...o.text, still: stillFor(o, k)!, byline }), 0.9);
         const up = await uploadImage(blob, "thumbnail", `${s}-cover`);
-        covers[s] = { id: up.id, url: up.url, headline: o.text.headline, template: t.id, createdAt: new Date().toISOString() };
+        const still = stillFor(o, k)!;
+        covers[s] = {
+          id: up.id,
+          url: up.url,
+          headline: o.text.headline,
+          template: t.id,
+          frameMs: still.source === "frame" && still.time !== undefined ? Math.round(still.time * 1000) : undefined,
+          createdAt: new Date().toISOString(),
+        };
       }
       updateVideo(video.id, { covers });
       toast.success("Covers saved", { description: "Long form and short form, both in your library." });
