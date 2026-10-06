@@ -50,7 +50,7 @@ function Status({ state, ok, off, children }: { state: boolean | null; ok: strin
 
 export default function WelcomePage() {
   const router = useRouter();
-  const { hydrated, onboarded, completeOnboarding, profile: saved } = useStore();
+  const { hydrated, onboarded, completeOnboarding, profile: saved, account } = useStore();
   const buffer = useBuffer();
   const [step, setStep] = React.useState<Step>("welcome");
   const [dir, setDir] = React.useState(1);
@@ -82,7 +82,8 @@ export default function WelcomePage() {
     if (hydrated && onboarded) router.replace("/");
   }, [hydrated, onboarded, router]);
   React.useEffect(() => {
-    if (hydrated) setP({ ...EMPTY_PROFILE, ...saved });
+    // Start from the name and email the advisor signed up with.
+    if (hydrated) setP({ ...EMPTY_PROFILE, ...saved, name: saved.name || account?.name || "", email: saved.email || account?.email || "" });
     // only once, after saved state loads
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);

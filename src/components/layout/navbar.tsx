@@ -16,7 +16,7 @@ import { BRAND } from "@/lib/brand";
 
 export function Navbar({ className }: { className?: string }) {
   const pathname = usePathname();
-  const { reviews, profile, requireApproval } = useStore();
+  const { reviews, profile, requireApproval, account, signOut } = useStore();
   const { openNewVideo, openPalette } = useShell();
   const { resolvedTheme, setTheme } = useTheme();
   const waiting = reviews.filter((r) => r.status === "submitted").length;
@@ -51,12 +51,13 @@ export function Navbar({ className }: { className?: string }) {
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger className="flex size-9 cursor-pointer items-center justify-center rounded-full bg-gradient-to-br from-[#D2B07A] to-[#9C7A47] font-serif text-[13px] text-[#0B1F3A] outline-none focus-visible:ring-2 focus-visible:ring-ring/50" aria-label="Account">
-              {profile.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
+              {(profile.name || account?.name || "").split(" ").map((w) => w[0]).join("").slice(0, 2)}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60">
               <DropdownMenuLabel className="normal-case tracking-normal">
                 <div className="text-[13px] font-medium text-foreground">{profile.name}, {profile.credentials.split(",")[0]}</div>
                 <div className="text-[12px] font-normal text-muted-foreground">{profile.firm}</div>
+                {account && <div className="truncate text-[12px] font-normal text-muted-foreground">{account.email}</div>}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild><Link href="/settings#voice"><UserRound /> Your voice</Link></DropdownMenuItem>
@@ -66,7 +67,7 @@ export function Navbar({ className }: { className?: string }) {
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={openPalette}><Command /> Quick jump <span className="ml-auto text-[11px] text-muted-foreground">⌘K</span></DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem disabled><LogOut /> Sign out</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void signOut()}><LogOut /> Sign out</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

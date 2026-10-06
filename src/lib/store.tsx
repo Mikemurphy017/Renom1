@@ -4,12 +4,11 @@ import * as React from "react";
 import type { AdvisorProfile, ComplianceStatus, StageId, Video } from "./types";
 import type { ReviewComment, ReviewItem } from "./compliance";
 import { EMPTY_PROFILE } from "./profile";
-import { clearDrafts } from "./drafts";
+import { clearDrafts, exportDrafts, importDrafts, legacyDrafts, onDraftsChange } from "./drafts";
 
 /**
- * App state, saved in this browser (localStorage) so work survives a refresh.
- * Every mutation goes through these functions so they can later be swapped
- * for a real database behind an API.
+ * App state for the signed-in advisor, saved to their account (/api/state)
+ * a moment after each change, so it follows them to any device.
  */
 export interface TeamMember {
   id: string;
@@ -41,9 +40,20 @@ const INITIAL: Persisted = {
   team: [],
 };
 
+export interface Account {
+  id: string;
+  email: string;
+  name: string;
+}
+
 interface Store {
-  /** False until saved state has been read from this browser. */
+  /** False until the account's saved state has loaded. */
   hydrated: boolean;
+  /** The signed-in advisor (null on the sign-in pages). */
+  account: Account | null;
+  signOut: () => Promise<void>;
+  /** "saving" while changes are on their way to the account, "error" if the last save failed. */
+  saveState: "saved" | "saving" | "error";
   onboarded: boolean;
   completeOnboarding: (p: { profile: AdvisorProfile; requireApproval: boolean; reviewer: string }) => void;
   resetAll: () => void;
@@ -70,47 +80,134 @@ interface Store {
 
 const StoreContext = React.createContext<Store | null>(null);
 
-function load(): Persisted | null {
+function normalize(p: Persisted | null | undefined): Persisted | null {
+  return p && p.version === 1 ? { ...INITIAL, ...p, profile: { ...EMPTY_PROFILE, ...p.profile } } : null;
+}
+
+/** Studio data saved in this browser before accounts existed. */
+function legacyState(): Persisted | null {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const p = JSON.parse(raw) as Persisted;
-    return p.version === 1 ? { ...INITIAL, ...p, profile: { ...EMPTY_PROFILE, ...p.profile } } : null;
+    return raw ? normalize(JSON.parse(raw) as Persisted) : null;
   } catch {
     return null;
   }
 }
 
+async function putState(state: Persisted, keepalive = false) {
+  const res = await fetch("/api/state", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state, drafts: exportDrafts() }), keepalive });
+  if (!res.ok) throw new Error(`Save failed (${res.status})`);
+}
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<Persisted>(INITIAL);
   const [hydrated, setHydrated] = React.useState(false);
+  const [account, setAccount] = React.useState<Account | null>(null);
+  const [saveState, setSaveState] = React.useState<"saved" | "saving" | "error">("saved");
+  const stateRef = React.useRef(state);
+  stateRef.current = state;
+  const dirty = React.useRef(false);
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Load the account's studio. On the sign-in pages there is no account yet.
   React.useEffect(() => {
-    const saved = load();
-    if (saved) setState(saved);
-    setHydrated(true);
+    let live = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/state", { cache: "no-store" });
+        if (!res.ok) return;
+        const body = (await res.json()) as { user: Account; state: Persisted | null; drafts: unknown };
+        if (!live) return;
+        setAccount(body.user);
+        let saved = normalize(body.state);
+        if (saved) importDrafts(body.drafts);
+        else {
+          // First sign-in on a browser that already has work: move it into the account.
+          saved = legacyState();
+          importDrafts(legacyDrafts());
+          if (saved) await putState(saved).catch(() => {});
+        }
+        try {
+          localStorage.removeItem(KEY);
+        } catch {}
+        if (saved) setState(saved);
+      } catch {
+        /* offline: start empty, nothing is saved until the account loads */
+      } finally {
+        if (live) setHydrated(true);
+      }
+    })();
+    return () => {
+      live = false;
+    };
   }, []);
 
-  React.useEffect(() => {
-    if (!hydrated) return;
+  const flush = React.useCallback(async (keepalive = false) => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    if (!dirty.current) return;
+    dirty.current = false;
+    setSaveState("saving");
     try {
-      localStorage.setItem(KEY, JSON.stringify(state));
+      await putState(stateRef.current, keepalive);
+      setSaveState("saved");
     } catch {
-      /* storage full or blocked: keep working in memory */
+      dirty.current = true;
+      setSaveState("error");
     }
-  }, [state, hydrated]);
+  }, []);
+
+  const schedule = React.useCallback(() => {
+    dirty.current = true;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => void flush(), 800);
+  }, [flush]);
+
+  // Save a moment after each change (studio state or a draft).
+  const first = React.useRef(true);
+  React.useEffect(() => {
+    if (!hydrated || !account) return;
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    schedule();
+  }, [state, hydrated, account, schedule]);
+  React.useEffect(() => {
+    if (!account) return;
+    const off = onDraftsChange(schedule);
+    return () => {
+      off();
+    };
+  }, [account, schedule]);
+  // Don't lose the last change when the tab closes.
+  React.useEffect(() => {
+    const onHide = () => void flush(true);
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, [flush]);
+
+  const signOut = React.useCallback(async () => {
+    await flush();
+    await fetch("/api/auth/signout", { method: "POST" }).catch(() => {});
+    clearDrafts();
+    try {
+      localStorage.removeItem(KEY);
+    } catch {}
+    window.location.href = "/signin";
+  }, [flush]);
 
   const value = React.useMemo<Store>(() => {
     const set = (fn: (s: Persisted) => Partial<Persisted>) => setState((s) => ({ ...s, ...fn(s) }));
     const now = () => new Date().toISOString();
     return {
       hydrated,
+      account,
+      signOut,
+      saveState,
       onboarded: state.onboarded,
       completeOnboarding: ({ profile, requireApproval, reviewer }) => set(() => ({ onboarded: true, profile, requireApproval, reviewer })),
       resetAll: () => {
-        try {
-          localStorage.removeItem(KEY);
-        } catch {}
         clearDrafts();
         setState(INITIAL);
       },
@@ -181,7 +278,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       team: state.team,
       setTeam: (team) => set(() => ({ team })),
     };
-  }, [state, hydrated]);
+  }, [state, hydrated, account, signOut, saveState]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

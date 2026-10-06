@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PageContainer } from "@/components/shared/page";
 import { HeadshotPicker } from "@/components/settings/headshot-picker";
 import { MediaLibrary } from "@/components/settings/media-library";
+import { AccountSection } from "@/components/settings/account-section";
 import { BufferCard } from "@/components/buffer/buffer-card";
 import { useStore } from "@/lib/store";
 import { disclosureTemplate, firstDisclosure, initials } from "@/lib/profile";
@@ -27,6 +28,7 @@ const SECTIONS = [
   ["publishing", "Publishing"],
   ["approval", "Approval"],
   ["team", "Team"],
+  ["account", "Account"],
   ["reset", "Start over"],
 ] as const;
 
@@ -237,7 +239,11 @@ export default function SettingsPage() {
             </div>
           </Section>
 
-          <Section id="reset" title="Start over" desc="Clears your profile, videos, reviews and settings in this browser, then opens setup again. Your API keys and Buffer posts aren’t touched.">
+          <Section id="account" title="Account" desc="Your studio is saved to this account, so it's the same on every device you sign in on.">
+            <AccountSection />
+          </Section>
+
+          <Section id="reset" title="Start over" desc="Clears your profile, videos, reviews and settings from your account, then opens setup again. Your sign-in and Buffer posts aren’t touched.">
             <Button
               variant="outline"
               className="border-destructive/30 text-destructive hover:bg-warning-soft"

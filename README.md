@@ -2,7 +2,7 @@
 
 AI video content studio for financial advisors: **Idea → Thumbnail → Script → Descriptions → Record → Edit → Post**, with a compliance workflow built in.
 
-Renom starts as a blank studio: an advisor sets up a profile, then goes Idea → Script → Record → Edit → Review → Post. Claude writes the content, the built-in editor renders a real MP4, and files live in the storage bucket.
+Renom starts as a blank studio: an advisor creates an account, sets up a profile, then goes Idea → Script → Record → Edit → Review → Post. Claude writes the content, the built-in editor renders a real MP4, and files live in the storage bucket.
 
 ## Run it
 
@@ -132,6 +132,17 @@ npm run buffer -- metrics --json               # raw GraphQL response
 ```
 
 A rejected key prints `Buffer rejected the key (HTTP 401)`; a wrong `BUFFER_API_URL` prints `Couldn't reach …`. To point the app or the CLI at a local stand-in, set `BUFFER_API_URL=http://localhost:4555`.
+
+## Accounts (sign in / sign out)
+
+Everything is behind sign-in. Each advisor has an account (email + password) and their studio (profile, videos, reviews, work in progress) is saved to it, so it's the same on every device.
+
+- **Who can create an account:** the first account is open. After that, sign-ups need `INVITE_CODE` (set it in Railway and share it with the people you want to invite); with no code set, sign-ups are closed.
+- **Sessions:** a random token in an `HttpOnly`, `SameSite=Lax` cookie (Secure over https), valid 30 days; only its hash is stored. Sign-out deletes it.
+- **Passwords:** scrypt with a per-user salt; at least 10 characters. Sign-in is throttled (8 tries per email and address per 15 minutes). Change it in Settings → Account.
+- **Storage:** accounts, sessions and each advisor's studio live in the storage bucket (`users/`, `sessions/`, `state/`) next to their videos.
+- **Gate:** `src/middleware.ts` (Node runtime) checks the session on every page and API call; signed-out visitors go to `/signin`, API calls get 401.
+- **First sign-in on a browser that already has work** (from before accounts existed) moves that work into the account.
 
 ## Storage (videos, headshots, covers)
 

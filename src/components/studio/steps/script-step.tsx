@@ -218,7 +218,7 @@ function VersionCard({ label, description, selected, onClick, script, run }: { l
       </span>
       <span className="mt-1 text-[12px] leading-snug text-muted-foreground">{description}</span>
       <span className="mt-auto pt-2 text-[11px] text-muted-foreground tnum">
-        {run?.error ? <span className="text-destructive">Couldn’t write this one</span> : run ? <span className="inline-flex items-center gap-1"><LoaderCircle className="size-3 animate-spin text-primary" /> {run.status}</span> : script ? `${fmtDuration(estimateRuntime(script))} · ${script.body.length + 2} paragraphs` : "Waiting…"}
+        {run?.error ? <span className="text-destructive">Couldn’t write this one</span> : run ? <span className="inline-flex items-center gap-1"><LoaderCircle className="size-3 animate-spin text-primary" /> {run.status}</span> : script ? `${fmtDuration(estimateRuntime(script))} · ${script.body.length + 2} paragraphs` : "Not written yet"}
       </span>
     </button>
   );

@@ -4,42 +4,48 @@ import * as React from "react";
 
 /**
  * Scratch state for studio steps (generated ideas, copy, edits…), keyed by
- * video + step, saved in this browser. Swap for server persistence later.
+ * video + step. Saved to the signed-in advisor's account along with the rest
+ * of the studio (see store.tsx), so work in progress follows them between devices.
  */
-const KEY = "renom.drafts.v1";
+const LEGACY_KEY = "renom.drafts.v1";
 const cache = new Map<string, unknown>();
-let loaded = false;
+const listeners = new Set<() => void>();
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** Drafts are kept in this browser so work in progress survives a refresh. */
-function ensureLoaded() {
-  if (loaded || typeof window === "undefined") return;
-  loaded = true;
+/** Nothing to do: drafts are loaded by the store when the account loads. */
+function ensureLoaded() {}
+
+function scheduleSave() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => listeners.forEach((l) => l()), 400);
+}
+
+/** The store saves drafts with the account whenever they change. */
+export function onDraftsChange(fn: () => void) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+export const exportDrafts = () => Object.fromEntries(cache);
+export function importDrafts(saved: unknown) {
+  cache.clear();
+  if (saved && typeof saved === "object") for (const [k, v] of Object.entries(saved as Record<string, unknown>)) cache.set(k, v);
+}
+
+/** Drafts saved in this browser before accounts existed (moved into the account once). */
+export function legacyDrafts(): Record<string, unknown> | null {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) for (const [k, v] of Object.entries(JSON.parse(raw) as Record<string, unknown>)) if (!cache.has(k)) cache.set(k, v);
+    const raw = localStorage.getItem(LEGACY_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
   } catch {
-    /* unreadable: start fresh */
+    return null;
   }
 }
 
-function scheduleSave() {
-  if (typeof window === "undefined") return;
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(cache)));
-    } catch {
-      /* storage full or blocked: keep drafts in memory */
-    }
-  }, 300);
-}
-
-/** Forget every draft (used by "Start over"). */
+/** Forget every draft (used by "Start over" and sign-out). */
 export function clearDrafts() {
   cache.clear();
   try {
-    localStorage.removeItem(KEY);
+    localStorage.removeItem(LEGACY_KEY);
   } catch {}
 }
 
