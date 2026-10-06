@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProcessor, VideoProcessorError } from "@/lib/video/processor";
-import { saveUpload, updateUpload, uploadFilePath } from "@/lib/video/storage";
+import { saveUpload, updateUpload } from "@/lib/video/storage";
 import { ACCEPTED_VIDEO_TYPES, MAX_UPLOAD_MB, type UploadResponse } from "@/lib/video/types";
 
 export const dynamic = "force-dynamic";
@@ -43,11 +43,12 @@ export async function POST(request: Request) {
 
   const f = file as File;
   try {
+    const bytes = new Uint8Array(await f.arrayBuffer());
     const rec = await saveUpload(
       { filename: f.name || "take", mimeType: f.type.split(";")[0].trim().toLowerCase(), size: f.size, durationSec, videoId: (videoId as string | null) ?? undefined },
-      new Uint8Array(await f.arrayBuffer())
+      bytes
     );
-    const { remoteId } = await processor.upload(rec, uploadFilePath(rec));
+    const { remoteId } = await processor.upload(rec, bytes);
     await updateUpload(rec.id, { remoteId });
     const body: UploadResponse = { ok: true, sourceId: rec.id, processor: processor.id };
     return NextResponse.json(body);

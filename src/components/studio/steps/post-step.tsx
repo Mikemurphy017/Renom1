@@ -3,44 +3,36 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Check, CircleCheck, Hash, Lock, RefreshCw, Send, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CircleCheck, Hash, Lock, Send, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { VideoThumb } from "@/components/shared/video-thumb";
 import { PlatformIcon } from "@/components/shared/platform-icon";
 import { ComplianceBadge } from "@/components/shared/badges";
 import { BufferConfigure, BufferReview, BufferVideoLink, useBufferPlan } from "@/components/buffer/buffer-publish";
 import { useStore, voiceProfileOf } from "@/lib/store";
 import { useDraft } from "@/lib/drafts";
 import { isAbort, useWriter } from "@/lib/ai/writer";
-import { generateThumbnails, type PlatformCopy } from "@/lib/ai/content";
+import type { PlatformCopy } from "@/lib/ai/content";
 import { useAdvisorChannels, useBuffer } from "@/lib/buffer/use-buffer";
 import { platformForService } from "@/lib/buffer/types";
 import { activeDisclosure, composeCaption, disclosureFor } from "@/lib/compose";
 import { PLATFORMS, getPlatform } from "@/lib/mock/platforms";
 import { ME } from "@/lib/profile";
-import type { PlatformId, ThumbnailSpec } from "@/lib/types";
+import type { PlatformId } from "@/lib/types";
 import { cn, fmtNumber } from "@/lib/utils";
 import { AskBar, RequestLine, Writing } from "../ask-bar";
+import { CoverStudio } from "./cover-studio";
 import type { StepProps } from "../studio-view";
 
-type Cover = ThumbnailSpec & { id: string; size: string };
 const SUB = ["Cover", "Caption", "Schedule"] as const;
 
 export function PostStep({ video }: StepProps) {
-  const { profile, updateVideo, requireApproval, submitForReview, reviewer } = useStore();
+  const { profile, requireApproval, submitForReview, reviewer } = useStore();
   const vertical = video.format === "short";
   const [sub, setSub] = useDraft(video.id, "post.sub", 0);
-
-  // ── Cover ──
-  const [covers, setCovers] = useDraft<Cover[]>(video.id, "post.covers", () => {
-    const fresh = generateThumbnails(video.title, video.thumbnail ? 3 : 4, vertical ? "Instagram Reels" : "YouTube").map((c) => ({ ...c, size: vertical ? "768×1376" : "1376×768" }));
-    return video.thumbnail ? [{ ...video.thumbnail, id: "current", size: vertical ? "768×1376" : "1376×768" }, ...fresh] : fresh;
-  });
-  const [coverId, setCoverId] = useDraft<string>(video.id, "post.cover", covers[0]?.id ?? "");
 
   // ── Platforms (from Buffer when connected) ──
   const buffer = useBuffer();
@@ -92,8 +84,6 @@ export function PostStep({ video }: StepProps) {
   const [bufferPhase, setBufferPhase] = React.useState<"configure" | "review">("configure");
   const needsApproval = requireApproval && video.compliance !== "approved";
 
-  const chosenCover = covers.find((c) => c.id === coverId) ?? covers[0];
-
   return (
     <div className="mx-auto max-w-[1000px] space-y-8 pb-28">
       <div className="text-center">
@@ -114,27 +104,7 @@ export function PostStep({ video }: StepProps) {
         </div>
       </div>
 
-      {sub === 0 && (
-        <>
-          <p className="text-center text-[14px] text-muted-foreground">One headshot, endless poses. Pick the one you&rsquo;d stop scrolling for.</p>
-          <div className={cn("grid gap-4", vertical ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-1 sm:grid-cols-2")}>
-            {covers.map((c) => (
-              <button key={c.id + c.pose + c.style} onClick={() => setCoverId(c.id)} className={cn("cursor-pointer rounded-2xl p-1.5 transition-all", c.id === chosenCover?.id ? "bg-brass-soft ring-2 ring-primary" : "hover:bg-card")}>
-                <VideoThumb spec={c} format={video.format} size="md" label={c.size} className="rounded-xl" />
-                <div className="mt-1.5 text-[12px] text-muted-foreground">{c.id === "current" ? "Current" : c.headline}</div>
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center justify-between">
-            <Button variant="ghost" className="rounded-full" onClick={() => setCovers(generateThumbnails(video.title, 4, vertical ? "Instagram Reels" : "YouTube").map((c) => ({ ...c, id: c.id + Math.random(), size: vertical ? "768×1376" : "1376×768" })))}>
-              <RefreshCw /> More covers
-            </Button>
-            <Button className="rounded-full px-6" onClick={() => { if (chosenCover) updateVideo(video.id, { thumbnail: { style: chosenCover.style, pose: chosenCover.pose, headline: chosenCover.headline, accent: chosenCover.accent } }); setSub(1); }}>
-              Write captions <ArrowRight />
-            </Button>
-          </div>
-        </>
-      )}
+      {sub === 0 && <CoverStudio video={video} onDone={() => setSub(1)} />}
 
       {sub === 1 && (
         <>

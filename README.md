@@ -133,6 +133,19 @@ npm run buffer -- metrics --json               # raw GraphQL response
 
 A rejected key prints `Buffer rejected the key (HTTP 401)`; a wrong `BUFFER_API_URL` prints `Couldn't reach …`. To point the app or the CLI at a local stand-in, set `BUFFER_API_URL=http://localhost:4555`.
 
+## Storage (videos, headshots, covers)
+
+Everything the platform keeps (recorded takes, rendered videos, headshots, cover images, AI Edit job records) goes into one object store (`src/lib/storage/objects.ts`):
+
+- **Storage bucket (production).** Set `BUCKET`, `ENDPOINT`, `REGION`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`. On Railway, reference the bucket's Credentials variables (`${{bucket-name.BUCKET}}` …). Any S3-compatible bucket works; `STORAGE_PATH_STYLE=1` for path-style ones. Files are streamed through the app (`/api/video/files/:id`, `/api/media/:id`), with Range support so video seeks.
+- **Local disk (development).** With no bucket set, files go to `.data/`. A container's disk is wiped on every redeploy, so don't run production this way.
+
+A take uploads as soon as recording stops and is stored on the video (`video.take`), so it plays in Edit and Post after a reload. Buffer gets 7-day signed links to the stored video and cover automatically.
+
+## Covers (thumbnails)
+
+Post → Cover builds a long-form (1280×720, YouTube / LinkedIn) and a short-form (1080×1920, Reels / TikTok / Shorts) cover for every video. It picks the sharpest, best-lit frames from the advisor's own take (plus any headshots from Settings), Claude writes the words (task `covers`), and four templates per shape draw them on a canvas (`src/lib/thumbs`). The chosen pair is saved to storage as JPEGs and shown across the app.
+
 ## Recording
 
 The Record step uses the browser's camera and microphone (https or localhost only). Takes stay in memory for the session and can be downloaded. **Send to AI Edit** uploads the take and starts processing (below).
@@ -150,7 +163,7 @@ VIDEO_PROCESSOR=mock     # mock (default) | mirage
 MIRAGE_API_KEY=...       # in .env.local; server-only, sent as the x-api-key header
 MIRAGE_VERIFIED=1        # required before the Mirage adapter will make any call (see below)
 # MIRAGE_API_URL=...     # optional base URL override
-# VIDEO_DATA_DIR=.data   # where uploads and job records are stored (git-ignored)
+# VIDEO_DATA_DIR=.data   # local-disk storage when no bucket is configured (git-ignored)
 ```
 
 | Path | What |

@@ -6,7 +6,7 @@ import type { StoredUpload } from "./storage";
  * Server-only. Every provider (the offline mock, Mirage, a future one)
  * implements this, and the API routes only ever talk to this interface.
  *
- * Uploads always land on our own disk first (see storage.ts), so the app-facing
+ * Uploads always land in our own object store first (see storage.ts), so the app-facing
  * `sourceId` is our upload id; a provider keeps its own id in `remoteId`.
  */
 export interface VideoProcessor {
@@ -14,7 +14,7 @@ export interface VideoProcessor {
   /** Whether the provider is configured well enough to accept work. */
   readiness(): { ok: true } | { ok: false; reason: string };
   /** Send a stored take to the provider. Returns the provider's id for it. */
-  upload(source: StoredUpload, filePath: string): Promise<{ remoteId: string }>;
+  upload(source: StoredUpload, bytes: Uint8Array): Promise<{ remoteId: string }>;
   /** Start captions + edit + overlays work on an uploaded source. */
   process(req: ProcessRequest, source: StoredUpload): Promise<{ jobId: string }>;
   getStatus(jobId: string): Promise<JobStatus | null>;

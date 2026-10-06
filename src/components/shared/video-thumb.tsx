@@ -17,11 +17,22 @@ interface Props {
   /** scale headline font for small renders */
   size?: "xs" | "sm" | "md" | "lg";
   label?: string;
+  /** A rendered cover image; drawn instead of the spec when present. */
+  image?: string;
 }
 
 /** Renders a generated thumbnail: brand background, advisor headshot, bold overlay text. */
-export function VideoThumb({ spec, format = "short", className, size = "md", label }: Props) {
+export function VideoThumb({ spec, format = "short", className, size = "md", label, image }: Props) {
   const aspect = format === "short" ? "aspect-[9/16]" : "aspect-video";
+  if (image) {
+    return (
+      <div className={cn(aspect, "relative overflow-hidden rounded-md bg-muted", className)}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={image} alt={spec?.headline ?? ""} loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
+        {label && <span className="absolute top-1.5 right-1.5 rounded bg-black/45 px-1.5 py-0.5 text-[10px] font-medium text-white tnum backdrop-blur-sm">{label}</span>}
+      </div>
+    );
+  }
   if (!spec) {
     return (
       <div

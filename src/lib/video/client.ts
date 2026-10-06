@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import type { Take } from "@/lib/media/takes";
+import type { StoredTake } from "@/lib/types";
 import { ACCEPTED_VIDEO_TYPES, MAX_UPLOAD_MB, type JobEvent, type JobKind, type JobResult, type ProcessorId, type ProcessRequest, type UploadResponse } from "./types";
 
 /**
@@ -45,7 +46,7 @@ export function usePipeline(videoId: string, kind: JobKind) {
 }
 
 /** Multipart upload with progress (fetch can't report upload progress). */
-function uploadTake(videoId: string, take: Take, onProgress: (p: number) => void) {
+function sendTake(videoId: string, take: Take, onProgress: (p: number) => void) {
   return new Promise<UploadResponse>((resolve, reject) => {
     const type = take.mimeType.split(";")[0];
     if (!ACCEPTED_VIDEO_TYPES.includes(type)) return reject(new Error(`This browser recorded ${type}, which the editor can't take.`));
@@ -66,6 +67,42 @@ function uploadTake(videoId: string, take: Take, onProgress: (p: number) => void
     xhr.onerror = () => reject(new Error("Upload failed. Check your connection."));
     xhr.send(form);
   });
+}
+
+/** One upload per recorded take, shared by "save it" and "edit it". */
+const uploads = new WeakMap<Blob, Promise<UploadResponse>>();
+function uploadTake(videoId: string, take: Take, onProgress: (p: number) => void = () => {}) {
+  let p = uploads.get(take.blob);
+  if (!p) {
+    p = sendTake(videoId, take, onProgress);
+    uploads.set(take.blob, p);
+    p.catch(() => uploads.delete(take.blob));
+  }
+  return p;
+}
+
+/** Save a fresh take to platform storage so it outlives this tab. */
+export async function persistTake(videoId: string, take: Take): Promise<StoredTake> {
+  const up = await uploadTake(videoId, take);
+  return {
+    sourceId: up.sourceId,
+    url: `/api/video/files/${up.sourceId}`,
+    mimeType: take.mimeType.split(";")[0],
+    durationSec: take.durationSec,
+    width: take.width,
+    height: take.height,
+    recordedAt: take.recordedAt,
+  };
+}
+
+/** After a reload: put a finished analysis back so Edit shows the real transcript. */
+export async function restoreAnalysis(videoId: string, jobId: string, sourceId: string) {
+  const key = keyOf(videoId, "analyze");
+  if (states.get(key)) return;
+  const res = await fetch(`/api/video/jobs/${jobId}/result`, { cache: "no-store" });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.ok || states.get(key)) return;
+  set(key, { kind: "analyze", phase: "done", progress: 1, status: "Done", sourceId, jobId, result: body.result as JobResult });
 }
 
 async function startJob(req: ProcessRequest) {
@@ -106,14 +143,14 @@ async function followJob(jobId: string, onStatus: (progress: number, stage: stri
 type JobOptions = Omit<ProcessRequest, "kind" | "sourceId">;
 
 /** Record → Edit: upload the take, then transcribe it and suggest cuts. */
-export async function analyzeTake(videoId: string, take: Take, opts: JobOptions): Promise<JobResult> {
+export async function analyzeTake(videoId: string, take: Take | StoredTake, opts: JobOptions): Promise<JobResult> {
   const key = keyOf(videoId, "analyze");
   // Uploading is the first 30% of the bar, processing the rest.
   const base: PipelineState = { kind: "analyze", phase: "uploading", progress: 0, status: "Uploading your take…" };
   set(key, base);
   states.delete(keyOf(videoId, "render"));
   try {
-    const up = await uploadTake(videoId, take, (p) => set(key, { ...base, progress: p * 0.3 }));
+    const up = "sourceId" in take ? { sourceId: take.sourceId, processor: undefined } : await uploadTake(videoId, take, (p) => set(key, { ...base, progress: p * 0.3 }));
     const running: PipelineState = { ...base, phase: "processing", progress: 0.3, status: "Starting…", processor: up.processor, sourceId: up.sourceId };
     set(key, running);
     const { jobId } = await startJob({ ...opts, kind: "analyze", sourceId: up.sourceId });

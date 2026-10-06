@@ -101,7 +101,7 @@ export default function CompliancePage() {
                     onClick={() => setSelected(r.id)}
                     className={cn("flex w-full cursor-pointer items-center gap-3 rounded-lg border bg-card p-3 text-left shadow-soft transition-colors", selected === r.id ? "border-primary/60 ring-1 ring-primary/30" : "border-border hover:border-primary/30")}
                   >
-                    <VideoThumb spec={v.thumbnail} format={v.format} size="xs" className={v.format === "short" ? "w-9" : "w-16"} />
+                    <VideoThumb spec={v.thumbnail} image={v.covers?.[v.format]?.url} format={v.format} size="xs" className={v.format === "short" ? "w-9" : "w-16"} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px] font-medium">{v.title}</div>
                       <div className="mt-0.5 text-[11px] text-muted-foreground">{r.kind} · {relativeTime(r.submittedAt)}{openC ? ` · ${openC} open` : ""}</div>

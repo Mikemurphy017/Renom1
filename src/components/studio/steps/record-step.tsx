@@ -21,7 +21,7 @@ import { cn, fmtDuration } from "@/lib/utils";
 import { useCapture } from "@/lib/media/use-capture";
 import { getTake, saveTake, takeExtension } from "@/lib/media/takes";
 import { peekDraft } from "@/lib/drafts";
-import { analyzeTake } from "@/lib/video/client";
+import { analyzeTake, persistTake } from "@/lib/video/client";
 import { defaultOverlays } from "@/lib/video/edit-model";
 import { DEFAULT_EDIT, type OverlayOptions } from "@/lib/video/types";
 import { StepSection, FieldLabel } from "../step-layout";
@@ -133,7 +133,7 @@ export function RecordStep({ video, complete }: StepProps) {
 
   // Upload the take and start the AI edit; Edit shows the progress, so move on right away.
   const sendToAiEdit = () => {
-    const take = getTake(active.id);
+    const take = getTake(active.id) ?? active.take;
     setDoneOpen(false);
     if (take) {
       const target = active;
@@ -142,7 +142,9 @@ export function RecordStep({ video, complete }: StepProps) {
         edit: DEFAULT_EDIT,
         overlays: peekDraft<OverlayOptions>(target.id, "edit.overlays") ?? defaultOverlays(profile, target.format),
         script: scriptText(target),
-      }).catch((e) => toast.error("AI Edit couldn’t process this take", { description: (e as Error).message }));
+      })
+        .then((r) => updateVideo(target.id, { analysisJobId: r.jobId }))
+        .catch((e) => toast.error("AI Edit couldn’t process this take", { description: (e as Error).message }));
     }
     if (active.id === video.id) complete();
     else { updateVideo(active.id, { stage: "edit" }); toast.success("Sent to AI Edit", { description: active.title }); }
@@ -154,8 +156,15 @@ export function RecordStep({ video, complete }: StepProps) {
       setPlaying(false);
       try {
         const r = await capture.stopRecording();
-        saveTake(active.id, { ...r, recordedAt: new Date().toISOString() });
-        setLastTake(getTake(active.id));
+        const target = active.id;
+        saveTake(target, { ...r, recordedAt: new Date().toISOString() });
+        const fresh = getTake(target);
+        setLastTake(fresh);
+        // Save to platform storage right away so the take survives a reload or a redeploy.
+        if (fresh)
+          persistTake(target, fresh)
+            .then((take) => updateVideo(target, { take }))
+            .catch((e) => toast.error("Your take didn’t save", { description: `${(e as Error).message} Keep this tab open and try recording again.` }));
         setTakes((t) => t + 1);
         setDoneOpen(true);
       } catch (e) {
@@ -394,7 +403,7 @@ export function RecordStep({ video, complete }: StepProps) {
       <Dialog open={doneOpen} onOpenChange={setDoneOpen}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <div className="eyebrow">Take {takes} saved · <span className="tnum">{fmtDuration(Math.max(lastTake?.durationSec ?? elapsed, 1))}</span></div>
+            <div className="eyebrow">Take {takes} {active.take && active.take.recordedAt === lastTake?.recordedAt ? "saved to your library" : "saving…"} · <span className="tnum">{fmtDuration(Math.max(lastTake?.durationSec ?? elapsed, 1))}</span></div>
             <DialogTitle>Nice work. Who should edit this one?</DialogTitle>
             <DialogDescription>Watch it back, download it, or send it on for editing.</DialogDescription>
           </DialogHeader>

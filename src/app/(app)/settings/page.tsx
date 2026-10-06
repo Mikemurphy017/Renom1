@@ -1,17 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { Check, CircleAlert, History, Lock, Mail, Plus, Sparkles, Upload, UserPlus, X } from "lucide-react";
+import { Check, CircleAlert, History, Lock, Mail, Plus, Sparkles, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageContainer } from "@/components/shared/page";
-import { Headshot } from "@/components/shared/headshot";
+import { HeadshotPicker } from "@/components/settings/headshot-picker";
 import { BufferCard } from "@/components/buffer/buffer-card";
 import { useStore } from "@/lib/store";
 import { disclosureTemplate, firstDisclosure, initials } from "@/lib/profile";
@@ -148,18 +147,8 @@ export default function SettingsPage() {
             <Field label="How you write" hint="Paste a newsletter or LinkedIn post">
               <Textarea rows={5} value={p.sampleWriting} onChange={(e) => updateProfile({ sampleWriting: e.target.value })} className="font-serif text-[15px]" />
             </Field>
-            <Field label="Headshots" hint="One headshot, endless poses">
-              <div className="flex flex-wrap gap-3">
-                {p.headshots.map((h, i) => (
-                  <div key={h.id} className="relative size-24 overflow-hidden rounded-xl border border-border bg-gradient-to-b from-[#E9E4D9] to-[#D8D1C2]" title={h.label}>
-                    <Headshot pose={h.pose} className="absolute inset-0 h-full w-full" />
-                    {i === 0 && <Badge variant="navy" className="absolute top-1.5 left-1.5">Primary</Badge>}
-                  </div>
-                ))}
-                <button type="button" onClick={() => toast("Uploads need file storage", { description: "Coming with the storage setup." })} className="flex size-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-[12px] text-muted-foreground hover:border-primary/50">
-                  <Upload className="size-4" /> Upload
-                </button>
-              </div>
+            <Field label="Headshots" hint="Used on your thumbnails when a frame from the video won’t do">
+              <HeadshotPicker />
             </Field>
           </Section>
 

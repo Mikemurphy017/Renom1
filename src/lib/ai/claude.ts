@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { HOUSE_VOICE, advisorBlock } from "./voice";
-import { CaptionsSchema, IdeasSchema, ScriptSchema } from "./schemas";
+import { CaptionsSchema, CoversSchema, IdeasSchema, ScriptSchema } from "./schemas";
 import type { WriteRequest } from "./write-types";
 import { PLATFORMS } from "../mock/platforms";
 
@@ -56,6 +56,19 @@ ${specs}
 
 Write natively for each platform: LinkedIn reads like a short post a professional would write; Instagram and TikTok are tighter; YouTube descriptions can carry a few lines of context. Where a link belongs, use the placeholder {{BOOKING_LINK}}. Don't add disclosures — the app appends them.${revise(req.current, req.instruction)}`;
     }
+
+    case "covers":
+      return `Write the words for this video's thumbnails. The advisor's face from the video sits beside the words, so the words carry the curiosity and the face carries the trust.
+Video: "${req.video.title}" (made as ${req.video.format === "short" ? "short-form vertical" : "long-form horizontal"}; write both shapes anyway)
+${req.video.script ? `Hook: ${req.video.script.hook}\nBody:\n${req.video.script.body.join("\n")}` : `Outline:\n${req.video.outline.map((o) => `- ${o}`).join("\n")}`}
+
+Rules for thumbnail words:
+- Never repeat the title. Add what the title leaves out: the stake, the number, the enemy, the open loop.
+- Two to five words. Concrete nouns and numbers beat adjectives. Readable at phone size in one glance.
+- Each of the four options in a shape uses a different tactic (specific number, open loop, named mistake, contrarian claim, plain question).
+- Short-form covers read on a grid next to other covers: punchier, more personal ("I'd skip this IRA move").
+- No promises of returns, no "guaranteed", "safe", "best", "free money", no superlatives about results, no fear-mongering about markets. Curiosity, not hype.
+- The accent is the single word that carries the punch, copied exactly from the headline.${req.instruction ? `\n\nThe advisor asked: "${req.instruction}"` : ""}`;
   }
 }
 
@@ -64,7 +77,7 @@ function descBudget(id: string, limit: number) {
   return id === "x" ? 200 : Math.min(limit, 3000) - 650;
 }
 
-const SCHEMAS = { ideas: IdeasSchema, script: ScriptSchema, captions: CaptionsSchema } as const;
+const SCHEMAS = { ideas: IdeasSchema, script: ScriptSchema, captions: CaptionsSchema, covers: CoversSchema } as const;
 
 export async function writeWithClaude(req: WriteRequest) {
   const client = new Anthropic();

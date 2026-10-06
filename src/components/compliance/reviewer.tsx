@@ -45,7 +45,7 @@ export function Reviewer({ review }: { review: ReviewItem }) {
   return (
     <div className="rounded-lg border border-border bg-card shadow-soft">
       <div className="flex flex-wrap items-start gap-4 border-b border-border p-5">
-        <VideoThumb spec={video.thumbnail} format={video.format} size="xs" className={video.format === "short" ? "w-12" : "w-24"} />
+        <VideoThumb spec={video.thumbnail} image={video.covers?.[video.format]?.url} format={video.format} size="xs" className={video.format === "short" ? "w-12" : "w-24"} />
         <div className="min-w-0 flex-1">
           <div className="eyebrow">{review.kind} · submitted by {review.submittedBy} {relativeTime(review.submittedAt)}</div>
           <h3 className="mt-1 font-serif text-xl">{video.title}</h3>

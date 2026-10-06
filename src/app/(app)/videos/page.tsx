@@ -76,7 +76,7 @@ export default function VideosPage() {
           {list.map((v) => (
             <Link key={v.id} href={`/studio/${v.id}/${v.stage}`} className="group rounded-2xl border border-border bg-card p-3 shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-lg">
               <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-xl bg-muted/70">
-                <VideoThumb spec={v.thumbnail} format={v.format} size="sm" className={v.format === "short" ? "h-[86%] w-auto" : "w-[90%]"} />
+                <VideoThumb spec={v.thumbnail} image={v.covers?.[v.format]?.url} format={v.format} size="sm" className={v.format === "short" ? "h-[86%] w-auto" : "w-[90%]"} />
               </div>
               <div className="px-1 pt-3 pb-1">
                 <div className="line-clamp-2 min-h-[2.5em] text-[14px] leading-snug font-medium">{v.title}</div>

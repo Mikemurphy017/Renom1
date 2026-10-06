@@ -34,6 +34,19 @@ export const CaptionsSchema = z.object({
   note: z.string().describe("One short sentence to the advisor"),
 });
 
+const CoverLine = z.object({
+  headline: z.string().describe("2–5 words, at most 26 characters, the text burned onto the image"),
+  accent: z.string().describe("The one word from the headline to color for emphasis, copied exactly"),
+  kicker: z.string().describe("1–3 word label above the headline, e.g. a topic or a number (\"TAX PLANNING\", \"3 MISTAKES\")"),
+  angle: z.string().describe("Two or three words naming the tactic, e.g. \"open loop\", \"specific number\", \"enemy\""),
+});
+
+export const CoversSchema = z.object({
+  long: z.array(CoverLine).describe("Four lines for a 16:9 YouTube / LinkedIn thumbnail, read at a glance next to a face"),
+  short: z.array(CoverLine).describe("Four lines for a 9:16 Reels / TikTok / Shorts cover, read on a grid of covers"),
+});
+
 export type IdeasOutput = z.infer<typeof IdeasSchema>;
 export type ScriptOutput = z.infer<typeof ScriptSchema>;
 export type CaptionsOutput = z.infer<typeof CaptionsSchema>;
+export type CoversOutput = z.infer<typeof CoversSchema>;

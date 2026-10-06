@@ -3,7 +3,8 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Check, CircleAlert, LoaderCircle, Plus, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CircleAlert, ImagePlus, LoaderCircle, Plus, X } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,8 +17,9 @@ import { EMPTY_PROFILE, disclosureTemplate, firstDisclosure } from "@/lib/profil
 import type { AdvisorProfile } from "@/lib/types";
 import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
+import { uploadImage } from "@/lib/media/upload";
 
-const STEPS = ["welcome", "name", "practice", "audience", "voice", "beliefs", "compliance", "connect", "done"] as const;
+const STEPS = ["welcome", "name", "practice", "audience", "voice", "beliefs", "photo", "compliance", "connect", "done"] as const;
 type Step = (typeof STEPS)[number];
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -58,6 +60,23 @@ export default function WelcomePage() {
   const [requireApproval, setRequireApproval] = React.useState(true);
   const [reviewer, setReviewer] = React.useState("");
   const [claude, setClaude] = React.useState<boolean | null>(null);
+  const [photoBusy, setPhotoBusy] = React.useState(false);
+  const addPhotos = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setPhotoBusy(true);
+    try {
+      const added: AdvisorProfile["headshots"] = [];
+      for (const f of Array.from(files).slice(0, 4)) {
+        const up = await uploadImage(f, "headshot", "headshot");
+        added.push({ id: up.id, label: f.name.replace(/\.[^.]+$/, ""), pose: "center", url: up.url });
+      }
+      setP((x) => ({ ...x, headshots: [...x.headshots.filter((h) => h.url), ...added] }));
+    } catch (e) {
+      toast.error("Upload failed", { description: (e as Error).message });
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
 
   React.useEffect(() => {
     if (hydrated && onboarded) router.replace("/");
@@ -91,6 +110,7 @@ export default function WelcomePage() {
     audience: !!p.niche.trim() && !!p.idealClient.trim(),
     voice: true,
     beliefs: true,
+    photo: !photoBusy,
     compliance: !!disclosure.trim() && (!requireApproval || !!reviewer.trim()),
     connect: true,
     done: true,
@@ -211,6 +231,27 @@ export default function WelcomePage() {
               </>
             )}
 
+            {step === "photo" && (
+              <>
+                <h1 className="font-serif text-[40px] leading-tight tracking-tight">Add a headshot.</h1>
+                <p className="-mt-4 text-[15px] text-muted-foreground">Your thumbnails are built from frames of your videos. A good photo or two gives them more to work with.</p>
+                <div className="flex flex-wrap gap-3">
+                  {p.headshots.filter((h) => h.url).map((h) => (
+                    <div key={h.id} className="group relative size-28 overflow-hidden rounded-2xl border border-border bg-muted">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={h.url} alt={h.label} className="h-full w-full object-cover" />
+                      <button type="button" aria-label="Remove" onClick={() => set("headshots", p.headshots.filter((x) => x.id !== h.id))} className="absolute top-1.5 right-1.5 flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/55 text-white"><X className="size-3.5" /></button>
+                    </div>
+                  ))}
+                  <label className={cn("flex size-28 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-border text-[13px] text-muted-foreground hover:border-primary/50", photoBusy && "cursor-wait")}>
+                    {photoBusy ? <LoaderCircle className="size-5 animate-spin" /> : <ImagePlus className="size-5" />}
+                    {photoBusy ? "Saving…" : "Upload"}
+                    <input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden disabled={photoBusy} onChange={(e) => addPhotos(e.target.files)} />
+                  </label>
+                </div>
+              </>
+            )}
+
             {step === "compliance" && (
               <>
                 <h1 className="font-serif text-[40px] leading-tight tracking-tight">Keep compliance happy.</h1>
@@ -266,7 +307,7 @@ export default function WelcomePage() {
             <Button variant="ghost" className="rounded-full" onClick={() => go(i - 1)}><ArrowLeft /> Back</Button>
           ) : <span />}
           <div className="flex items-center gap-2">
-            {(step === "voice" || step === "beliefs") && <Button variant="ghost" className="rounded-full text-muted-foreground" onClick={() => go(i + 1)}>Skip for now</Button>}
+            {(step === "voice" || step === "beliefs" || step === "photo") && <Button variant="ghost" className="rounded-full text-muted-foreground" onClick={() => go(i + 1)}>Skip for now</Button>}
             {step === "done" ? (
               <Button size="lg" className="rounded-full px-7" onClick={finish}>Make my first video <ArrowRight /></Button>
             ) : (

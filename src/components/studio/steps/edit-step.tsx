@@ -17,7 +17,7 @@ import { useStore } from "@/lib/store";
 import { BRAND } from "@/lib/brand";
 import type { Video } from "@/lib/types";
 import { cn, fmtDuration, sleep } from "@/lib/utils";
-import { analyzeTake, renderFinal, usePipeline, type PipelineState } from "@/lib/video/client";
+import { analyzeTake, renderFinal, restoreAnalysis, usePipeline, type PipelineState } from "@/lib/video/client";
 import { cutsFromSegments, defaultOverlays, segmentsFromResult, type Segment } from "@/lib/video/edit-model";
 import { DEFAULT_EDIT, type OverlayOptions } from "@/lib/video/types";
 import type { StepProps } from "../studio-view";
@@ -53,7 +53,17 @@ function buildSegments(v: Video): Segment[] {
 const KIND_LABEL: Record<Segment["kind"], string> = { speech: "", silence: "Dead air", retake: "Bad take", filler: "Filler" };
 
 export function EditStep(props: StepProps) {
-  const analysis = usePipeline(props.video.id, "analyze");
+  const { video } = props;
+  const { updateVideo } = useStore();
+  const analysis = usePipeline(video.id, "analyze");
+  const doneJob = analysis?.phase === "done" ? analysis.result?.jobId : undefined;
+  // After a reload, bring back the last finished analysis of the saved take.
+  React.useEffect(() => {
+    if (!analysis && video.analysisJobId && video.take) restoreAnalysis(video.id, video.analysisJobId, video.take.sourceId).catch(() => {});
+  }, [analysis, video.id, video.analysisJobId, video.take]);
+  React.useEffect(() => {
+    if (doneJob && doneJob !== video.analysisJobId) updateVideo(video.id, { analysisJobId: doneJob });
+  }, [doneJob, video.id, video.analysisJobId, updateVideo]);
   // Remount when a processed result arrives so the transcript switches over cleanly.
   return <EditStudio key={analysis?.result?.jobId ?? "sample"} {...props} analysis={analysis} />;
 }
@@ -67,7 +77,9 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
   const render = usePipeline(video.id, "render");
   const [rendering, setRendering] = React.useState(false);
   const [t, setT] = React.useState(0);
-  const take = React.useSyncExternalStore(subscribeTakes, () => getTake(video.id), () => undefined);
+  const memTake = React.useSyncExternalStore(subscribeTakes, () => getTake(video.id), () => undefined);
+  // This tab's take if there is one, otherwise the one saved to platform storage.
+  const take = memTake ?? video.take;
   const takeRef = React.useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = React.useState(false);
   const [zoom, setZoom] = React.useState(1.5);

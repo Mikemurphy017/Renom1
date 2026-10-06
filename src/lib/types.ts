@@ -67,6 +67,31 @@ export interface Video {
   outputUrl?: string;
   /** Exactly what went out, kept for books-and-records. */
   posts?: PostRecord[];
+  /** The recorded take, saved to platform storage. */
+  take?: StoredTake;
+  /** Last finished AI Edit analysis, so the transcript survives a reload. */
+  analysisJobId?: string;
+  /** Rendered cover images, one per shape. */
+  covers?: Partial<Record<VideoFormat, CoverImage>>;
+}
+
+export interface StoredTake {
+  sourceId: string;
+  url: string;
+  mimeType: string;
+  durationSec: number;
+  width: number;
+  height: number;
+  recordedAt: string;
+}
+
+export interface CoverImage {
+  /** Media id in platform storage. */
+  id: string;
+  url: string;
+  headline: string;
+  template: string;
+  createdAt: string;
 }
 
 export interface PostRecord {
@@ -108,7 +133,8 @@ export interface AdvisorProfile {
   opinions: string[];
   sampleWriting: string;
   brandColors: string[];
-  headshots: { id: string; label: string; pose: Pose }[];
+  /** Uploaded photos (url set) are used on covers; pose-only entries are legacy placeholders. */
+  headshots: { id: string; label: string; pose: Pose; url?: string }[];
   disclosures: DisclosureVersion[];
 }
 

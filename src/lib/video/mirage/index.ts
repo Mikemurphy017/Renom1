@@ -1,4 +1,3 @@
-import { promises as fs } from "node:fs";
 import { getJob, newId, saveJob } from "../storage";
 import { VideoProcessorError, type VideoProcessor } from "../processor";
 import type { JobKind } from "../types";
@@ -55,10 +54,9 @@ export const mirageProcessor: VideoProcessor = {
   id: "mirage",
   readiness: ready,
 
-  async upload(source, filePath) {
+  async upload(source, bytes) {
     assertReady();
-    const bytes = await fs.readFile(filePath);
-    const { body, headers } = M.uploadRequest(new Blob([bytes], { type: source.mimeType }), source.filename);
+    const { body, headers } = M.uploadRequest(new Blob([bytes as BlobPart], { type: source.mimeType }), source.filename);
     const json = await call(M.PATHS.upload, { method: "POST", body, headers });
     return { remoteId: M.parseUpload(json) };
   },
