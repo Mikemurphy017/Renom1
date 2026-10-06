@@ -2,10 +2,9 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Settings2, Camera, CameraOff, Check, ChevronsDown, ChevronsUp, Clapperboard, Download, ListVideo, Pause, Play, RotateCcw, Sparkles, UserRound, Video as VideoIcon } from "lucide-react";
+import { Settings2, Camera, CameraOff, Check, Clapperboard, Download, Keyboard, ListVideo, Minus, Pause, Play, Plus, RotateCcw, Sparkles, UserRound, Video as VideoIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,6 +24,7 @@ import { analyzeTake, persistTake } from "@/lib/video/client";
 import { defaultOverlays } from "@/lib/video/edit-model";
 import { DEFAULT_EDIT, type OverlayOptions } from "@/lib/video/types";
 import { StepSection, FieldLabel } from "../step-layout";
+import { PrompterSettingsPanel, PrompterShortcuts, Teleprompter, usePrompterSettings, WPM_STEP, type TeleprompterHandle } from "../teleprompter";
 import type { StepProps } from "../studio-view";
 
 const scriptText = (v: Video) => {
@@ -53,11 +53,9 @@ export function RecordStep({ video, complete }: StepProps) {
   const active = queueCandidates.find((v) => v.id === activeId) ?? video;
   const lines = scriptText(active);
 
-  // prompter settings
-  const [fontSize, setFontSize] = React.useState(30);
-  const [speed, setSpeed] = React.useState(32); // px/s
-  const [opacity, setOpacity] = React.useState(55);
-  const [align, setAlign] = React.useState<"left" | "center">("center");
+  // prompter settings (remembered on this device)
+  const [prompterSettings, updatePrompter] = usePrompterSettings();
+  const prompter = React.useRef<TeleprompterHandle>(null);
   // camera settings
   const [aspect, setAspect] = React.useState<"9:16" | "16:9">(active.format === "short" ? "9:16" : "16:9");
   const [position, setPosition] = React.useState("center");
@@ -74,24 +72,12 @@ export function RecordStep({ video, complete }: StepProps) {
   const [playing, setPlaying] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
   const [elapsed, setElapsed] = React.useState(0);
-  const [offset, setOffset] = React.useState(0);
+  // Prompter position, in words from the top; the prompter owns the scroll.
+  const setOffset = React.useCallback((words: number) => prompter.current?.seek(words), []);
   const [takes, setTakes] = React.useState(0);
   const [doneOpen, setDoneOpen] = React.useState(false);
 
   React.useEffect(() => setAspect(active.format === "short" ? "9:16" : "16:9"), [active.format]);
-
-  React.useEffect(() => {
-    if (!playing) return;
-    let raf = 0;
-    let last = performance.now();
-    const tick = (t: number) => {
-      setOffset((o) => o + ((t - last) / 1000) * speed);
-      last = t;
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [playing, speed]);
 
   React.useEffect(() => {
     if (!recording) return;
@@ -200,26 +186,8 @@ export function RecordStep({ video, complete }: StepProps) {
               <TabsTrigger value="prompter" className="flex-1">Teleprompter</TabsTrigger>
               <TabsTrigger value="camera" className="flex-1">Camera</TabsTrigger>
             </TabsList>
-            <TabsContent value="prompter" className="space-y-5 pt-2">
-              <div>
-                <FieldLabel hint={<span className="tnum">{fontSize}px</span>}>Font size</FieldLabel>
-                <Slider value={[fontSize]} min={18} max={56} onValueChange={([v]) => setFontSize(v)} />
-              </div>
-              <div>
-                <FieldLabel hint={<span className="tnum">{speed} px/s</span>}>Scroll speed</FieldLabel>
-                <Slider value={[speed]} min={8} max={120} onValueChange={([v]) => setSpeed(v)} />
-              </div>
-              <div>
-                <FieldLabel hint={<span className="tnum">{opacity}%</span>}>Background opacity</FieldLabel>
-                <Slider value={[opacity]} min={0} max={100} onValueChange={([v]) => setOpacity(v)} />
-              </div>
-              <div>
-                <FieldLabel>Alignment</FieldLabel>
-                <ToggleGroup type="single" value={align} onValueChange={(v) => v && setAlign(v as "left" | "center")} className="w-full">
-                  <ToggleGroupItem value="left" className="flex-1">Left</ToggleGroupItem>
-                  <ToggleGroupItem value="center" className="flex-1">Center</ToggleGroupItem>
-                </ToggleGroup>
-              </div>
+            <TabsContent value="prompter" className="pt-2">
+              <PrompterSettingsPanel settings={prompterSettings} update={updatePrompter} />
             </TabsContent>
             <TabsContent value="camera" className="space-y-5 pt-2">
               <div>
@@ -276,7 +244,7 @@ export function RecordStep({ video, complete }: StepProps) {
       </div>
       <div className="mx-auto min-w-0 max-w-[1000px] space-y-6">
         {/* Stage */}
-        <div className="overflow-hidden rounded-2xl border border-border bg-[#06101F] shadow-soft">
+        <div data-prompter-scope className="overflow-hidden rounded-2xl border border-border bg-[#06101F] shadow-soft">
           <div className={cn("relative flex h-[min(62vh,600px)] items-center px-6 py-6", position === "left" ? "justify-start" : position === "right" ? "justify-end" : "justify-center")}>
             <div className={cn("relative h-full overflow-hidden rounded-md bg-gradient-to-b from-[#2A3B55] to-[#1A2840] shadow-2xl", vertical ? "aspect-[9/16]" : "aspect-video max-w-full")}>
               {stream ? (
@@ -288,19 +256,17 @@ export function RecordStep({ video, complete }: StepProps) {
                 </div>
               )}
               {/* Teleprompter */}
-              <div className="absolute inset-x-0 top-0 h-[46%] overflow-hidden" style={{ background: `rgba(6,16,31,${opacity / 100})` }}>
-                <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-[#06101F]/80 to-transparent" />
-                <div className="absolute inset-x-0 top-[38%] z-10 h-px bg-[#D2B07A]/50" />
-                <div
-                  className={cn("px-[7%] pt-[18%] font-medium text-white", align === "center" ? "text-center" : "text-left")}
-                  style={{ fontSize: vertical ? fontSize * 0.62 : fontSize * 0.8, lineHeight: 1.35, transform: `translateY(${-offset}px)` }}
-                >
-                  {lines.map((l, i) => (
-                    <p key={i} className="mb-[0.8em]">{l}</p>
-                  ))}
-                  <p className="text-[#D2B07A]">■ End of script</p>
-                </div>
-              </div>
+              <Teleprompter
+                ref={prompter}
+                lines={lines}
+                settings={prompterSettings}
+                update={updatePrompter}
+                vertical={vertical}
+                playing={playing}
+                onPlayingChange={setPlaying}
+                recording={recording}
+                keyboard={!doneOpen}
+              />
               {recording && (
                 <div className="absolute top-3 left-3 z-20 inline-flex items-center gap-1.5 rounded bg-black/55 px-2 py-1 text-[11px] font-semibold text-white tnum">
                   <span className="size-2 animate-pulse rounded-full bg-[#E5484D]" /> REC {fmtDuration(elapsed)}
@@ -339,18 +305,25 @@ export function RecordStep({ video, complete }: StepProps) {
               <RotateCcw />
             </Button>
             <div className="mx-1 h-5 w-px bg-white/15" />
-            <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" onClick={() => setSpeed((s) => Math.max(8, s - 6))} aria-label="Slower">
-              <ChevronsDown />
+            <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" onClick={() => updatePrompter((s) => ({ wpm: s.wpm - WPM_STEP }))} aria-label="Slower">
+              <Minus />
             </Button>
-            <span className="w-16 text-center text-[12px] text-white/70 tnum">{speed} px/s</span>
-            <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" onClick={() => setSpeed((s) => Math.min(120, s + 6))} aria-label="Faster">
-              <ChevronsUp />
+            <span className="w-[4.5rem] text-center text-[12px] text-white/70 tnum" aria-live="polite">{prompterSettings.wpm} wpm</span>
+            <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" onClick={() => updatePrompter((s) => ({ wpm: s.wpm + WPM_STEP }))} aria-label="Faster">
+              <Plus />
             </Button>
+            <div className="mx-1 h-5 w-px bg-white/15" />
             <Popover>
               <PopoverTrigger asChild>
                 <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" aria-label="Recording settings"><Settings2 /></Button>
               </PopoverTrigger>
               <PopoverContent align="start" side="top" className="w-80">{settingsPanel}</PopoverContent>
+            </Popover>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="icon-sm" variant="ghost" className="hidden text-white hover:bg-white/10 sm:inline-flex" aria-label="Keyboard shortcuts"><Keyboard /></Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" side="top" className="w-72"><PrompterShortcuts /></PopoverContent>
             </Popover>
             <div className="ml-auto flex items-center gap-4">
               <span className="hidden text-[12px] text-white/60 sm:inline">
