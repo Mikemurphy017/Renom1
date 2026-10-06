@@ -1,4 +1,4 @@
-import { Lightbulb, ScrollText, Video, Scissors, Send, type LucideIcon } from "lucide-react";
+import { Lightbulb, ScrollText, Video, Scissors, Send, MonitorPlay, type LucideIcon } from "lucide-react";
 import type { StageId } from "./types";
 
 export interface StageDef {
@@ -14,7 +14,8 @@ export const STAGES: StageDef[] = [
   { id: "script", label: "Script", icon: ScrollText, prompt: "Your words, sharpened." },
   { id: "record", label: "Record", icon: Video, prompt: "Read it like you mean it." },
   { id: "edit", label: "Edit", icon: Scissors, prompt: "Cut the pauses. Keep you." },
-  { id: "post", label: "Post", icon: Send, prompt: "Approve it, schedule it, done." },
+  { id: "review", label: "Review", icon: MonitorPlay, prompt: "Watch it once. Then post." },
+  { id: "post", label: "Post", icon: Send, prompt: "Download it, copy the post, done." },
 ];
 
 export const stageIndex = (id: StageId) => STAGES.findIndex((s) => s.id === id);

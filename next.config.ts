@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Resolved at runtime to the bundled ffmpeg binary.
+  serverExternalPackages: ["ffmpeg-static"],
   async redirects() {
     return [
       { source: "/board", destination: "/videos", permanent: false },

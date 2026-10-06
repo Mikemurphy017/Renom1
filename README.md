@@ -2,7 +2,7 @@
 
 AI video content studio for financial advisors: **Idea → Thumbnail → Script → Descriptions → Record → Edit → Post**, with a compliance workflow built in.
 
-This is a prototype running on realistic mock data (one advisor, 16 videos at different stages). External services (Claude, Buffer, the video processor) are optional and fall back to offline samples when not configured.
+Renom starts as a blank studio: an advisor sets up a profile, then goes Idea → Script → Record → Edit → Review → Post. Claude writes the content, the built-in editor renders a real MP4, and files live in the storage bucket.
 
 ## Run it
 
@@ -152,14 +152,17 @@ The Record step uses the browser's camera and microphone (https or localhost onl
 
 ## AI edit (captions, cuts, overlays)
 
-Recorded takes are processed by a swappable, server-side **video processor**: it transcribes the take (word timings), suggests cuts (dead air, bad takes, filler) and renders the final video with captions and overlays.
+Recorded takes are processed by a swappable, server-side **video processor**. The default is the built-in **local** editor (ffmpeg, bundled through `ffmpeg-static`, so production needs no system packages): it measures the take's audio to find the pauses, lays the script over the stretches where the advisor was talking, and renders a real MP4 (H.264/AAC, 1080×1920 or 1920×1080) with the advisor's cuts, burned-in captions, name title, end card and cleaned-up audio. It has no speech recognition, so it doesn't invent retakes or filler words, and caption words follow the script.
 
-1. Record → **Send to AI Edit**: the take is uploaded (`POST /api/video/upload`) and an `analyze` job starts. The app moves to Edit right away and shows live progress.
-2. Edit: the transcript and suggested cuts come from the job result (the hand-written sample is only used when there's no take). Click to cut/restore, the timeline and **Skip cuts** work against the real take. The **Look** panel sets caption style (Classic / Bold / Minimal), position, highlight color, and the AI overlays (name & credentials lower third, key-phrase emphasis, end card), previewed live and saved per video.
-3. **Finish edit** starts a `render` job with the advisor's final cuts and look, and stores the output URL on the video (`video.outputUrl`). An https output URL pre-fills the Buffer video link in Post.
+1. Record: the take uploads to storage as soon as recording stops. **Send to AI Edit** (or just opening Edit) (`POST /api/video/upload`) and an `analyze` job starts. The app moves to Edit right away and shows live progress.
+2. Edit: the transcript and suggested cuts come from the job result; the filmstrip and waveform come from the real take. Click to cut/restore, the timeline and **Skip cuts** work against the real take. The **Look** panel sets caption style (Classic / Bold / Minimal), position, highlight color, and the AI overlays (name & credentials lower third, key-phrase emphasis, end card), previewed live and saved per video.
+3. **Finish edit** starts a `render` job with the advisor's final cuts and look and stores the MP4 (`video.output`).
+4. **Review**: watch the exact file, download it, or go back and change it.
+5. **Post**: download the MP4 and covers, copy each platform's caption (disclosure included) with one click, mark it posted, or send captions to Buffer as drafts and attach the MP4 there.
 
 ```bash
-VIDEO_PROCESSOR=mock     # mock (default) | mirage
+VIDEO_PROCESSOR=local    # local (default, ffmpeg) | mock | mirage
+# FFMPEG_PATH=...        # optional: use a specific ffmpeg instead of the bundled one
 MIRAGE_API_KEY=...       # in .env.local; server-only, sent as the x-api-key header
 MIRAGE_VERIFIED=1        # required before the Mirage adapter will make any call (see below)
 # MIRAGE_API_URL=...     # optional base URL override
@@ -170,7 +173,9 @@ MIRAGE_VERIFIED=1        # required before the Mirage adapter will make any call
 |---|---|
 | `src/lib/video/types.ts` | Shared types: `OverlayOptions`, `EditOptions`, `ProcessRequest`, `JobStatus`, `JobResult` |
 | `src/lib/video/processor.ts` | The `VideoProcessor` interface and env-based selection |
-| `src/lib/video/mock.ts` | Offline processor (what runs today) |
+| `src/lib/video/local/` | Built-in ffmpeg editor (what runs today): `analyze.ts` pauses + script timing, `render.ts` cuts, captions (ASS), titles, audio, MP4 |
+| `src/lib/video/mock.ts` | Simulated processor for UI work (`VIDEO_PROCESSOR=mock`); returns the original file |
+| `assets/fonts/` | Liberation Sans (OFL), burned into captions and titles |
 | `src/lib/video/mirage/endpoints.ts` | **Every** Mirage path and field mapping, all marked `TODO(mirage-docs)` |
 | `src/lib/video/mirage/index.ts` | Mirage adapter (`fetch` + `x-api-key`), refuses to run until verified |
 | `src/lib/video/storage.ts` | Local disk storage for uploads and job records (`.data/`) |
@@ -187,9 +192,9 @@ API (all server-side, keys never reach the browser):
 | `GET /api/video/jobs/[id]` | Job status (`queued` / `processing` / `done` / `failed`, progress, status line) |
 | `GET /api/video/jobs/[id]/stream` | NDJSON: status lines, then the result (like `/api/write`) |
 | `GET /api/video/jobs/[id]/result` | Output URL, transcript with word timings, cuts, key phrases (202 while running) |
-| `GET /api/video/files/[id]` | Serves a locally stored take with Range support (the mock's output) |
+| `GET /api/video/files/[id]` | Streams a stored take or rendered MP4 with Range support; `?download=<name>` saves it as a file |
 
-**Mock processor.** Works offline. Stores uploads in `.data/uploads`, lays a realistic read of the script over the take's real length (deterministic per take: same take, same transcript and cuts), simulates progress over a few seconds, and returns the original file as the "rendered" output. The UI labels it "Sample processing". Uploaded files are served to anyone who has the (random) id; add auth before real use. Storage is single-server; move it to object storage before running more than one instance.
+**Mock processor** (`VIDEO_PROCESSOR=mock`). Simulated, for UI work only. Stores uploads in `.data/uploads`, lays a realistic read of the script over the take's real length (deterministic per take: same take, same transcript and cuts), simulates progress over a few seconds, and returns the original file as the "rendered" output. The UI labels it "Sample processing". Uploaded files are served to anyone who has the (random) id; add auth before real use. Storage is single-server; move it to object storage before running more than one instance.
 
 **Switching to Mirage.** Set `VIDEO_PROCESSOR=mirage` and `MIRAGE_API_KEY`. Until the mapping is verified, every call fails with "Mirage endpoints not yet verified" (and the UI shows that error) so nothing calls guessed URLs. To finish it:
 

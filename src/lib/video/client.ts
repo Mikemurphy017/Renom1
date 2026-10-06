@@ -37,6 +37,13 @@ function subscribe(fn: () => void) {
   return () => listeners.delete(fn);
 }
 
+/** A new take makes any earlier reading or render of the old one stale. */
+export function resetPipeline(videoId: string) {
+  states.delete(keyOf(videoId, "analyze"));
+  states.delete(keyOf(videoId, "render"));
+  listeners.forEach((l) => l());
+}
+
 export function getPipeline(videoId: string, kind: JobKind) {
   return states.get(keyOf(videoId, kind));
 }
@@ -96,13 +103,18 @@ export async function persistTake(videoId: string, take: Take): Promise<StoredTa
 }
 
 /** After a reload: put a finished analysis back so Edit shows the real transcript. */
-export async function restoreAnalysis(videoId: string, jobId: string, sourceId: string) {
+export async function restoreAnalysis(videoId: string, jobId: string, sourceId: string): Promise<boolean> {
   const key = keyOf(videoId, "analyze");
-  if (states.get(key)) return;
-  const res = await fetch(`/api/video/jobs/${jobId}/result`, { cache: "no-store" });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok || !body.ok || states.get(key)) return;
-  set(key, { kind: "analyze", phase: "done", progress: 1, status: "Done", sourceId, jobId, result: body.result as JobResult });
+  if (states.get(key)) return true;
+  try {
+    const res = await fetch(`/api/video/jobs/${jobId}/result`, { cache: "no-store" });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.ok) return false;
+    if (!states.get(key)) set(key, { kind: "analyze", phase: "done", progress: 1, status: "Done", sourceId, jobId, result: body.result as JobResult });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function startJob(req: ProcessRequest) {

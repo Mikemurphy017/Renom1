@@ -1,4 +1,4 @@
-export type StageId = "idea" | "script" | "record" | "edit" | "post";
+export type StageId = "idea" | "script" | "record" | "edit" | "review" | "post";
 
 export type VideoFormat = "short" | "long";
 
@@ -66,6 +66,8 @@ export interface Video {
   metrics?: PlatformMetrics[];
   /** Final rendered video from the AI edit (see src/lib/video). */
   outputUrl?: string;
+  /** The rendered MP4 in platform storage. */
+  output?: RenderedVideo;
   /** Exactly what went out, kept for books-and-records. */
   posts?: PostRecord[];
   /** The recorded take, saved to platform storage. */
@@ -74,6 +76,15 @@ export interface Video {
   analysisJobId?: string;
   /** Rendered cover images, one per shape. */
   covers?: Partial<Record<VideoFormat, CoverImage>>;
+}
+
+export interface RenderedVideo {
+  id: string;
+  url: string;
+  durationSec: number;
+  sizeBytes?: number;
+  aspect: "9:16" | "16:9";
+  renderedAt: string;
 }
 
 export interface StoredTake {

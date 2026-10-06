@@ -3,8 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Bookmark, Check, CircleCheck, Hash, Lock, Send, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bookmark, Check, Hash, Lock, Send, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,16 +18,17 @@ import { isAbort, useWriter } from "@/lib/ai/writer";
 import type { PlatformCopy } from "@/lib/ai/content";
 import { useAdvisorChannels, useBuffer } from "@/lib/buffer/use-buffer";
 import { platformForService } from "@/lib/buffer/types";
-import { activeDisclosure, composeCaption, disclosureFor } from "@/lib/compose";
+import { activeDisclosure, disclosureFor } from "@/lib/compose";
 import { PLATFORMS, getPlatform } from "@/lib/mock/platforms";
 import { ME } from "@/lib/profile";
 import type { PlatformId } from "@/lib/types";
 import { cn, fmtNumber } from "@/lib/utils";
 import { AskBar, RequestLine, Writing } from "../ask-bar";
 import { CoverStudio } from "./cover-studio";
+import { ShareKit } from "./share-kit";
 import type { StepProps } from "../studio-view";
 
-const SUB = ["Cover", "Caption", "Schedule"] as const;
+const SUB = ["Cover", "Caption", "Post"] as const;
 
 export function PostStep({ video }: StepProps) {
   const { profile, updateVideo, requireApproval, submitForReview, reviewer } = useStore();
@@ -96,7 +96,7 @@ export function PostStep({ video }: StepProps) {
   return (
     <div className="mx-auto max-w-[1000px] space-y-8 pb-28">
       <div className="text-center">
-        <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">{["Pick a cover.", "Say it once, everywhere.", requireApproval ? "Approve it, schedule it, done." : "Schedule it, or save it as a draft."][sub]}</h1>
+        <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">{["Pick a cover.", "Say it once, everywhere.", requireApproval ? "Approve it, then post it." : "Download it. Copy it. Post it."][sub]}</h1>
         <div className="mt-5 flex justify-center">
           <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card p-1">
             {SUB.map((s, i) => (
@@ -178,7 +178,7 @@ export function PostStep({ video }: StepProps) {
 
           <div className="flex items-center justify-between">
             <Button variant="ghost" className="rounded-full" onClick={() => setSub(0)}><ArrowLeft /> Cover</Button>
-            <Button className="rounded-full px-6" disabled={!copies.length || busy} onClick={() => setSub(2)}>Schedule <ArrowRight /></Button>
+            <Button className="rounded-full px-6" disabled={!copies.length || busy} onClick={() => setSub(2)}>Post <ArrowRight /></Button>
           </div>
           {copies.length > 0 && <AskBar busy={busy} status={status} note={note} onAsk={(t) => writeCaptions(t)} suggestions={["Shorter LinkedIn post", "Add a question at the end", "More formal"]} />}
         </>
@@ -193,19 +193,33 @@ export function PostStep({ video }: StepProps) {
               onSaveDraft={saveDraft}
               onBufferDrafts={bufferOn ? () => setBufferDrafts(true) : undefined}
             />
-          ) : bufferOn ? (
-            <>
-              {bufferPhase === "configure" ? (
-                <>
-                  <BufferVideoLink plan={bplan} />
-                  <BufferConfigure channels={bufferChannels} plan={bplan} onBack={() => setSub(1)} onNext={() => setBufferPhase("review")} />
-                </>
-              ) : (
-                <BufferReview video={video} channels={bufferChannels} plan={bplan} onEdit={() => setBufferPhase("configure")} />
-              )}
-            </>
           ) : (
-            <ManualPost video={video} platforms={platforms} copies={copies} onBack={() => setSub(1)} />
+            <>
+              <ShareKit video={video} platforms={platforms} copies={copies} />
+              {bufferOn ? (
+                <div className="space-y-4 border-t border-border pt-8">
+                  <div>
+                    <h2 className="font-serif text-2xl">Or send it to Buffer.</h2>
+                    <p className="mt-1 text-[14px] text-muted-foreground">Captions go to Buffer as drafts. Attach the MP4 you downloaded there, then schedule.</p>
+                  </div>
+                  {bufferPhase === "configure" ? (
+                    <>
+                      <BufferConfigure channels={bufferChannels} plan={bplan} onBack={() => setSub(1)} onNext={() => setBufferPhase("review")} />
+                      <BufferVideoLink plan={bplan} />
+                    </>
+                  ) : (
+                    <BufferReview video={video} channels={bufferChannels} plan={bplan} onEdit={() => setBufferPhase("configure")} />
+                  )}
+                </div>
+              ) : (
+                <p className="text-center text-[13px] text-muted-foreground">
+                  Want to schedule from here? <Link href="/settings#publishing" className="text-primary hover:underline">Connect Buffer</Link>
+                </p>
+              )}
+              <div className="flex">
+                <Button variant="ghost" className="rounded-full" onClick={() => setSub(1)}><ArrowLeft /> Caption</Button>
+              </div>
+            </>
           )}
         </>
       )}
@@ -284,79 +298,6 @@ function ApprovalGate({ status, onSubmit, onSaveDraft, onBufferDrafts }: { statu
       <div className="mt-5 flex flex-wrap justify-center gap-x-4 gap-y-1 border-t border-border pt-4 text-[13px]">
         {onBufferDrafts && <button onClick={onBufferDrafts} className="cursor-pointer text-primary hover:underline">Save to Buffer drafts meanwhile</button>}
         <button onClick={onSaveDraft} className="cursor-pointer text-muted-foreground hover:text-foreground">Save as draft here</button>
-      </div>
-    </div>
-  );
-}
-
-/** Without Buffer: connect it, or post by hand and keep the record. */
-function ManualPost({ video, platforms, copies, onBack }: { video: StepProps["video"]; platforms: PlatformId[]; copies: PlatformCopy[]; onBack: () => void }) {
-  const { updateVideo, profile } = useStore();
-  const [done, setDone] = React.useState(false);
-  const captionFor = (p: PlatformId) => {
-    const c = copies.find((x) => x.platform === p);
-    return c ? composeCaption(c, p, profile) : "";
-  };
-
-  const markPosted = () => {
-    const at = new Date().toISOString();
-    updateVideo(video.id, {
-      platforms,
-      status: "published",
-      publishedAt: at,
-      posts: [
-        ...(video.posts ?? []),
-        ...platforms.map((p) => ({ platform: p, channel: "Posted manually", caption: captionFor(p), disclosureVersion: activeDisclosure(profile)?.version ?? "none", at, how: "manual" as const })),
-      ],
-    });
-    setDone(true);
-    toast.success("Marked as posted", { description: "The captions and disclosure are in your archive." });
-  };
-
-  if (done) {
-    return (
-      <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-10 text-center shadow-soft">
-        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mx-auto flex size-12 items-center justify-center rounded-full bg-success-soft"><CircleCheck className="size-6 text-success" /></motion.div>
-        <h2 className="mt-5 font-serif text-2xl">That&rsquo;s it. You&rsquo;re done.</h2>
-        <p className="mt-2 text-[14px] text-muted-foreground">Every caption and disclosure is in your archive.</p>
-        <div className="mt-6 flex justify-center gap-2">
-          <Button variant="outline" className="rounded-full" asChild><Link href="/approve">See the archive</Link></Button>
-          <Button className="rounded-full" asChild><Link href="/">Home</Link></Button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-8 text-center shadow-soft">
-        <h2 className="font-serif text-2xl">Connect Buffer to schedule.</h2>
-        <p className="mt-2 text-[14px] text-muted-foreground">Buffer posts to LinkedIn, YouTube, Instagram, Facebook and more for you. Or post it yourself and keep the record here.</p>
-        <div className="mt-6 flex flex-wrap justify-center gap-2">
-          <Button className="rounded-full px-5" asChild><Link href="/settings#publishing">Connect Buffer</Link></Button>
-          <Button variant="outline" className="rounded-full" onClick={markPosted} disabled={!platforms.length}>I posted it myself</Button>
-        </div>
-      </div>
-      <div className="mx-auto max-w-lg space-y-2">
-        {platforms.map((p) => (
-          <div key={p} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5 text-[13px]" style={{ ["--pi-bg" as string]: "var(--card)" }}>
-            <PlatformIcon id={p} className="size-4" />
-            <span className="flex-1">{getPlatform(p).label}</span>
-            <Button
-              size="xs"
-              variant="ghost"
-              disabled={!captionFor(p)}
-              onClick={() => {
-                navigator.clipboard?.writeText(captionFor(p)).then(() => toast.success(`${getPlatform(p).label} caption copied`)).catch(() => toast.error("Couldn’t copy"));
-              }}
-            >
-              Copy caption
-            </Button>
-          </div>
-        ))}
-      </div>
-      <div className="flex">
-        <Button variant="ghost" className="rounded-full" onClick={onBack}><ArrowLeft /> Caption</Button>
       </div>
     </div>
   );

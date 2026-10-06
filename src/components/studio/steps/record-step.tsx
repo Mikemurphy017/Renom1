@@ -20,7 +20,7 @@ import { cn, fmtDuration } from "@/lib/utils";
 import { useCapture } from "@/lib/media/use-capture";
 import { getTake, saveTake, takeExtension } from "@/lib/media/takes";
 import { peekDraft } from "@/lib/drafts";
-import { analyzeTake, persistTake } from "@/lib/video/client";
+import { analyzeTake, persistTake, resetPipeline } from "@/lib/video/client";
 import { defaultOverlays } from "@/lib/video/edit-model";
 import { DEFAULT_EDIT, type OverlayOptions } from "@/lib/video/types";
 import { StepSection, FieldLabel } from "../step-layout";
@@ -144,12 +144,13 @@ export function RecordStep({ video, complete }: StepProps) {
         const r = await capture.stopRecording();
         const target = active.id;
         saveTake(target, { ...r, recordedAt: new Date().toISOString() });
+        resetPipeline(target);
         const fresh = getTake(target);
         setLastTake(fresh);
         // Save to platform storage right away so the take survives a reload or a redeploy.
         if (fresh)
           persistTake(target, fresh)
-            .then((take) => updateVideo(target, { take }))
+            .then((take) => updateVideo(target, { take, analysisJobId: undefined }))
             .catch((e) => toast.error("Your take didn’t save", { description: `${(e as Error).message} Keep this tab open and try recording again.` }));
         setTakes((t) => t + 1);
         setDoneOpen(true);

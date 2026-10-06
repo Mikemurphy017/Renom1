@@ -193,10 +193,10 @@ export async function readBytes(key: string): Promise<Uint8Array | null> {
  * Serve an object as an HTTP response, honouring Range so video can seek.
  * Always streams through the app (same origin), so canvases can read frames.
  */
-export async function serveObject(request: Request, key: string, cache = "private, max-age=3600"): Promise<Response> {
+export async function serveObject(request: Request, key: string, cache = "private, max-age=3600", extra: Record<string, string> = {}): Promise<Response> {
   const info = await objects().stat(key);
   if (!info) return Response.json({ error: "Not found" }, { status: 404 });
-  const headers: Record<string, string> = { "Content-Type": info.contentType, "Accept-Ranges": "bytes", "Cache-Control": cache };
+  const headers: Record<string, string> = { "Content-Type": info.contentType, "Accept-Ranges": "bytes", "Cache-Control": cache, ...extra };
   const m = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get("range") ?? "");
   if (m && (m[1] || m[2]) && info.size > 0) {
     let start = m[1] ? Number(m[1]) : info.size - Number(m[2]);

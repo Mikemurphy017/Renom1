@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRight, Bookmark, Heart, MessageCircle, Pause, Play, RotateCcw, Send, Sparkles, TriangleAlert, Upload, Wand2, Scissors, Undo2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Pause, Play, RotateCcw, Sparkles, TriangleAlert, Video as VideoIcon, Wand2, Scissors, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -9,14 +10,14 @@ import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Headshot } from "@/components/shared/headshot";
-import { useDraft } from "@/lib/drafts";
+import { EmptyState } from "@/components/shared/page";
+import { peekDraft, useDraft } from "@/lib/drafts";
 import { getTake, subscribeTakes } from "@/lib/media/takes";
 import { generateScript } from "@/lib/ai/content";
 import { useStore } from "@/lib/store";
 import { BRAND } from "@/lib/brand";
 import type { Video } from "@/lib/types";
-import { cn, fmtDuration, sleep } from "@/lib/utils";
+import { cn, fmtDuration } from "@/lib/utils";
 import { analyzeTake, renderFinal, restoreAnalysis, usePipeline, type PipelineState } from "@/lib/video/client";
 import { cutsFromSegments, defaultOverlays, segmentsFromResult, type Segment } from "@/lib/video/edit-model";
 import { DEFAULT_EDIT, type OverlayOptions } from "@/lib/video/types";
@@ -28,42 +29,49 @@ const scriptLines = (v: Video) => {
   return [s.hook, ...s.body, s.cta];
 };
 
-/** Sample transcript used until a real take has been processed. */
-function buildSegments(v: Video): Segment[] {
-  const lines = scriptLines(v);
-  const out: Segment[] = [];
-  let n = 0;
-  const push = (text: string, kind: Segment["kind"], dur?: number) =>
-    out.push({ id: `s${n++}`, text, kind, dur: dur ?? Math.max(1.2, text.split(/\s+/).length / 2.6), removed: kind !== "speech" });
-  push("[silence 1.8s]", "silence", 1.8);
-  lines.forEach((line, i) => {
-    const sentences = line.match(/[^.!?]+[.!?]+["”]?|[^.!?]+$/g) ?? [line];
-    if (i === 1) push("So the first— sorry, let me start that again.", "retake");
-    if (i === 2) push("um, you know,", "filler", 1.1);
-    sentences.forEach((sen, j) => {
-      push(sen.trim(), "speech");
-      if (i === 0 && j === 0) push("[pause 2.4s]", "silence", 2.4);
-    });
-    if (i === lines.length - 2) push("[pause 3.1s]", "silence", 3.1);
-  });
-  push("[silence 2.2s]", "silence", 2.2);
-  return out;
-}
-
 const KIND_LABEL: Record<Segment["kind"], string> = { speech: "", silence: "Dead air", retake: "Bad take", filler: "Filler" };
 
 export function EditStep(props: StepProps) {
   const { video } = props;
-  const { updateVideo } = useStore();
+  const { updateVideo, profile } = useStore();
   const analysis = usePipeline(video.id, "analyze");
-  const doneJob = analysis?.phase === "done" ? analysis.result?.jobId : undefined;
-  // After a reload, bring back the last finished analysis of the saved take.
+  const memTake = React.useSyncExternalStore(subscribeTakes, () => getTake(video.id), () => undefined);
+  const take = memTake ?? video.take;
+  // Bring back the last reading of this take, or read it now if there isn't one.
+  const started = React.useRef(false);
   React.useEffect(() => {
-    if (!analysis && video.analysisJobId && video.take) restoreAnalysis(video.id, video.analysisJobId, video.take.sourceId).catch(() => {});
-  }, [analysis, video.id, video.analysisJobId, video.take]);
+    if (analysis || !take || started.current) return;
+    started.current = true;
+    const analyze = () =>
+      analyzeTake(video.id, take, {
+        aspect: take.height > take.width ? "9:16" : "16:9",
+        edit: DEFAULT_EDIT,
+        overlays: peekDraft<OverlayOptions>(video.id, "edit.overlays") ?? defaultOverlays(profile, video.format),
+        script: scriptLines(video),
+      }).catch(() => {});
+    const stored = video.take;
+    if (video.analysisJobId && stored) restoreAnalysis(video.id, video.analysisJobId, stored.sourceId).then((ok) => {
+        if (!ok) void analyze();
+      });
+    else analyze();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysis, take]);
+  const doneJob = analysis?.phase === "done" ? analysis.result?.jobId : undefined;
   React.useEffect(() => {
     if (doneJob && doneJob !== video.analysisJobId) updateVideo(video.id, { analysisJobId: doneJob });
   }, [doneJob, video.id, video.analysisJobId, updateVideo]);
+  if (!take) {
+    return (
+      <div className="py-16">
+        <EmptyState
+          icon={VideoIcon}
+          title="Record a take first"
+          description="Your recording shows up here with the pauses already marked."
+          action={<Button asChild className="rounded-full"><Link href={`/studio/${video.id}/record`}><VideoIcon /> Go to Record</Link></Button>}
+        />
+      </div>
+    );
+  }
   // Remount when a processed result arrives so the transcript switches over cleanly.
   return <EditStudio key={analysis?.result?.jobId ?? "sample"} {...props} analysis={analysis} />;
 }
@@ -71,7 +79,7 @@ export function EditStep(props: StepProps) {
 function EditStudio({ video, complete, analysis }: StepProps & { analysis?: PipelineState }) {
   const { profile } = useStore();
   const result = analysis?.result;
-  const [segments, setSegments] = useDraft<Segment[]>(video.id, result ? `edit.segments.${result.jobId}` : "edit.segments", () => (result ? segmentsFromResult(result) : buildSegments(video)));
+  const [segments, setSegments] = useDraft<Segment[]>(video.id, result ? `edit.segments.${result.jobId}` : "edit.segments.none", () => (result ? segmentsFromResult(result) : []));
   const [look, setLook] = useDraft<OverlayOptions>(video.id, "edit.overlays", () => defaultOverlays(profile, video.format));
   const [peek, setPeek] = React.useState<LookPeek>(null);
   const render = usePipeline(video.id, "render");
@@ -85,9 +93,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
   const [zoom, setZoom] = React.useState(1.5);
   const [showCuts, setShowCuts] = React.useState(true);
   const [skipCuts, setSkipCuts] = React.useState(true);
-  const [social, setSocial] = React.useState(false);
   const [enhance, setEnhance] = React.useState(true);
-  const [exporting, setExporting] = React.useState<null | { phase: string; pct: number }>(null);
   const vertical = video.format === "short";
 
   const timeline = React.useMemo(() => {
@@ -98,7 +104,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
       return { ...s, start, end: acc };
     });
   }, [segments]);
-  const total = timeline.at(-1)?.end ?? 1;
+  const total = timeline.at(-1)?.end ?? take?.durationSec ?? 1;
   const kept = timeline.filter((s) => !s.removed).reduce((a, s) => a + s.dur, 0);
   const current = timeline.find((s) => t >= s.start && t < s.end) ?? timeline[0];
   const keptSpan = timeline.filter((s) => !s.removed);
@@ -186,50 +192,43 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
   };
 
   const doExport = async () => {
-    if (sourceId) {
-      // Real render: the advisor's cuts and look go to the processor.
-      setRendering(true);
-      try {
-        const out = await renderFinal(video.id, sourceId, {
-          aspect: vertical ? "9:16" : "16:9",
-          edit: { ...DEFAULT_EDIT, enhanceAudio: enhance },
-          overlays: look,
-          script: scriptLines(video),
-          cuts: cutsFromSegments(segments),
-        });
-        toast.success("Your video is ready", { description: `${fmtDuration(kept)} · ${vertical ? "9:16" : "16:9"}${analysis?.processor === "mock" ? " · sample processing (original file)" : ""}` });
-        complete({ runtimeSec: Math.round(kept), outputUrl: out.outputUrl });
-      } catch (e) {
-        toast.error("Render failed", { description: (e as Error).message });
-      } finally {
-        setRendering(false);
-      }
+    if (!sourceId) {
+      toast("Still reading your take", { description: "Give it a moment, then finish the edit." });
       return;
     }
-    setExporting({ phase: `Rendering ${vertical ? "1080×1920" : "1920×1080"} · captions burned in`, pct: 0 });
-    for (let p = 0; p <= 100; p += 4) {
-      await sleep(70);
-      setExporting({ phase: p < 60 ? `Rendering ${vertical ? "1080×1920" : "1920×1080"} · captions burned in` : "Uploading to your Library…", pct: p });
+    setRendering(true);
+    try {
+      const aspect = vertical ? "9:16" : "16:9";
+      const out = await renderFinal(video.id, sourceId, {
+        aspect,
+        edit: { ...DEFAULT_EDIT, enhanceAudio: enhance },
+        overlays: look,
+        script: scriptLines(video),
+        cuts: cutsFromSegments(segments),
+      });
+      toast.success("Your video is ready", { description: `${fmtDuration(out.durationSec)} · ${aspect} MP4` });
+      complete({
+        runtimeSec: Math.round(out.durationSec),
+        outputUrl: out.outputUrl,
+        output: out.outputId && out.outputUrl ? { id: out.outputId, url: out.outputUrl, durationSec: out.durationSec, sizeBytes: out.sizeBytes, aspect, renderedAt: new Date().toISOString() } : undefined,
+      });
+    } catch (e) {
+      toast.error("Render failed", { description: (e as Error).message });
+    } finally {
+      setRendering(false);
     }
-    await sleep(250);
-    setExporting(null);
-    toast.success("Export complete", { description: `${fmtDuration(kept)} · ${vertical ? "9:16" : "16:9"} MP4 saved to Library` });
-    complete({ runtimeSec: Math.round(kept) });
   };
 
-  const dialog = rendering
-    ? { title: "Rendering your video", phase: render?.status ?? "Starting…", pct: Math.round((render?.progress ?? 0) * 100) }
-    : exporting && { title: exporting.pct < 60 ? "Rendering your video" : "Uploading", phase: exporting.phase, pct: exporting.pct };
-  const busy = analysis && (analysis.phase === "uploading" || analysis.phase === "processing");
+  const dialog = rendering ? { title: "Rendering your video", phase: render?.status ?? "Starting…", pct: Math.round((render?.progress ?? 0) * 100) } : null;
+  const busy = !analysis || analysis.phase === "uploading" || analysis.phase === "processing";
 
   const pxPerSec = 14 * zoom;
-  const frames = Math.ceil((total * pxPerSec) / 44);
 
   return (
     <div className="space-y-6">
       <div className="text-center">
         <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">Cut the pauses. Keep you.</h1>
-        <p className="mt-2 text-[15px] text-muted-foreground">{BRAND.name} marked the dead air and retakes. Click any phrase to cut or restore it.</p>
+        <p className="mt-2 text-[15px] text-muted-foreground">{BRAND.name} found the pauses in your audio. Click any phrase to cut or restore it, pick your look, then finish.</p>
       </div>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
         {/* Preview + look */}
@@ -237,14 +236,12 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
           <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
             <div className="mb-3 flex items-center justify-between">
               <div className="eyebrow">Preview</div>
-              <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
-                Social overlay <Switch checked={social} onCheckedChange={setSocial} />
-              </label>
+              <span className="text-[12px] text-muted-foreground">Your take, with cuts skipped</span>
             </div>
             <div className="flex justify-center rounded-md bg-[#06101F] p-4">
               <div className={cn("relative overflow-hidden rounded-md bg-gradient-to-b from-[#2A3B55] to-[#1A2840]", vertical ? "aspect-[9/16] h-[520px] max-h-[60vh]" : "aspect-video w-full")}>
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_30%,#3A4E6E_0%,transparent_70%)]" />
-                {take ? (
+                {take && (
                   <video
                     ref={takeRef}
                     src={take.url}
@@ -254,8 +251,6 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
                     onPause={() => setPlaying(false)}
                     onEnded={() => setPlaying(false)}
                   />
-                ) : (
-                  <Headshot pose={current?.kind === "speech" && Math.floor(t / 4) % 3 === 1 ? "point" : "center"} className={cn("absolute bottom-0 left-1/2 -translate-x-1/2", vertical ? "h-[62%]" : "h-[85%]")} />
                 )}
                 <PreviewOverlays
                   look={look}
@@ -265,25 +260,6 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
                   showLowerThird={peek === "lowerThird" || (!peek && t < firstKept + 5)}
                   showEndCard={peek === "endCard" || (!peek && t >= lastKept - 2.5 && t > firstKept + 5)}
                 />
-                {social && (
-                  <>
-                    <div className="absolute right-3 bottom-24 flex flex-col items-center gap-4 text-white">
-                      {[Heart, MessageCircle, Send, Bookmark].map((I, i) => (
-                        <div key={i} className="flex flex-col items-center gap-0.5">
-                          <I className="size-6 drop-shadow" />
-                          <span className="text-[10px] tnum">{["2.4K", "186", "92", "310"][i]}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="absolute inset-x-3 bottom-4 text-white">
-                      <div className="flex items-center gap-2 text-[13px] font-semibold">
-                        <span className="size-7 rounded-full bg-gradient-to-br from-[#D2B07A] to-[#9C7A47]" /> halewealth
-                        <span className="rounded border border-white/60 px-1.5 text-[10px] font-medium">Follow</span>
-                      </div>
-                      <p className="mt-1.5 line-clamp-2 text-[12px] opacity-90">{video.title} 👇 #FinancialPlanning</p>
-                    </div>
-                  </>
-                )}
                 {enhance && <span className="absolute top-2 left-2 rounded bg-black/45 px-1.5 py-0.5 text-[10px] text-white/90">Studio sound</span>}
               </div>
             </div>
@@ -323,7 +299,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
                 <span className="text-[12px] text-muted-foreground">
                   <span className="tnum">{segments.filter((s) => s.removed).length}</span> cuts · saves <span className="tnum">{fmtDuration(total - kept)}</span>
                 </span>
-                <Button size="sm" onClick={doExport} disabled={!!busy || rendering}><Upload /> Export</Button>
+                <Button size="sm" onClick={doExport} disabled={!!busy || rendering || !sourceId}>Finish edit <ArrowRight /></Button>
               </div>
             </div>
             <TabsContent value="captions" className="scrollbar-thin mt-2 max-h-[560px] overflow-y-auto rounded-md border border-border bg-background/50 p-4">
@@ -401,19 +377,13 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
               ))}
             </div>
             {/* filmstrip */}
-            <div className="mt-1.5 flex h-14 overflow-hidden rounded-[4px]">
-              {Array.from({ length: frames }).map((_, i) => (
-                <div key={i} className="relative h-full w-11 shrink-0 overflow-hidden border-r border-[#06101F] bg-gradient-to-b from-[#2A3B55] to-[#1A2840]">
-                  <Headshot pose={i % 7 === 3 ? "point" : "center"} className="absolute bottom-0 left-1/2 h-[90%] -translate-x-1/2" />
-                </div>
-              ))}
-            </div>
+            <Filmstrip src={take?.url} total={total} width={Math.max(total * pxPerSec, 600)} />
             {/* waveform */}
             <div className="mt-1.5 flex h-8 items-center gap-px">
-              {Array.from({ length: Math.floor(total * pxPerSec / 3) }).map((_, i) => {
+              {Array.from({ length: Math.floor((total * pxPerSec) / 3) }).map((_, i) => {
                 const sec = (i * 3) / pxPerSec;
-                const seg = timeline.find((s) => sec >= s.start && sec < s.end);
-                const h = seg?.kind === "silence" ? 6 : 18 + Math.abs(Math.sin(i * 1.7) * 60) + ((i * 37) % 22);
+                const lv = result?.levels?.[Math.floor(sec * 10)];
+                const h = lv === undefined ? 4 : 6 + lv * 94;
                 return <span key={i} className="w-[2px] shrink-0 rounded-full bg-muted-foreground/40" style={{ height: `${Math.round(Math.min(100, h))}%` }} />;
               })}
             </div>
@@ -440,15 +410,15 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
           </div>
         </div>
         <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-4">
-          <Button variant="outline" onClick={() => { setSegments(result ? segmentsFromResult(result) : buildSegments(video)); toast("Auto-cuts re-applied"); }}><Wand2 /> Re-run auto-cut</Button>
-          <Button onClick={doExport} disabled={!!busy || rendering}>Finish edit <ArrowRight /></Button>
+          <Button variant="outline" disabled={!result} onClick={() => { if (result) setSegments(segmentsFromResult(result)); toast("Auto-cuts re-applied"); }}><Wand2 /> Re-run auto-cut</Button>
+          <Button onClick={doExport} disabled={!!busy || rendering || !sourceId}>Finish edit <ArrowRight /></Button>
         </div>
       </div>
 
       <Dialog open={!!dialog}>
         <DialogContent showClose={false} className="sm:max-w-md">
           <DialogHeader>
-            <div className="eyebrow">Export</div>
+            <div className="eyebrow">Rendering</div>
             <DialogTitle>{dialog ? dialog.title : "Rendering your video"}</DialogTitle>
             <DialogDescription>{dialog ? dialog.phase : ""}</DialogDescription>
           </DialogHeader>
@@ -463,41 +433,83 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
   );
 }
 
-/** Where the AI edit stands for this take: uploading, processing, done, failed, or not run yet. */
-function ProcessingNotice({ analysis, hasTake, takeSec, onProcess }: { analysis?: PipelineState; hasTake: boolean; takeSec?: number; onProcess: () => void }) {
-  if (analysis?.phase === "uploading" || analysis?.phase === "processing") {
+/** Where the edit stands for this take: reading it, done, or failed. */
+function ProcessingNotice({ analysis, hasTake, onProcess }: { analysis?: PipelineState; hasTake: boolean; takeSec?: number; onProcess: () => void }) {
+  if (!analysis || analysis.phase === "uploading" || analysis.phase === "processing") {
     return (
       <div className="mb-3 rounded-md border border-primary/30 bg-brass-soft/60 px-3 py-2.5">
         <div className="flex items-center justify-between gap-3 text-[12px]">
-          <span className="flex items-center gap-1.5 font-medium"><Sparkles className="size-3.5 animate-pulse text-primary" /> {analysis.status}</span>
-          <span className="text-muted-foreground tnum">{Math.round(analysis.progress * 100)}%</span>
+          <span className="flex items-center gap-1.5 font-medium"><Sparkles className="size-3.5 animate-pulse text-primary" /> {analysis?.status ?? "Getting your take…"}</span>
+          <span className="text-muted-foreground tnum">{Math.round((analysis?.progress ?? 0) * 100)}%</span>
         </div>
-        <Progress value={analysis.progress * 100} className="mt-2 h-1.5" />
-        <p className="mt-1.5 text-[11px] text-muted-foreground">Your transcript and suggested cuts replace the sample below in a moment.</p>
+        <Progress value={(analysis?.progress ?? 0) * 100} className="mt-2 h-1.5" />
+        <p className="mt-1.5 text-[11px] text-muted-foreground">Finding the pauses and lining up your script. Takes a few seconds.</p>
       </div>
     );
   }
-  if (analysis?.phase === "error") {
+  if (analysis.phase === "error") {
     return (
       <div className="mb-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-warning-soft px-3 py-2 text-[12px]">
         <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-destructive" />
-        <span className="flex-1">AI Edit couldn’t process this take. {analysis.error}</span>
+        <span className="flex-1">Couldn’t read this take. {analysis.error}</span>
         {hasTake && <Button size="xs" variant="outline" onClick={onProcess}><RotateCcw /> Try again</Button>}
       </div>
     );
   }
-  if (analysis?.phase === "done") {
-    return analysis.processor === "mock" ? (
-      <p className="mb-3 text-[11px] text-muted-foreground">Sample processing: timings follow your real take; the words come from your script until a live editor is connected.</p>
-    ) : null;
-  }
-  if (hasTake) {
-    return (
-      <div className="mb-3 flex items-center gap-3 rounded-md border border-primary/30 bg-brass-soft/60 px-3 py-2 text-[12px]">
-        <span className="flex-1">The preview is your real take ({fmtDuration(takeSec ?? 0)}). The transcript below is a sample until AI Edit processes it.</span>
-        <Button size="xs" onClick={onProcess}><Sparkles /> Run AI Edit</Button>
-      </div>
-    );
-  }
-  return null;
+  return <p className="mb-3 text-[11px] text-muted-foreground">Pauses come from your audio. Caption words follow your script, timed to when you were talking.</p>;
+}
+
+/** Real frames from the take along the timeline. */
+function Filmstrip({ src, total, width }: { src?: string; total: number; width: number }) {
+  const count = Math.max(1, Math.ceil(width / 44));
+  const [frames, setFrames] = React.useState<string[]>([]);
+  const step = total / count;
+  React.useEffect(() => {
+    if (!src) return;
+    let live = true;
+    const v = document.createElement("video");
+    v.muted = true;
+    v.preload = "auto";
+    v.src = src;
+    const c = document.createElement("canvas");
+    const out: string[] = [];
+    const seek = (t: number) =>
+      new Promise<void>((res) => {
+        const done = () => (v.removeEventListener("seeked", done), res());
+        v.addEventListener("seeked", done);
+        setTimeout(done, 3000);
+        v.currentTime = t;
+      });
+    (async () => {
+      await new Promise<void>((res) => (v.readyState >= 2 ? res() : v.addEventListener("loadeddata", () => res(), { once: true })));
+      c.height = 112;
+      c.width = Math.round((v.videoWidth / Math.max(1, v.videoHeight)) * 112) || 63;
+      const ctx = c.getContext("2d")!;
+      const n = Math.min(count, 40);
+      for (let i = 0; i < n && live; i++) {
+        await seek(Math.min(total - 0.1, (i + 0.5) * (total / n)));
+        ctx.drawImage(v, 0, 0, c.width, c.height);
+        out.push(c.toDataURL("image/jpeg", 0.6));
+        if (live) setFrames([...out]);
+      }
+    })().catch(() => {});
+    return () => {
+      live = false;
+      v.removeAttribute("src");
+      v.load();
+    };
+  }, [src, total, count]);
+  return (
+    <div className="mt-1.5 flex h-14 overflow-hidden rounded-[4px] bg-[#1A2840]">
+      {Array.from({ length: count }).map((_, i) => {
+        const f = frames.length ? frames[Math.min(frames.length - 1, Math.floor((i * step) / (total / Math.min(count, 40))))] : undefined;
+        return (
+          <div key={i} className="relative h-full w-11 shrink-0 overflow-hidden border-r border-[#06101F]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {f && <img src={f} alt="" className="h-full w-full object-cover" />}
+          </div>
+        );
+      })}
+    </div>
+  );
 }

@@ -29,12 +29,14 @@ export class VideoProcessorError extends Error {
   }
 }
 
-/** VIDEO_PROCESSOR=mock|mirage (default mock). */
+/** VIDEO_PROCESSOR=local|mock|mirage (default local: the built-in ffmpeg editor). */
 export function processorId(): ProcessorId {
-  return process.env.VIDEO_PROCESSOR === "mirage" ? "mirage" : "mock";
+  const v = process.env.VIDEO_PROCESSOR;
+  return v === "mirage" ? "mirage" : v === "mock" ? "mock" : "local";
 }
 
 export async function getProcessor(): Promise<VideoProcessor> {
   if (processorId() === "mirage") return (await import("./mirage")).mirageProcessor;
-  return (await import("./mock")).mockProcessor;
+  if (processorId() === "mock") return (await import("./mock")).mockProcessor;
+  return (await import("./local")).localProcessor;
 }

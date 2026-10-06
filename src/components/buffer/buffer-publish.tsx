@@ -20,7 +20,6 @@ import { composeCaption, activeDisclosure } from "@/lib/compose";
 import { generateDescriptions, type PlatformCopy } from "@/lib/ai/content";
 import { getPlatform } from "@/lib/mock/platforms";
 import { ME } from "@/lib/profile";
-import { publicLinkFor } from "@/lib/media/upload";
 import { createBufferPost, useAdvisorChannels } from "@/lib/buffer/use-buffer";
 import { platformForService, type BufferChannel, type BufferMode } from "@/lib/buffer/types";
 import type { PlatformId, Video } from "@/lib/types";
@@ -43,18 +42,8 @@ type Result = { channelId: string; ok: boolean; message: string; dueAt?: string 
 export function useBufferPlan(video: Video, channels: BufferChannel[]) {
   const [mine] = useAdvisorChannels(ME);
   const { profile } = useStore();
-  const [videoUrl, setVideoUrl] = useDraft(video.id, "buffer.videoUrl", () => (video.outputUrl?.startsWith("https://") ? video.outputUrl : ""));
+  const [videoUrl, setVideoUrl] = useDraft(video.id, "buffer.videoUrl.v2", "");
   const [plans, setPlans] = useDraft<Record<string, ChannelPlan>>(video.id, "buffer.plans", {});
-  // Files in platform storage get a public link Buffer can download from.
-  const storedVideo = video.outputUrl?.startsWith("/api/") ? video.outputUrl : video.take?.url;
-  React.useEffect(() => {
-    if (videoUrl || !storedVideo) return;
-    let live = true;
-    publicLinkFor(storedVideo).then((url) => live && url && setVideoUrl(url));
-    return () => {
-      live = false;
-    };
-  }, [videoUrl, storedVideo, setVideoUrl]);
   const [copies] = useDraft<PlatformCopy[]>(video.id, "desc.copies", []);
 
   const base = video.scheduledFor ? new Date(video.scheduledFor) : new Date(TODAY.getTime() + 2 * 86400000);
@@ -91,7 +80,7 @@ export function useBufferPlan(video: Video, channels: BufferChannel[]) {
     if (c.isLocked) notes.unshift({ level: "block", text: "This channel is locked in Buffer (over your plan's channel limit)." });
     const len = captionFor(c).length;
     if (len > p.descLimit) notes.push({ level: "block", text: `Caption is ${fmtNumber(len)} characters — ${p.label} allows ${fmtNumber(p.descLimit)}.` });
-    if (!videoUrl) notes.push({ level: "warn", text: "No public video link yet, so this goes to Buffer as a draft. Attach the video there, or add a link in Select Content." });
+    if (!videoUrl) notes.push({ level: "info", text: "Goes to Buffer as a draft. Attach the MP4 you downloaded there." });
     if (plan.mode === "schedule" && dueAtFor(plan).getTime() < Date.now() + 60_000) notes.push({ level: "block", text: "Scheduled time is in the past." });
     if (plan.mode === "queue" && c.isQueuePaused) notes.push({ level: "warn", text: "This channel's queue is paused in Buffer." });
     return notes;
@@ -106,9 +95,9 @@ export function BufferVideoLink({ plan }: { plan: Plan }) {
   const valid = !plan.videoUrl || /^https:\/\/\S+$/.test(plan.videoUrl);
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-soft">
-      <div className="text-[13px] font-semibold">Public video link for Buffer</div>
+      <div className="text-[13px] font-semibold">Optional: a public link to the video</div>
       <p className="mt-1 text-[12px] text-muted-foreground">
-        Buffer downloads the video from a link. Videos saved in your library fill this in automatically (the link works for 7 days); otherwise paste a public https:// link to the final MP4. Without one, posts are sent to Buffer as drafts so you can attach the file there.
+        Leave this empty to send captions as drafts and attach the MP4 in Buffer yourself. If the video is already hosted somewhere public (https://…/video.mp4), paste the link and Buffer will attach it.
       </p>
       <Input className={cn("mt-3 font-mono text-[12px]", !valid && "border-destructive")} placeholder="https://…/final.mp4" value={plan.videoUrl} onChange={(e) => plan.setVideoUrl(e.target.value.trim())} />
       {!valid && <p className="mt-1.5 text-[12px] text-destructive">Must be a public https:// link.</p>}

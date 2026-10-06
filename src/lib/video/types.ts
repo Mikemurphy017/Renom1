@@ -3,7 +3,7 @@
  * Safe to import from both the browser and the server: no provider details here.
  */
 
-export type ProcessorId = "mock" | "mirage";
+export type ProcessorId = "local" | "mock" | "mirage";
 
 export type CaptionStyle = "classic" | "bold" | "minimal";
 export type CaptionPosition = "top" | "middle" | "bottom";
@@ -96,6 +96,11 @@ export interface JobResult {
   cuts: SuggestedCut[];
   /** Phrases worth emphasizing on screen, as they appear in the transcript. */
   keyPhrases: string[];
+  /** analyze: loudness every 0.1 s (0–1) for the timeline waveform. */
+  levels?: number[];
+  /** render: the stored MP4's upload id and size. */
+  outputId?: string;
+  sizeBytes?: number;
 }
 
 export interface UploadResponse {

@@ -18,6 +18,7 @@ import { ScriptStep } from "./steps/script-step";
 import { RecordStep } from "./steps/record-step";
 import { EditStep } from "./steps/edit-step";
 import { PostStep } from "./steps/post-step";
+import { ReviewStep } from "./steps/review-step";
 
 export interface StepProps {
   video: Video;
@@ -30,10 +31,11 @@ const STEP_COMPONENTS: Record<StageId, React.ComponentType<StepProps>> = {
   script: ScriptStep,
   record: RecordStep,
   edit: EditStep,
+  review: ReviewStep,
   post: PostStep,
 };
 
-const WIDE: StageId[] = ["record", "edit", "post"];
+const WIDE: StageId[] = ["record", "edit", "review", "post"];
 
 export function StudioView({ id, step }: { id: string; step: StageId }) {
   const router = useRouter();
