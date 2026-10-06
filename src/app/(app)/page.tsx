@@ -11,12 +11,11 @@ import { StepDots } from "@/components/shared/step-dots";
 import { PlatformIcon } from "@/components/shared/platform-icon";
 import { useStartVideo } from "@/components/layout/use-start-video";
 import { useStore } from "@/lib/store";
-import { useBuffer } from "@/lib/buffer/use-buffer";
+import { useBuffer, useBufferMetrics } from "@/lib/buffer/use-buffer";
 import { platformForService, type BufferScheduledPost } from "@/lib/buffer/types";
 import { BufferPostMenu } from "@/components/buffer/post-menu";
-import { DAILY_VIEWS } from "@/lib/mock/analytics";
 import { getStage, stageIndex } from "@/lib/stages";
-import { inPipeline, isPublished, videoTotals } from "@/lib/selectors";
+import { inPipeline, isPublished } from "@/lib/selectors";
 import type { PlatformId, VideoFormat } from "@/lib/types";
 import { TODAY, fmtCompact, relativeTime } from "@/lib/utils";
 import { BRAND } from "@/lib/brand";
@@ -36,9 +35,10 @@ export default function HomePage() {
   const inProgress = videos.filter(inPipeline).filter((v) => v.status === "in_progress").sort((a, b) => stageIndex(b.stage) - stageIndex(a.stage) || b.lastEdited.localeCompare(a.lastEdited)).slice(0, 3);
   const waiting = reviews.filter((r) => r.status === "submitted").length;
   const needsChanges = reviews.filter((r) => r.status === "changes_requested").length;
-  const views7 = DAILY_VIEWS.slice(-7).reduce((a, d) => a + d.views, 0);
-  const viewsPrev7 = DAILY_VIEWS.slice(-14, -7).reduce((a, d) => a + d.views, 0);
-  const leads = videos.filter(isPublished).reduce((a, v) => a + videoTotals(v).inquiries, 0);
+  const week = useBufferMetrics(7, buffer.connected);
+  const metric = (type: string) => week.data?.metrics.find((m) => m.type === type)?.value;
+  const views7 = metric("views") ?? metric("impressions");
+  const published = videos.filter(isPublished).length + videos.filter((v) => v.status === "scheduled").length;
 
   const bufferStatus = buffer.status && "channels" in buffer.status ? buffer.status : null;
   type Upcoming = { id: string; at: string; title: string; platforms: PlatformId[]; href: string; source: string; buffer?: BufferScheduledPost };
@@ -54,7 +54,7 @@ export default function HomePage() {
     .slice(0, 5);
 
   const summary = [
-    inProgress.length ? `${inProgress.length} ${inProgress.length === 1 ? "video is" : "videos are"} in progress` : "Nothing in progress",
+    videos.length === 0 ? "Your studio is ready. Start with one idea" : inProgress.length ? `${inProgress.length} ${inProgress.length === 1 ? "video is" : "videos are"} in progress` : "Nothing in progress",
     waiting ? `${waiting} waiting on approval` : null,
     needsChanges ? `${needsChanges} needs your changes` : null,
   ].filter(Boolean).join(" · ");
@@ -64,7 +64,7 @@ export default function HomePage() {
       <section>
         <div className="eyebrow mb-3">{TODAY.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</div>
         <h1 className="font-serif text-[40px] leading-[1.1] tracking-tight sm:text-[48px]">
-          {greeting()}, {profile.name.split(" ")[0]}.
+          {greeting()}{profile.name ? `, ${profile.name.split(" ")[0]}` : ""}.
         </h1>
         <p className="mt-3 text-[15px] text-muted-foreground">{summary}.</p>
 
@@ -99,6 +99,22 @@ export default function HomePage() {
         </div>
       </section>
 
+      {videos.length === 0 && (
+        <section className="grid gap-4 sm:grid-cols-3">
+          {[
+            ["1", "Say what’s on your mind", "One sentence. Claude turns it into ideas in your voice, then writes the script."],
+            ["2", "Record and trim", "Read from the teleprompter. The edit marks the pauses and retakes for you."],
+            ["3", "Approve and post", "Captions for every platform, your disclosure locked on, scheduled through Buffer."],
+          ].map(([n, t, d]) => (
+            <div key={n} className="rounded-2xl border border-border bg-card p-5">
+              <div className="font-serif text-2xl text-primary">{n}</div>
+              <div className="mt-2 text-[15px] font-medium">{t}</div>
+              <p className="mt-1 text-[13px] text-muted-foreground">{d}</p>
+            </div>
+          ))}
+        </section>
+      )}
+
       {inProgress.length > 0 && (
         <section>
           <div className="mb-4 flex items-baseline justify-between">
@@ -128,8 +144,8 @@ export default function HomePage() {
 
       <section className="grid gap-4 sm:grid-cols-3">
         {[
-          { label: "Views this week", value: fmtCompact(views7), sub: `${views7 >= viewsPrev7 ? "+" : ""}${Math.round(((views7 - viewsPrev7) / Math.max(1, viewsPrev7)) * 100)}% vs last week`, href: "/analyze" },
-          { label: "Leads from video", value: String(leads), sub: "last 30 days", href: "/analyze" },
+          { label: "Views this week", value: views7 !== undefined ? fmtCompact(views7) : "—", sub: buffer.connected ? (week.loading ? "Loading from Buffer…" : "from Buffer, all channels") : "Connect Buffer to see views", href: buffer.connected ? "/analyze" : "/settings#publishing" },
+          { label: "Published or scheduled", value: String(published), sub: published ? "videos from this studio" : "your first one is a few steps away", href: "/videos" },
           { label: "Waiting on approval", value: String(waiting), sub: needsChanges ? `${needsChanges} sent back for changes` : "nothing sent back", href: "/approve" },
         ].map((s) => (
           <Link key={s.label} href={s.href} className="group rounded-2xl border border-border bg-card px-5 py-4 transition-colors hover:border-primary/40">

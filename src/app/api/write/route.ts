@@ -1,6 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { claudeConfigured, writeWithClaude } from "@/lib/ai/claude";
-import { sampleCaptions, sampleIdeas, sampleScript } from "@/lib/ai/samples";
 import type { WriteEvent, WriteRequest } from "@/lib/ai/write-types";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +28,9 @@ export async function POST(request: Request) {
     parsed = "Invalid JSON";
   }
   if (typeof parsed === "string") return Response.json({ error: parsed }, { status: 400 });
+  if (!claudeConfigured()) {
+    return Response.json({ error: "Claude isn’t connected. Add ANTHROPIC_API_KEY to .env.local and restart the app." }, { status: 503 });
+  }
   const req = parsed;
 
   const encoder = new TextEncoder();
@@ -41,17 +43,11 @@ export async function POST(request: Request) {
       const timer = setInterval(() => {
         i = Math.min(i + 1, statuses.length - 1);
         send({ type: "status", text: statuses[i] });
-      }, claudeConfigured() ? 2500 : 600);
+      }, 2500);
 
       try {
-        if (claudeConfigured()) {
-          const data = await writeWithClaude(req);
-          send({ type: "result", data, source: "claude" });
-        } else {
-          await new Promise((r) => setTimeout(r, 1800));
-          const data = req.task === "ideas" ? sampleIdeas(req) : req.task === "script" ? sampleScript(req) : sampleCaptions(req);
-          send({ type: "result", data, source: "sample" });
-        }
+        const data = await writeWithClaude(req);
+        send({ type: "result", data, source: "claude" });
       } catch (e) {
         let message = (e as Error).message || "Something went wrong";
         if (e instanceof Anthropic.AuthenticationError) message = "The Claude API key was rejected. Check ANTHROPIC_API_KEY.";

@@ -1,5 +1,4 @@
 import type { Category, Platform, PlatformId, Script, ThumbnailSpec, Video, VideoFormat } from "../types";
-import { ADVISOR } from "../mock/advisor";
 import { sampleScript } from "./samples";
 
 const STOP = new Set("the a an and or of for to in on your you is it what why how i my with vs before after this that are do does should can".split(" "));
@@ -97,7 +96,7 @@ export function generateDescriptions(video: Pick<Video, "title" | "category" | "
     };
     switch (p.id) {
       case "youtube":
-        return { ...base, title: video.title, description: `${video.title} — explained by ${ADVISOR.name}, ${ADVISOR.credentials}.\n\nIn this video:\n${bullets}\n\nChapters\n0:00 Why this matters\n1:10 The core idea\n4:30 A real-world example\n7:45 Mistakes to avoid` };
+        return { ...base, title: video.title, description: `${video.title} — explained.\n\nIn this video:\n${bullets}\n\nChapters\n0:00 Why this matters\n1:10 The core idea\n4:30 A real-world example\n7:45 Mistakes to avoid` };
       case "youtube_shorts":
         return { ...base, title: `${video.title} #shorts`, description: `${video.title} — in under a minute.\n\n${bullets}` };
       case "instagram":

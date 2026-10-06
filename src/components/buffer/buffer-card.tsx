@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdvisorChannels, useBuffer } from "@/lib/buffer/use-buffer";
-import { ADVISOR, TEAM } from "@/lib/mock/advisor";
+import { ME } from "@/lib/profile";
+import { useStore } from "@/lib/store";
 import { fmtDateTime } from "@/lib/utils";
 import { ChannelAvatar, channelLabel } from "./channel-avatar";
 import { getPlatform } from "@/lib/mock/platforms";
@@ -31,7 +32,8 @@ function BufferMark() {
 
 export function BufferCard() {
   const { status, connected, loading, refresh } = useBuffer();
-  const [mine, setMine] = useAdvisorChannels(TEAM[0].id);
+  const [mine, setMine] = useAdvisorChannels(ME);
+  const { profile } = useStore();
 
   return (
     <Card className="p-5">
@@ -80,7 +82,7 @@ export function BufferCard() {
                 {status.organization.channelCount} of {status.organization.channelLimit} channels · {status.upcoming.length} {status.upcoming.length === 1 ? "post" : "posts"} scheduled
               </span>
             </div>
-            <div className="eyebrow mb-2">Posts as {ADVISOR.name}</div>
+            <div className="eyebrow mb-2">Posts as {profile.name || "you"}</div>
             <ul className="divide-y divide-border rounded-md border border-border">
               {status.channels.map((c) => {
                 const next = status.upcoming.find((p) => p.channelId === c.id && p.dueAt);

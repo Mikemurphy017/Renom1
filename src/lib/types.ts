@@ -65,6 +65,17 @@ export interface Video {
   metrics?: PlatformMetrics[];
   /** Final rendered video from the AI edit (see src/lib/video). */
   outputUrl?: string;
+  /** Exactly what went out, kept for books-and-records. */
+  posts?: PostRecord[];
+}
+
+export interface PostRecord {
+  platform: PlatformId;
+  channel: string;
+  caption: string;
+  disclosureVersion: string;
+  at: string;
+  how: "buffer-now" | "buffer-scheduled" | "buffer-queue" | "buffer-draft" | "manual";
 }
 
 export interface Platform {

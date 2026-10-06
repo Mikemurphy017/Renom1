@@ -2,20 +2,56 @@
 
 import * as React from "react";
 import type { AdvisorProfile, ComplianceStatus, StageId, Video } from "./types";
-import { ADVISOR } from "./mock/advisor";
-import { VIDEOS } from "./mock/videos";
-import { REVIEW_QUEUE, type ReviewComment, type ReviewItem } from "./mock/compliance";
-import { TODAY } from "./utils";
+import type { ReviewComment, ReviewItem } from "./compliance";
+import { EMPTY_PROFILE } from "./profile";
+import { clearDrafts } from "./drafts";
 
 /**
- * In-memory app store seeded with mock data. Every mutation goes through
- * these functions so they can later be replaced by API calls.
+ * App state, saved in this browser (localStorage) so work survives a refresh.
+ * Every mutation goes through these functions so they can later be swapped
+ * for a real database behind an API.
  */
+export interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: "Advisor" | "Assistant" | "Compliance Reviewer";
+}
+
+interface Persisted {
+  version: 1;
+  onboarded: boolean;
+  videos: Video[];
+  reviews: ReviewItem[];
+  requireApproval: boolean;
+  reviewer: string;
+  profile: AdvisorProfile;
+  team: TeamMember[];
+}
+
+const KEY = "renom.state.v1";
+const INITIAL: Persisted = {
+  version: 1,
+  onboarded: false,
+  videos: [],
+  reviews: [],
+  requireApproval: true,
+  reviewer: "",
+  profile: EMPTY_PROFILE,
+  team: [],
+};
+
 interface Store {
+  /** False until saved state has been read from this browser. */
+  hydrated: boolean;
+  onboarded: boolean;
+  completeOnboarding: (p: { profile: AdvisorProfile; requireApproval: boolean; reviewer: string }) => void;
+  resetAll: () => void;
   videos: Video[];
   getVideo: (id: string) => Video | undefined;
   updateVideo: (id: string, patch: Partial<Video>) => void;
   addVideo: (v: Partial<Video> & Pick<Video, "title">) => Video;
+  deleteVideo: (id: string) => void;
   setStage: (id: string, stage: StageId) => void;
   reviews: ReviewItem[];
   setReviewStatus: (id: string, status: ComplianceStatus) => void;
@@ -24,27 +60,66 @@ interface Store {
   addComment: (reviewId: string, c: Omit<ReviewComment, "id" | "at" | "resolved">) => void;
   requireApproval: boolean;
   setRequireApproval: (v: boolean) => void;
+  reviewer: string;
+  setReviewer: (name: string) => void;
   profile: AdvisorProfile;
   updateProfile: (patch: Partial<AdvisorProfile>) => void;
+  team: TeamMember[];
+  setTeam: (t: TeamMember[]) => void;
 }
 
 const StoreContext = React.createContext<Store | null>(null);
 
-export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [videos, setVideos] = React.useState<Video[]>(VIDEOS);
-  const [reviews, setReviews] = React.useState<ReviewItem[]>(REVIEW_QUEUE);
-  const [requireApproval, setRequireApproval] = React.useState(true);
-  const [profile, setProfile] = React.useState<AdvisorProfile>(ADVISOR);
+function load(): Persisted | null {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as Persisted;
+    return p.version === 1 ? { ...INITIAL, ...p, profile: { ...EMPTY_PROFILE, ...p.profile } } : null;
+  } catch {
+    return null;
+  }
+}
 
-  const value = React.useMemo<Store>(
-    () => ({
-      videos,
-      getVideo: (id) => videos.find((v) => v.id === id),
-      updateVideo: (id, patch) =>
-        setVideos((vs) => vs.map((v) => (v.id === id ? { ...v, ...patch, lastEdited: new Date().toISOString() } : v))),
+export function StoreProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = React.useState<Persisted>(INITIAL);
+  const [hydrated, setHydrated] = React.useState(false);
+
+  React.useEffect(() => {
+    const saved = load();
+    if (saved) setState(saved);
+    setHydrated(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem(KEY, JSON.stringify(state));
+    } catch {
+      /* storage full or blocked: keep working in memory */
+    }
+  }, [state, hydrated]);
+
+  const value = React.useMemo<Store>(() => {
+    const set = (fn: (s: Persisted) => Partial<Persisted>) => setState((s) => ({ ...s, ...fn(s) }));
+    const now = () => new Date().toISOString();
+    return {
+      hydrated,
+      onboarded: state.onboarded,
+      completeOnboarding: ({ profile, requireApproval, reviewer }) => set(() => ({ onboarded: true, profile, requireApproval, reviewer })),
+      resetAll: () => {
+        try {
+          localStorage.removeItem(KEY);
+        } catch {}
+        clearDrafts();
+        setState(INITIAL);
+      },
+      videos: state.videos,
+      getVideo: (id) => state.videos.find((v) => v.id === id),
+      updateVideo: (id, patch) => set((s) => ({ videos: s.videos.map((v) => (v.id === id ? { ...v, ...patch, lastEdited: now() } : v)) })),
       addVideo: (partial) => {
         const v: Video = {
-          id: `v${Math.random().toString(36).slice(2, 7)}`,
+          id: `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
           category: "Wealth Strategy",
           format: "short",
           stage: "idea",
@@ -54,61 +129,59 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           runtimeSec: 55,
           platforms: [],
           compliance: "draft",
-          createdAt: TODAY.toISOString(),
-          lastEdited: new Date().toISOString(),
+          createdAt: now(),
+          lastEdited: now(),
           ...partial,
         };
-        setVideos((vs) => [v, ...vs]);
+        set((s) => ({ videos: [v, ...s.videos] }));
         return v;
       },
-      setStage: (id, stage) =>
-        setVideos((vs) => vs.map((v) => (v.id === id ? { ...v, stage, lastEdited: new Date().toISOString() } : v))),
-      reviews,
-      setReviewStatus: (id, status) => {
-        setReviews((rs) => rs.map((r) => (r.id === id ? { ...r, status } : r)));
-        const r = reviews.find((x) => x.id === id);
-        if (r) setVideos((vs) => vs.map((v) => (v.id === r.videoId ? { ...v, compliance: status } : v)));
-      },
+      deleteVideo: (id) => set((s) => ({ videos: s.videos.filter((v) => v.id !== id), reviews: s.reviews.filter((r) => r.videoId !== id) })),
+      setStage: (id, stage) => set((s) => ({ videos: s.videos.map((v) => (v.id === id ? { ...v, stage, lastEdited: now() } : v)) })),
+      reviews: state.reviews,
+      setReviewStatus: (id, status) =>
+        set((s) => {
+          const r = s.reviews.find((x) => x.id === id);
+          return {
+            reviews: s.reviews.map((x) => (x.id === id ? { ...x, status, decidedAt: status === "approved" || status === "changes_requested" ? now() : x.decidedAt } : x)),
+            videos: r ? s.videos.map((v) => (v.id === r.videoId ? { ...v, compliance: status } : v)) : s.videos,
+          };
+        }),
       resolveComment: (reviewId, commentId) =>
-        setReviews((rs) =>
-          rs.map((r) =>
-            r.id === reviewId ? { ...r, comments: r.comments.map((c) => (c.id === commentId ? { ...c, resolved: !c.resolved } : c)) } : r
-          )
-        ),
-      submitForReview: (videoId, kind = "Video + script") => {
-        setReviews((rs) => {
-          const existing = rs.find((r) => r.videoId === videoId && r.kind === kind);
-          if (existing) return rs.map((r) => (r === existing ? { ...r, status: "submitted", submittedAt: new Date().toISOString() } : r));
-          return [
-            {
-              id: `r${Math.random().toString(36).slice(2, 7)}`,
-              videoId,
-              kind,
-              status: "submitted",
-              submittedAt: new Date().toISOString(),
-              submittedBy: "Catherine Hale",
-              reviewer: "Ruth Lindqvist",
-              dueAt: new Date(TODAY.getTime() + 2 * 86400000).toISOString(),
-              comments: [],
-            },
-            ...rs,
-          ];
-        });
-        setVideos((vs) => vs.map((v) => (v.id === videoId ? { ...v, compliance: "submitted" } : v)));
-      },
+        set((s) => ({ reviews: s.reviews.map((r) => (r.id === reviewId ? { ...r, comments: r.comments.map((c) => (c.id === commentId ? { ...c, resolved: !c.resolved } : c)) } : r)) })),
+      submitForReview: (videoId, kind = "Video + script") =>
+        set((s) => {
+          const existing = s.reviews.find((r) => r.videoId === videoId && r.kind === kind);
+          const reviews: ReviewItem[] = existing
+            ? s.reviews.map((r) => (r === existing ? { ...r, status: "submitted", submittedAt: now() } : r))
+            : [
+                {
+                  id: `r${Date.now().toString(36)}`,
+                  videoId,
+                  kind,
+                  status: "submitted",
+                  submittedAt: now(),
+                  submittedBy: s.profile.name || "You",
+                  reviewer: s.reviewer || "Your reviewer",
+                  dueAt: new Date(Date.now() + 2 * 86400000).toISOString(),
+                  comments: [],
+                },
+                ...s.reviews,
+              ];
+          return { reviews, videos: s.videos.map((v) => (v.id === videoId ? { ...v, compliance: "submitted" } : v)) };
+        }),
       addComment: (reviewId, c) =>
-        setReviews((rs) =>
-          rs.map((r) =>
-            r.id === reviewId ? { ...r, comments: [...r.comments, { ...c, id: `c${Date.now()}`, at: new Date().toISOString(), resolved: false }] } : r
-          )
-        ),
-      requireApproval,
-      setRequireApproval,
-      profile,
-      updateProfile: (patch) => setProfile((p) => ({ ...p, ...patch })),
-    }),
-    [videos, reviews, requireApproval, profile]
-  );
+        set((s) => ({ reviews: s.reviews.map((r) => (r.id === reviewId ? { ...r, comments: [...r.comments, { ...c, id: `c${Date.now()}`, at: now(), resolved: false }] } : r)) })),
+      requireApproval: state.requireApproval,
+      setRequireApproval: (v) => set(() => ({ requireApproval: v })),
+      reviewer: state.reviewer,
+      setReviewer: (name) => set(() => ({ reviewer: name })),
+      profile: state.profile,
+      updateProfile: (patch) => set((s) => ({ profile: { ...s.profile, ...patch } })),
+      team: state.team,
+      setTeam: (team) => set(() => ({ team })),
+    };
+  }, [state, hydrated]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

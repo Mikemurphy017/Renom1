@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRight, AudioLines, Mic, Monitor, Paperclip, Smartphone, Sparkles, Square, X } from "lucide-react";
+import { ArrowRight, Monitor, Paperclip, Smartphone, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,22 +43,12 @@ export function ScriptStep({ video, complete }: StepProps) {
   const [format, setFormat] = useDraft<VideoFormat>(video.id, "script.format", video.format);
   const [script, setScript] = useDraft<Script | null>(video.id, "script.value", video.script ?? null);
   const [context, setContext] = useDraft(video.id, "script.context", "");
-  const [memo, setMemo] = useDraft<{ secs: number } | null>(video.id, "script.memo", null);
-  const [files, setFiles] = useDraft<string[]>(video.id, "script.files", []);
   const [note, setNote] = React.useState<string | null>(null);
-  const [recording, setRecording] = React.useState(false);
-  const [recSecs, setRecSecs] = React.useState(0);
   const { write, busy, status, source } = useWriter();
-
-  React.useEffect(() => {
-    if (!recording) return;
-    const t = setInterval(() => setRecSecs((s) => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [recording]);
 
   const run = async (instruction?: string) => {
     try {
-      const ctx = [context, memo ? "(The advisor recorded a voice memo; transcription arrives with the Captions integration.)" : "", files.length ? `Attached files: ${files.join(", ")}` : ""].filter(Boolean).join("\n");
+      const ctx = context.trim();
       const out = await write({
         task: "script",
         profile: voiceProfileOf(profile),
@@ -78,7 +68,7 @@ export function ScriptStep({ video, complete }: StepProps) {
 
   const runtime = script ? estimateRuntime(script) : 0;
   const target = format === "short" ? 60 : 600;
-  const contextCount = (context ? 1 : 0) + (memo ? 1 : 0) + files.length;
+  const contextCount = context.trim() ? 1 : 0;
 
   return (
     <div className="space-y-8 pb-28">
@@ -92,7 +82,7 @@ export function ScriptStep({ video, complete }: StepProps) {
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="rounded-full">
-              <Paperclip /> Add context {contextCount > 0 && <span className="rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground tnum">{contextCount}</span>}
+              <Paperclip /> Add notes {contextCount > 0 && <span className="rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground tnum">{contextCount}</span>}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-80 space-y-4">
@@ -100,40 +90,17 @@ export function ScriptStep({ video, complete }: StepProps) {
               <div className="mb-1.5 text-[12px] font-medium">Notes for {BRAND.name}</div>
               <Textarea rows={3} value={context} onChange={(e) => setContext(e.target.value)} placeholder="A story, a client question, a stat you trust…" className="text-[13px]" />
             </div>
-            <div>
-              <div className="mb-1.5 text-[12px] font-medium">Voice memo</div>
-              {memo ? (
-                <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-[13px]">
-                  <AudioLines className="size-4 text-primary" /> Memo · <span className="tnum">{fmtDuration(memo.secs)}</span>
-                  <button className="ml-auto cursor-pointer" onClick={() => setMemo(null)} aria-label="Remove memo"><X className="size-3.5" /></button>
-                </div>
-              ) : recording ? (
-                <Button variant="outline" size="sm" className="w-full" onClick={() => { setRecording(false); setMemo({ secs: Math.max(1, recSecs) }); }}>
-                  <Square className="size-3 text-destructive" /> Stop · <span className="tnum">{fmtDuration(recSecs)}</span>
-                </Button>
-              ) : (
-                <Button variant="outline" size="sm" className="w-full" onClick={() => { setRecSecs(0); setRecording(true); }}><Mic /> Record a memo</Button>
-              )}
-            </div>
-            <div>
-              <div className="mb-1.5 text-[12px] font-medium">Files</div>
-              {files.map((f) => (
-                <div key={f} className="mb-1 flex items-center gap-2 text-[13px]"><Paperclip className="size-3.5 text-muted-foreground" />{f}<button className="ml-auto cursor-pointer" onClick={() => setFiles(files.filter((x) => x !== f))} aria-label={`Remove ${f}`}><X className="size-3.5" /></button></div>
-              ))}
-              <Button variant="outline" size="sm" className="w-full" onClick={() => setFiles([...files, ["planning-notes.pdf", "client-faq.docx", "irs-notice.pdf"][files.length % 3]])}><Paperclip /> Attach a file</Button>
-            </div>
           </PopoverContent>
         </Popover>
         {script && (
           <span className="ml-auto flex items-center gap-3 text-[13px] text-muted-foreground">
             <span className={cn("tnum", runtime > target && "text-destructive")}>{fmtDuration(runtime)} / {fmtDuration(target)}</span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-[12px] font-medium text-success">Sounds like you · <span className="tnum">92%</span></span>
           </span>
         )}
       </div>
 
       {(busy || script) && (
-        <RequestLine items={[format === "short" ? "Short-form" : "Long-form", `Idea: ${video.title.slice(0, 40)}${video.title.length > 40 ? "…" : ""}`, "Your voice profile", memo ? "Voice memo" : "No voice memo", files.length ? `${files.length} file${files.length > 1 ? "s" : ""}` : "No files"]} source={busy ? null : source} />
+        <RequestLine items={[format === "short" ? "Short-form" : "Long-form", `Idea: ${video.title.slice(0, 40)}${video.title.length > 40 ? "…" : ""}`, "Your voice profile", context.trim() ? "Your notes" : "No notes"]} source={busy ? null : source} />
       )}
 
       {busy && !script ? (

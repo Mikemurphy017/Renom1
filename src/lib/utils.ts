@@ -19,7 +19,7 @@ export function fmtDuration(seconds: number) {
 }
 
 /** Fixed "today" so mock data and relative dates stay consistent. */
-export const TODAY = new Date("2026-10-06T09:00:00");
+export const TODAY = new Date();
 
 export function daysFromToday(days: number, hour = 9, minute = 0) {
   const d = new Date(TODAY);

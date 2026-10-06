@@ -13,10 +13,8 @@ import { VideoThumb } from "@/components/shared/video-thumb";
 import { PlatformIcon } from "@/components/shared/platform-icon";
 import { Reviewer } from "@/components/compliance/reviewer";
 import { useStore } from "@/lib/store";
-import { COMPLIANCE_STATUS_META, type ArchiveRow } from "@/lib/mock/compliance";
-import { ADVISOR } from "@/lib/mock/advisor";
+import { COMPLIANCE_STATUS_META, type ArchiveRow } from "@/lib/compliance";
 import { getPlatform } from "@/lib/mock/platforms";
-import { generateDescriptions } from "@/lib/ai/content";
 import type { ComplianceStatus } from "@/lib/types";
 import { cn, fmtDate, fmtDateTime, relativeTime } from "@/lib/utils";
 
@@ -29,27 +27,28 @@ export default function CompliancePage() {
   const list = reviews.filter((r) => filter === "all" || r.status === filter).sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status));
   const current = reviews.find((r) => r.id === selected);
 
-  const archive: ArchiveRow[] = React.useMemo(() => {
-    const disc = ADVISOR.disclosures;
-    return videos
-      .filter((v) => v.status === "published")
-      .flatMap((v) => {
-        const copies = generateDescriptions(v, v.platforms.map(getPlatform));
-        const ver = new Date(v.publishedAt!) < new Date(disc[0].updatedAt) ? disc[1].version : disc[0].version;
-        return v.platforms.map((p) => ({
-          id: `${v.id}-${p}`,
-          videoId: v.id,
-          title: v.title,
-          platform: p,
-          publishedAt: v.publishedAt!,
-          caption: copies.find((c) => c.platform === p)?.description.split("\n")[0] ?? v.title,
-          disclosure: ver,
-          approver: "Ruth Lindqvist",
-          approvedAt: new Date(new Date(v.publishedAt!).getTime() - 86400000 * 1.5).toISOString(),
-        }));
-      })
-      .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
-  }, [videos]);
+  const archive: ArchiveRow[] = React.useMemo(
+    () =>
+      videos
+        .flatMap((v) => {
+          const approval = reviews.find((r) => r.videoId === v.id && r.status === "approved");
+          return (v.posts ?? []).map((p, i) => ({
+            id: `${v.id}-${i}`,
+            videoId: v.id,
+            title: v.title,
+            platform: p.platform,
+            publishedAt: p.at,
+            caption: p.caption,
+            disclosure: p.disclosureVersion,
+            approver: approval?.reviewer ?? "Not required",
+            approvedAt: approval?.decidedAt ?? "",
+            channel: p.channel,
+            how: p.how,
+          }));
+        })
+        .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)),
+    [videos, reviews]
+  );
 
   const exportCsv = () => {
     const head = "Post ID,Video,Platform,Published,Final caption,Disclosure version,Approver,Approved";
@@ -124,7 +123,6 @@ export default function CompliancePage() {
                 <p className="mt-1 text-[13px] text-muted-foreground"><span className="tnum">{archive.length}</span> posts archived · retained 7 years · immutable</p>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => toast.success("PDF generated", { description: "renom-archive-2026-10-06.pdf" })}><FileText /> Export PDF</Button>
                 <Button variant="outline" size="sm" onClick={exportCsv}><Download /> Export CSV</Button>
               </div>
             </CardHeader>
@@ -150,7 +148,7 @@ export default function CompliancePage() {
                       <TableCell><span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">{r.disclosure}</span></TableCell>
                       <TableCell className="pr-5">
                         <div>{r.approver}</div>
-                        <div className="text-[11px] text-muted-foreground tnum">{fmtDate(r.approvedAt)}</div>
+                        <div className="text-[11px] text-muted-foreground tnum">{r.approvedAt ? fmtDate(r.approvedAt) : ""}</div>
                       </TableCell>
                     </TableRow>
                   ))}

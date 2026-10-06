@@ -1,7 +1,7 @@
 import { CircleCheck, Smartphone, Monitor, CircleDot, TriangleAlert, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Category, ComplianceStatus, VideoFormat } from "@/lib/types";
-import { COMPLIANCE_STATUS_META } from "@/lib/mock/compliance";
+import { COMPLIANCE_STATUS_META } from "@/lib/compliance";
 import { cn } from "@/lib/utils";
 
 export function FormatBadge({ format, className }: { format: VideoFormat; className?: string }) {

@@ -3,15 +3,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Check, CircleCheck, Clock, Hash, Lock, RefreshCw, Send, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CircleCheck, Hash, Lock, RefreshCw, Send, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import { Progress } from "@/components/ui/progress";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { VideoThumb } from "@/components/shared/video-thumb";
 import { PlatformIcon } from "@/components/shared/platform-icon";
 import { ComplianceBadge } from "@/components/shared/badges";
@@ -22,11 +19,11 @@ import { isAbort, useWriter } from "@/lib/ai/writer";
 import { generateThumbnails, type PlatformCopy } from "@/lib/ai/content";
 import { useAdvisorChannels, useBuffer } from "@/lib/buffer/use-buffer";
 import { platformForService } from "@/lib/buffer/types";
-import { activeDisclosure, disclosureFor } from "@/lib/compose";
+import { activeDisclosure, composeCaption, disclosureFor } from "@/lib/compose";
 import { PLATFORMS, getPlatform } from "@/lib/mock/platforms";
-import { TEAM } from "@/lib/mock/advisor";
+import { ME } from "@/lib/profile";
 import type { PlatformId, ThumbnailSpec } from "@/lib/types";
-import { cn, fmtNumber, sleep, TODAY } from "@/lib/utils";
+import { cn, fmtNumber } from "@/lib/utils";
 import { AskBar, RequestLine, Writing } from "../ask-bar";
 import type { StepProps } from "../studio-view";
 
@@ -34,7 +31,7 @@ type Cover = ThumbnailSpec & { id: string; size: string };
 const SUB = ["Cover", "Caption", "Schedule"] as const;
 
 export function PostStep({ video }: StepProps) {
-  const { profile, updateVideo, requireApproval, submitForReview } = useStore();
+  const { profile, updateVideo, requireApproval, submitForReview, reviewer } = useStore();
   const vertical = video.format === "short";
   const [sub, setSub] = useDraft(video.id, "post.sub", 0);
 
@@ -49,7 +46,7 @@ export function PostStep({ video }: StepProps) {
   const buffer = useBuffer();
   const bufferOn = buffer.connected;
   const bufferChannels = buffer.status && "channels" in buffer.status ? buffer.status.channels : [];
-  const [mine] = useAdvisorChannels(TEAM[0].id);
+  const [mine] = useAdvisorChannels(ME);
   const bufferPlatforms = Array.from(new Set(bufferChannels.filter((c) => !mine.length || mine.includes(c.id)).map((c) => platformForService(c.service, video.format)).filter(Boolean))) as PlatformId[];
   const defaultPlatforms: PlatformId[] = bufferOn && bufferPlatforms.length ? bufferPlatforms : video.platforms.length ? video.platforms : vertical ? ["youtube_shorts", "instagram", "linkedin"] : ["youtube", "linkedin"];
   const [platforms, setPlatforms] = useDraft<PlatformId[]>(video.id, "post.platforms", defaultPlatforms);
@@ -159,7 +156,7 @@ export function PostStep({ video }: StepProps) {
           {bufferOn && bufferPlatforms.length > 0 && bufferPlatforms.every((b) => platforms.includes(b)) && <p className="text-center text-[12px] text-muted-foreground">Includes every platform on your Buffer channels.</p>}
 
           {(busy || copies.length > 0) && (
-            <RequestLine items={[`${platforms.length} platforms`, "From your script", "Your voice profile", `Disclosure ${activeDisclosure(profile).version} (auto)`]} source={busy ? null : source} />
+            <RequestLine items={[`${platforms.length} platforms`, "From your script", "Your voice profile", `Disclosure ${activeDisclosure(profile)?.version ?? "not set"} (auto)`]} source={busy ? null : source} />
           )}
 
           {busy && !copies.length ? (
@@ -206,7 +203,7 @@ export function PostStep({ video }: StepProps) {
       {sub === 2 && (
         <>
           {needsApproval ? (
-            <ApprovalGate status={video.compliance} onSubmit={() => { submitForReview(video.id); toast.success("Sent for approval", { description: "Ruth Lindqvist has it." }); }} />
+            <ApprovalGate status={video.compliance} onSubmit={() => { submitForReview(video.id); toast.success("Sent for approval", { description: reviewer ? `${reviewer} has it.` : "It’s in the Approve queue." }); }} />
           ) : bufferOn ? (
             <>
               {bufferPhase === "configure" ? (
@@ -219,7 +216,7 @@ export function PostStep({ video }: StepProps) {
               )}
             </>
           ) : (
-            <SimulatedSchedule video={video} platforms={platforms} onBack={() => setSub(1)} />
+            <ManualPost video={video} platforms={platforms} copies={copies} onBack={() => setSub(1)} />
           )}
         </>
       )}
@@ -271,7 +268,7 @@ function CaptionEditor({ platform, copy, update }: { platform: PlatformId; copy?
         />
       </div>
       <div className="rounded-xl bg-brass-soft/60 p-4">
-        <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-[#7d6238] uppercase dark:text-primary"><Lock className="size-3" /> Disclosure · {activeDisclosure(profile).version} · added automatically</div>
+        <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-[#7d6238] uppercase dark:text-primary"><Lock className="size-3" /> Disclosure · {activeDisclosure(profile)?.version ?? "not set"} · added automatically</div>
         <p className="text-[12px] leading-relaxed whitespace-pre-line text-foreground/75 select-none">{locked}</p>
       </div>
     </div>
@@ -299,24 +296,28 @@ function ApprovalGate({ status, onSubmit }: { status: string; onSubmit: () => vo
   );
 }
 
-function SimulatedSchedule({ video, platforms, onBack }: { video: StepProps["video"]; platforms: PlatformId[]; onBack: () => void }) {
-  const { updateVideo } = useStore();
-  const base = video.scheduledFor ? new Date(video.scheduledFor) : new Date(TODAY.getTime() + 2 * 86400000);
-  const [plan, setPlan] = React.useState<Record<string, { on: boolean; mode: "now" | "schedule"; date: string; time: string }>>(() =>
-    Object.fromEntries(platforms.map((p) => [p, { on: getPlatform(p).connected, mode: "schedule", date: base.toISOString().slice(0, 10), time: "08:30" }]))
-  );
-  const [progress, setProgress] = React.useState<number | null>(null);
+/** Without Buffer: connect it, or post by hand and keep the record. */
+function ManualPost({ video, platforms, copies, onBack }: { video: StepProps["video"]; platforms: PlatformId[]; copies: PlatformCopy[]; onBack: () => void }) {
+  const { updateVideo, profile } = useStore();
   const [done, setDone] = React.useState(false);
-  const enabled = platforms.filter((p) => plan[p]?.on);
+  const captionFor = (p: PlatformId) => {
+    const c = copies.find((x) => x.platform === p);
+    return c ? composeCaption(c, p, profile) : "";
+  };
 
-  const publish = async () => {
-    for (let i = 0; i <= 100; i += 10) { setProgress(i); await sleep(60); }
-    const now = enabled.some((p) => plan[p].mode === "now");
-    const firstSched = enabled.filter((p) => plan[p].mode === "schedule").map((p) => `${plan[p].date}T${plan[p].time}`).sort()[0];
-    updateVideo(video.id, { platforms: enabled, status: now && !firstSched ? "published" : "scheduled", publishedAt: now ? new Date().toISOString() : undefined, scheduledFor: firstSched ? new Date(firstSched).toISOString() : undefined });
-    setProgress(null);
+  const markPosted = () => {
+    const at = new Date().toISOString();
+    updateVideo(video.id, {
+      platforms,
+      status: "published",
+      publishedAt: at,
+      posts: [
+        ...(video.posts ?? []),
+        ...platforms.map((p) => ({ platform: p, channel: "Posted manually", caption: captionFor(p), disclosureVersion: activeDisclosure(profile)?.version ?? "none", at, how: "manual" as const })),
+      ],
+    });
     setDone(true);
-    toast.success(now ? "Published" : "Scheduled", { description: "Archived for your records." });
+    toast.success("Marked as posted", { description: "The captions and disclosure are in your archive." });
   };
 
   if (done) {
@@ -324,9 +325,9 @@ function SimulatedSchedule({ video, platforms, onBack }: { video: StepProps["vid
       <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-10 text-center shadow-soft">
         <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mx-auto flex size-12 items-center justify-center rounded-full bg-success-soft"><CircleCheck className="size-6 text-success" /></motion.div>
         <h2 className="mt-5 font-serif text-2xl">That&rsquo;s it. You&rsquo;re done.</h2>
-        <p className="mt-2 text-[14px] text-muted-foreground">Every caption, disclosure and approval is in the archive.</p>
+        <p className="mt-2 text-[14px] text-muted-foreground">Every caption and disclosure is in your archive.</p>
         <div className="mt-6 flex justify-center gap-2">
-          <Button variant="outline" className="rounded-full" asChild><Link href="/analyze">See how it does</Link></Button>
+          <Button variant="outline" className="rounded-full" asChild><Link href="/approve">See the archive</Link></Button>
           <Button className="rounded-full" asChild><Link href="/">Home</Link></Button>
         </div>
       </div>
@@ -335,41 +336,34 @@ function SimulatedSchedule({ video, platforms, onBack }: { video: StepProps["vid
 
   return (
     <div className="space-y-4">
-      <p className="text-center text-[13px] text-muted-foreground">Buffer isn&rsquo;t connected, so this is a preview. <Link href="/settings#publishing" className="text-primary hover:underline">Connect Buffer</Link></p>
-      <div className="divide-y divide-border rounded-2xl border border-border bg-card">
-        {platforms.map((p) => {
-          const pl = getPlatform(p);
-          const s = plan[p];
-          return (
-            <div key={p} className={cn("flex flex-wrap items-center gap-3 px-5 py-4", !pl.connected && "opacity-50")} style={{ ["--pi-bg" as string]: "var(--card)" }}>
-              <Switch checked={s.on} disabled={!pl.connected} onCheckedChange={(v) => setPlan({ ...plan, [p]: { ...s, on: v } })} />
-              <PlatformIcon id={p} />
-              <span className="w-32 text-[14px] font-medium">{pl.label}</span>
-              {s.on && (
-                <div className="ml-auto flex flex-wrap items-center gap-2">
-                  <ToggleGroup type="single" value={s.mode} onValueChange={(v) => v && setPlan({ ...plan, [p]: { ...s, mode: v as "now" | "schedule" } })} className="rounded-full">
-                    <ToggleGroupItem value="now" className="rounded-full">Now</ToggleGroupItem>
-                    <ToggleGroupItem value="schedule" className="rounded-full">Schedule</ToggleGroupItem>
-                  </ToggleGroup>
-                  {s.mode === "schedule" && (
-                    <>
-                      <Input type="date" value={s.date} onChange={(e) => setPlan({ ...plan, [p]: { ...s, date: e.target.value } })} className="h-8 w-36 text-[12px] tnum" />
-                      <Input type="time" value={s.time} onChange={(e) => setPlan({ ...plan, [p]: { ...s, time: e.target.value } })} className="h-8 w-28 text-[12px] tnum" />
-                    </>
-                  )}
-                </div>
-              )}
-              {!pl.connected && <span className="ml-auto text-[12px] text-muted-foreground">Not connected</span>}
-            </div>
-          );
-        })}
+      <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-8 text-center shadow-soft">
+        <h2 className="font-serif text-2xl">Connect Buffer to schedule.</h2>
+        <p className="mt-2 text-[14px] text-muted-foreground">Buffer posts to LinkedIn, YouTube, Instagram, Facebook and more for you. Or post it yourself and keep the record here.</p>
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          <Button className="rounded-full px-5" asChild><Link href="/settings#publishing">Connect Buffer</Link></Button>
+          <Button variant="outline" className="rounded-full" onClick={markPosted} disabled={!platforms.length}>I posted it myself</Button>
+        </div>
       </div>
-      {progress !== null && <Progress value={progress} />}
-      <div className="flex items-center justify-between">
+      <div className="mx-auto max-w-lg space-y-2">
+        {platforms.map((p) => (
+          <div key={p} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5 text-[13px]" style={{ ["--pi-bg" as string]: "var(--card)" }}>
+            <PlatformIcon id={p} className="size-4" />
+            <span className="flex-1">{getPlatform(p).label}</span>
+            <Button
+              size="xs"
+              variant="ghost"
+              disabled={!captionFor(p)}
+              onClick={() => {
+                navigator.clipboard?.writeText(captionFor(p)).then(() => toast.success(`${getPlatform(p).label} caption copied`)).catch(() => toast.error("Couldn’t copy"));
+              }}
+            >
+              Copy caption
+            </Button>
+          </div>
+        ))}
+      </div>
+      <div className="flex">
         <Button variant="ghost" className="rounded-full" onClick={onBack}><ArrowLeft /> Caption</Button>
-        <Button className="rounded-full px-6" disabled={!enabled.length || progress !== null} onClick={publish}>
-          <Clock /> {enabled.some((p) => plan[p].mode === "now") ? "Publish" : `Schedule ${enabled.length}`}
-        </Button>
       </div>
     </div>
   );

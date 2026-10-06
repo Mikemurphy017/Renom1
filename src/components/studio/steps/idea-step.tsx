@@ -20,7 +20,7 @@ import type { StepProps } from "../studio-view";
 import { BRAND } from "@/lib/brand";
 import { createBufferIdea, useAdvisorChannels, useBuffer } from "@/lib/buffer/use-buffer";
 import type { BufferService } from "@/lib/buffer/types";
-import { TEAM } from "@/lib/mock/advisor";
+import { ME } from "@/lib/profile";
 
 type Idea = IdeasOutput["ideas"][number] & { id: string };
 let n = 0;
@@ -36,7 +36,7 @@ export function IdeaStep({ video, complete }: StepProps) {
   const others = videos.filter((v) => v.id !== video.id);
   const hasCurrent = video.outline.length > 0;
   const buffer = useBuffer();
-  const [mine] = useAdvisorChannels(TEAM[0].id);
+  const [mine] = useAdvisorChannels(ME);
 
   /** Copy an idea into Buffer's Ideas board (title + outline), tagged for the advisor's channels. */
   const sendToBuffer = async (idea: Idea) => {

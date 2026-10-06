@@ -14,7 +14,8 @@ import { PageContainer } from "@/components/shared/page";
 import { Headshot } from "@/components/shared/headshot";
 import { BufferCard } from "@/components/buffer/buffer-card";
 import { useStore } from "@/lib/store";
-import { TEAM } from "@/lib/mock/advisor";
+import { disclosureTemplate, firstDisclosure, initials } from "@/lib/profile";
+import { useRouter } from "next/navigation";
 import type { DisclosureVersion } from "@/lib/types";
 import { cn, fmtDate } from "@/lib/utils";
 import { BRAND } from "@/lib/brand";
@@ -25,7 +26,7 @@ const SECTIONS = [
   ["publishing", "Publishing"],
   ["approval", "Approval"],
   ["team", "Team"],
-  ["plan", "Plan"],
+  ["reset", "Start over"],
 ] as const;
 
 function Section({ id, title, desc, children }: { id: string; title: string; desc?: string; children: React.ReactNode }) {
@@ -59,13 +60,13 @@ function useClaudeStatus() {
 }
 
 export default function SettingsPage() {
-  const { profile: p, updateProfile, requireApproval, setRequireApproval } = useStore();
+  const { profile: p, updateProfile, requireApproval, setRequireApproval, reviewer, setReviewer, team, setTeam, resetAll } = useStore();
+  const router = useRouter();
   const claude = useClaudeStatus();
   const [newOpinion, setNewOpinion] = React.useState("");
-  const [team, setTeam] = React.useState(TEAM.map((t) => ({ ...t, role: t.role as string })));
   const [invite, setInvite] = React.useState("");
-  const active = p.disclosures.find((d) => d.active)!;
-  const [draft, setDraft] = React.useState(active.text);
+  const active = p.disclosures.find((d) => d.active);
+  const [draft, setDraft] = React.useState(active?.text ?? disclosureTemplate(p));
 
   const addOpinion = () => {
     if (!newOpinion.trim()) return;
@@ -74,6 +75,11 @@ export default function SettingsPage() {
   };
 
   const saveDisclosure = () => {
+    if (!active) {
+      updateProfile({ disclosures: [firstDisclosure(draft, p.name)] });
+      toast.success("Disclosure v1.0 saved", { description: "It’s added to every caption from now on." });
+      return;
+    }
     const [maj, min] = active.version.slice(1).split(".").map(Number);
     const v: DisclosureVersion = { id: `d${Date.now()}`, version: `v${maj}.${min + 1}`, label: active.label, text: draft, updatedAt: new Date().toISOString(), updatedBy: p.name, active: true };
     updateProfile({ disclosures: [v, ...p.disclosures.map((d) => ({ ...d, active: false }))] });
@@ -160,13 +166,13 @@ export default function SettingsPage() {
           <Section id="disclosures" title="Disclosures" desc="Added to every caption automatically and locked. Each change is versioned for your records.">
             <div className="rounded-xl border border-primary/30 bg-brass-soft/50 p-4">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#7d6238] dark:text-primary"><Lock className="size-3" /> Active · {active.version}</span>
-                <span className="text-[12px] text-muted-foreground">{active.updatedBy} · {fmtDate(active.updatedAt, { month: "short", day: "numeric", year: "numeric" })}</span>
+                <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#7d6238] dark:text-primary"><Lock className="size-3" /> {active ? `Active · ${active.version}` : "Not set yet: edit the template, then save"}</span>
+                {active && <span className="text-[12px] text-muted-foreground">{active.updatedBy} · {fmtDate(active.updatedAt, { month: "short", day: "numeric", year: "numeric" })}</span>}
               </div>
               <Textarea rows={5} value={draft} onChange={(e) => setDraft(e.target.value)} className="bg-card text-[13px]" />
               <div className="mt-3 flex items-center justify-between">
                 <span className="text-[12px] text-muted-foreground tnum">{draft.length} characters</span>
-                <Button size="sm" disabled={draft === active.text} onClick={saveDisclosure}><Check /> Save as new version</Button>
+                <Button size="sm" disabled={!draft.trim() || draft === active?.text} onClick={saveDisclosure}><Check /> {active ? "Save as new version" : "Save disclosure"}</Button>
               </div>
             </div>
             <details className="group rounded-xl border border-border bg-card">
@@ -195,46 +201,59 @@ export default function SettingsPage() {
               </div>
               <div className="flex items-center justify-between gap-6 px-4 py-3.5">
                 <div><div className="text-[14px] font-medium">Reviewer</div><div className="text-[12px] text-muted-foreground">New submissions go here.</div></div>
-                <Select defaultValue="rl"><SelectTrigger size="sm" className="w-52"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="rl">Ruth Lindqvist (CCO)</SelectItem><SelectItem value="pool">Meridian review pool</SelectItem></SelectContent></Select>
+                <Input value={reviewer} onChange={(e) => setReviewer(e.target.value)} placeholder="e.g. Your CCO's name" className="h-8 w-56" />
               </div>
             </div>
           </Section>
 
-          <Section id="team" title="Team">
+          <Section id="team" title="Team" desc="Invites are saved here; sign-in for teammates comes with accounts.">
             <div className="divide-y divide-border rounded-xl border border-border bg-card">
+              <div className="flex items-center gap-3 px-4 py-3">
+                <span className="flex size-8 items-center justify-center rounded-full bg-navy text-[11px] font-semibold text-navy-foreground dark:bg-secondary">{initials(p.name)}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[14px] font-medium">{p.name || "You"}</div>
+                  <div className="text-[12px] text-muted-foreground">Owner</div>
+                </div>
+                <span className="text-[13px] text-muted-foreground">Advisor</span>
+              </div>
               {team.map((m) => (
                 <div key={m.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <span className="flex size-8 items-center justify-center rounded-full bg-navy text-[11px] font-semibold text-navy-foreground dark:bg-secondary">{m.initials}</span>
+                  <span className="flex size-8 items-center justify-center rounded-full bg-muted text-[11px] font-semibold">{initials(m.name)}</span>
                   <div className="min-w-0 flex-1">
                     <div className="text-[14px] font-medium">{m.name}</div>
-                    <div className="flex items-center gap-1 text-[12px] text-muted-foreground"><Mail className="size-3" /> {m.email}</div>
+                    <div className="flex items-center gap-1 text-[12px] text-muted-foreground"><Mail className="size-3" /> {m.email} · invited</div>
                   </div>
-                  <Select value={m.role} disabled={"owner" in m && !!m.owner} onValueChange={(v) => setTeam((t) => t.map((x) => (x.id === m.id ? { ...x, role: v } : x)))}>
+                  <Select value={m.role} onValueChange={(v) => setTeam(team.map((x) => (x.id === m.id ? { ...x, role: v as typeof m.role } : x)))}>
                     <SelectTrigger size="sm" className="w-44"><SelectValue /></SelectTrigger>
                     <SelectContent>{["Advisor", "Assistant", "Compliance Reviewer"].map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
                   </Select>
+                  <button type="button" className="cursor-pointer text-muted-foreground hover:text-foreground" onClick={() => setTeam(team.filter((x) => x.id !== m.id))} aria-label={`Remove ${m.name}`}><X className="size-4" /></button>
                 </div>
               ))}
               <div className="flex gap-2 px-4 py-3">
                 <Input placeholder="name@firm.com" value={invite} onChange={(e) => setInvite(e.target.value)} className="h-8" />
                 <Button size="sm" variant="outline" onClick={() => {
                   if (!/\S+@\S+\.\S+/.test(invite)) return toast.error("Enter a valid email");
-                  setTeam((t) => [...t, { id: invite, name: invite.split("@")[0], email: invite, role: "Assistant", initials: invite.slice(0, 2).toUpperCase(), owner: false }]);
-                  toast.success("Invitation sent");
+                  setTeam([...team, { id: invite, name: invite.split("@")[0], email: invite, role: "Assistant" }]);
+                  toast.success("Added to your team");
                   setInvite("");
-                }}><UserPlus /> Invite</Button>
+                }}><UserPlus /> Add</Button>
               </div>
             </div>
           </Section>
 
-          <Section id="plan" title="Plan">
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card px-5 py-4">
-              <div>
-                <div className="font-serif text-xl">Practice</div>
-                <div className="text-[13px] text-muted-foreground tnum">9 of 20 videos this month · {team.length} of 5 seats</div>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => toast("Billing is mocked in this preview.")}>Manage plan</Button>
-            </div>
+          <Section id="reset" title="Start over" desc="Clears your profile, videos, reviews and settings in this browser, then opens setup again. Your API keys and Buffer posts aren’t touched.">
+            <Button
+              variant="outline"
+              className="border-destructive/30 text-destructive hover:bg-warning-soft"
+              onClick={() => {
+                if (!window.confirm("Erase everything in this studio and start setup again?")) return;
+                resetAll();
+                router.push("/welcome");
+              }}
+            >
+              Reset this studio
+            </Button>
           </Section>
         </div>
       </div>

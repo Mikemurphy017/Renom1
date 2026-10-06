@@ -19,7 +19,7 @@ import { useDraft } from "@/lib/drafts";
 import { composeCaption, activeDisclosure } from "@/lib/compose";
 import { generateDescriptions, type PlatformCopy } from "@/lib/ai/content";
 import { getPlatform } from "@/lib/mock/platforms";
-import { TEAM } from "@/lib/mock/advisor";
+import { ME } from "@/lib/profile";
 import { createBufferPost, useAdvisorChannels } from "@/lib/buffer/use-buffer";
 import { platformForService, type BufferChannel, type BufferMode } from "@/lib/buffer/types";
 import type { PlatformId, Video } from "@/lib/types";
@@ -40,7 +40,7 @@ type Result = { channelId: string; ok: boolean; message: string; dueAt?: string 
 
 /** Shared Buffer publishing state for a video (persists while moving between sub-steps). */
 export function useBufferPlan(video: Video, channels: BufferChannel[]) {
-  const [mine] = useAdvisorChannels(TEAM[0].id);
+  const [mine] = useAdvisorChannels(ME);
   const { profile } = useStore();
   const [videoUrl, setVideoUrl] = useDraft(video.id, "buffer.videoUrl", () => (video.outputUrl?.startsWith("https://") ? video.outputUrl : ""));
   const [plans, setPlans] = useDraft<Record<string, ChannelPlan>>(video.id, "buffer.plans", {});
@@ -146,7 +146,7 @@ export function BufferConfigure({ channels, plan, onBack, onNext }: { channels: 
                 <div className="mt-3 md:ml-[276px]">
                   <Textarea rows={6} value={caption} onChange={(e) => plan.setPlan(c.id, { text: e.target.value })} className="text-[13px]" />
                   <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
-                    <span className="inline-flex items-center gap-1"><Lock className="size-3" /> Includes disclosure {activeDisclosure(profile).version} — edit carefully; changes are archived.</span>
+                    <span className="inline-flex items-center gap-1"><Lock className="size-3" /> Includes disclosure {activeDisclosure(profile)?.version ?? "not set"} — edit carefully; changes are archived.</span>
                     <span className={cn("tnum", caption.length > platform.descLimit && "text-destructive")}>{fmtNumber(caption.length)} / {fmtNumber(platform.descLimit)}</span>
                   </div>
                 </div>
@@ -164,6 +164,7 @@ export function BufferConfigure({ channels, plan, onBack, onNext }: { channels: 
 }
 
 export function BufferReview({ video, channels, plan, onEdit }: { video: Video; channels: BufferChannel[]; plan: Plan; onEdit: () => void }) {
+  const { profile } = useStore();
   const { updateVideo, requireApproval, submitForReview } = useStore();
   const enabled = channels.filter((c) => plan.planFor(c).enabled);
   const [progress, setProgress] = React.useState<number | null>(null);
@@ -205,6 +206,22 @@ export function BufferReview({ video, channels, plan, onEdit }: { video: Video; 
         status: publishedNow ? "published" : "scheduled",
         publishedAt: publishedNow ? new Date().toISOString() : video.publishedAt,
         scheduledFor: firstDue ?? video.scheduledFor,
+        posts: [
+          ...(video.posts ?? []),
+          ...enabled.flatMap((c) => {
+            const r = out.find((x) => x.channelId === c.id);
+            if (!r?.ok) return [];
+            const mode = plan.planFor(c).mode;
+            return [{
+              platform: plan.platformOf(c),
+              channel: channelLabel(c),
+              caption: plan.captionFor(c),
+              disclosureVersion: activeDisclosure(profile)?.version ?? "none",
+              at: r.dueAt ?? new Date().toISOString(),
+              how: (!plan.videoUrl ? "buffer-draft" : mode === "now" ? "buffer-now" : mode === "queue" ? "buffer-queue" : "buffer-scheduled") as "buffer-now",
+            }];
+          }),
+        ],
       });
     }
     if (okResults.length === out.length) toast.success("Sent to Buffer", { description: `${out.length} post${out.length > 1 ? "s" : ""} created.` });

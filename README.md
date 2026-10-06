@@ -16,6 +16,17 @@ npm run build   # production build
 
 Next.js (App Router) · TypeScript · Tailwind v4 · shadcn/ui-style components on Radix · Lucide · Recharts · Framer Motion · cmdk · sonner · next-themes
 
+## First run
+
+The app starts empty. The first visit opens a short setup at `/welcome` (name, practice, who you help, your voice, your opinions, your disclosure and reviewer, and a check of the Claude and Buffer connections). Your answers become the profile Claude writes from; change them any time in Settings.
+
+Everything you create (profile, videos, reviews, drafts) is saved in this browser's local storage, so it survives a refresh but not a different browser or computer. Settings → Start over erases it and reopens setup. Recorded takes are stored on the server in `.data/`.
+
+What needs a key:
+- Writing (ideas, scripts, captions) needs `ANTHROPIC_API_KEY`. Without it, writing is turned off with a clear message.
+- Scheduling needs `BUFFER_API_KEY`. Without it, Post offers "I posted it myself", which still archives the captions and disclosure.
+- AI video edits run on the offline sample processor until the Captions/Mirage endpoints are verified (see below).
+
 ## The product
 
 Five steps, nothing else: **Idea → Script → Record → Edit → Post** (Post covers cover image, captions, approval and scheduling).

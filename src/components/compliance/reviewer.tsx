@@ -9,8 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { VideoThumb } from "@/components/shared/video-thumb";
 import { ComplianceBadge, CategoryTag, FormatBadge } from "@/components/shared/badges";
 import { useStore } from "@/lib/store";
+import { initials } from "@/lib/profile";
 import { generateScript } from "@/lib/ai/content";
-import type { ReviewComment, ReviewItem } from "@/lib/mock/compliance";
+import type { ReviewComment, ReviewItem } from "@/lib/compliance";
 import { cn, fmtDuration, relativeTime } from "@/lib/utils";
 
 type Section = "hook" | "body" | "cta";
@@ -36,7 +37,7 @@ export function Reviewer({ review }: { review: ReviewItem }) {
     if (!text.trim()) return;
     const [kind, a, b] = anchor.split(":");
     const anc: ReviewComment["anchor"] = kind === "time" ? { kind: "time", seconds: Number(a) } : { kind: "line", section: a as Section, index: Number(b) };
-    addComment(review.id, { author: "Ruth Lindqvist", initials: "RL", role: "Compliance Reviewer", anchor: anc, text: text.trim() });
+    addComment(review.id, { author: review.reviewer, initials: initials(review.reviewer), role: "Compliance Reviewer", anchor: anc, text: text.trim() });
     setText("");
     toast.success("Comment pinned");
   };
