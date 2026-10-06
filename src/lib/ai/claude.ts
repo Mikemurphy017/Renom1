@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { HOUSE_VOICE, advisorBlock } from "./voice";
+import { getWriter } from "./writers";
 import { CaptionsSchema, CoversSchema, IdeasSchema, ScriptSchema } from "./schemas";
 import type { WriteRequest } from "./write-types";
 import { PLATFORMS } from "../mock/platforms";
@@ -33,12 +34,17 @@ ${req.existingTitles.map((t) => `- ${t}`).join("\n") || "- (none)"}
 Each title should work as a hook on its own.${revise(undefined, req.instruction)}`;
 
     case "script":
-      return `Write a ${req.format === "short" ? "short-form script: 45–60 seconds spoken, about 110–150 words total, vertical video" : "long-form script: 6–9 minutes spoken, about 900–1300 words, horizontal video"}.
+      return `Write a ${req.format === "short" ? "short-form script: 60 to 90 seconds spoken, about 150 to 210 words, for a vertical video" : "long-form script: 6 to 9 minutes spoken, about 900 to 1,300 words, for a horizontal video"}.
 Video: "${req.idea.title}"
-Beats to cover:
+Points to cover, in whatever order serves the story:
 ${req.idea.outline.map((o) => `- ${o}`).join("\n")}
-${req.context ? `\nNotes from the advisor (voice memo or files):\n"""\n${req.context}\n"""` : ""}
-The hook must land in the first three seconds. The body is what the advisor will read on a teleprompter, so write for the ear. Close with a calm invitation, not a plea.${revise(req.current, req.instruction)}`;
+${req.context ? `\nNotes from the advisor (use them; they're the advisor's own material):\n"""\n${req.context}\n"""` : ""}
+Write it as one connected narrative the advisor will read on a teleprompter:
+- A through-line from the first sentence to the last. Each paragraph picks up where the last one left off. Someone hearing it once should be able to retell it.
+- The hook is the natural opening of that narrative (one to three sentences), not a slogan.
+- The body is ${req.format === "short" ? "four to six" : "eight to fourteen"} short spoken paragraphs, each two to four full sentences, that develop the single idea step by step.
+- The close follows from the story and ends on a calm invitation.
+- Write for the ear: sentences that are easy to say in one breath, no lists, no headings, no stage directions.${revise(req.current, req.instruction)}`;
 
     case "captions": {
       const specs = req.platforms
@@ -92,6 +98,8 @@ export async function writeWithClaude(req: WriteRequest) {
     },
     system: [
       { type: "text", text: HOUSE_VOICE, cache_control: { type: "ephemeral" } },
+      // Scripts are written by one writer, in one voice, start to finish.
+      ...(req.task === "script" ? [{ type: "text" as const, text: `## Your craft for this script\n${getWriter(req.writer).brief}\n\nNever name this writer or any technique in the script.` }] : []),
       { type: "text", text: advisorBlock(req.profile) },
     ],
     messages: [{ role: "user", content: userPrompt(req) }],

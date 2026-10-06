@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { claudeConfigured, writeWithClaude } from "@/lib/ai/claude";
 import type { WriteEvent, WriteRequest } from "@/lib/ai/write-types";
+import { WRITERS } from "@/lib/ai/writers";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -17,6 +18,7 @@ function validate(body: unknown): WriteRequest | string {
   if (!b || typeof b !== "object") return "Invalid request";
   if (!b.task || !["ideas", "script", "captions", "covers"].includes(b.task)) return "Unknown task";
   if (!b.profile || typeof b.profile !== "object") return "Missing profile";
+  if (b.task === "script" && "writer" in b && b.writer !== undefined && !WRITERS.some((w) => w.id === b.writer)) return "Unknown writer";
   if (JSON.stringify(b).length > 60_000) return "Request too large";
   return b as WriteRequest;
 }

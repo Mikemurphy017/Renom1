@@ -1,5 +1,6 @@
 import type { PlatformId, Script, VideoFormat } from "../types";
 import type { VoiceProfile } from "./voice";
+import type { WriterId } from "./writers";
 import type { CaptionsOutput, CoversOutput, IdeasOutput, ScriptOutput } from "./schemas";
 
 /** Requests the browser sends to /api/write. Revisions pass `current` + `instruction`. */
@@ -17,6 +18,8 @@ export type WriteRequest =
       task: "script";
       profile: VoiceProfile;
       format: VideoFormat;
+      /** Which of the four writers writes this version. */
+      writer?: WriterId;
       idea: { title: string; outline: string[] };
       context?: string;
       current?: Script;

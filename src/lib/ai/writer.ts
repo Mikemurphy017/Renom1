@@ -57,3 +57,31 @@ export function useWriter() {
 
 /** True when a request was superseded by a newer one — not worth telling the user about. */
 export const isAbort = (e: unknown) => (e as Error)?.name === "AbortError";
+
+/** One write request outside the hook (for running several at once). Calls onStatus with progress lines. */
+export async function streamWrite<R extends WriteRequest>(req: R, opts: { signal?: AbortSignal; onStatus?: (s: string) => void } = {}): Promise<WriteResult<R["task"]>> {
+  const res = await fetch("/api/write", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(req), signal: opts.signal });
+  if (!res.ok || !res.body) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j.error || `Request failed (${res.status})`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      const ev = JSON.parse(line) as WriteEvent;
+      if (ev.type === "status") opts.onStatus?.(ev.text);
+      else if (ev.type === "error") throw new Error(ev.message);
+      else if (ev.type === "result") return ev.data as WriteResult<R["task"]>;
+    }
+  }
+  throw new Error("The writer stopped without a result.");
+}

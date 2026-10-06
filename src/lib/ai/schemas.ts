@@ -16,10 +16,10 @@ export const IdeasSchema = z.object({
 });
 
 export const ScriptSchema = z.object({
-  hook: z.string().describe("The opening line(s) — the first 3 seconds"),
-  body: z.array(z.string()).describe("The body as short spoken paragraphs"),
-  cta: z.string().describe("The closing invitation"),
-  note: z.string().describe("One short sentence to the advisor about the choices you made"),
+  hook: z.string().describe("The opening of the narrative: one to three spoken sentences"),
+  body: z.array(z.string()).describe("The body as spoken paragraphs, each two to four connected sentences, in order"),
+  cta: z.string().describe("The close: one or two sentences that finish the story and invite, calmly"),
+  note: z.string().describe("One short sentence to the advisor about the angle this version takes (no writer names)"),
 });
 
 export const CaptionsSchema = z.object({
