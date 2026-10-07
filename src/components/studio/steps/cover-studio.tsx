@@ -153,7 +153,9 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
   const headshots = profile.headshots.filter((h) => h.url);
   const byline = [profile.name, profile.credentials].filter(Boolean).join(", ");
   const brand = profile.brandColors.find((c) => /^#[0-9a-f]{3,6}$/i.test(c) && !/^#(0b1f3a|f7f5f0|fff|ffffff|000|000000)$/i.test(c));
-  const points = React.useMemo(() => (video.outline?.length ? video.outline : (video.script?.body ?? [])).slice(0, 3), [video.outline, video.script]);
+  // Checklist covers: Claude's talking points when written, else the outline.
+  const [aiPoints, setAiPoints] = useDraft<string[]>(video.id, "cover.points", []);
+  const points = React.useMemo(() => (aiPoints.length ? aiPoints : video.outline?.length ? video.outline : (video.script?.body ?? [])).slice(0, 3), [aiPoints, video.outline, video.script]);
 
   const [shape, setShape] = React.useState<VideoFormat>(video.format);
   const [lines, setLines] = useDraft<Lines | null>(video.id, "cover.lines", null);
@@ -215,6 +217,7 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
         });
         const next = { long: out.long.slice(0, 6), short: out.short.slice(0, 6) };
         setLines(next);
+        if (out.points?.length) setAiPoints(out.points.slice(0, 3));
         setOptions((prev) => retextAll(prev, next));
         if (instruction) setNote("New words on every option.");
       } catch (e) {
@@ -222,7 +225,7 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
         toast.error("Couldn’t write cover words", { description: (e as Error).message });
       }
     },
-    [write, profile, video, setLines, setOptions]
+    [write, profile, video, setLines, setOptions, setAiPoints]
   );
   React.useEffect(() => {
     if (!lines && !busy) writeLines();

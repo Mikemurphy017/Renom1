@@ -43,8 +43,9 @@ const CoverLine = z.object({
 });
 
 export const CoversSchema = z.object({
-  long: z.array(CoverLine).describe("Four lines for a 16:9 YouTube / LinkedIn thumbnail, read at a glance next to a face"),
-  short: z.array(CoverLine).describe("Four lines for a 9:16 Reels / TikTok / Shorts cover, read on a grid of covers"),
+  long: z.array(CoverLine).describe("Six lines for a 16:9 YouTube / LinkedIn thumbnail, read at a glance next to a face"),
+  short: z.array(CoverLine).describe("Six lines for a 9:16 Reels / TikTok / Shorts cover, read on a grid of covers"),
+  points: z.array(z.string()).describe("Exactly three talking points from the video for a checklist cover, at most 5 words each"),
 });
 
 export type IdeasOutput = z.infer<typeof IdeasSchema>;

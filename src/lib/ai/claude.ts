@@ -80,7 +80,13 @@ ${req.video.script ? `Hook: ${req.video.script.hook}\nBody:\n${req.video.script.
 Rules for thumbnail words:
 - Never repeat the title. Add what the title leaves out: the stake, the number, the enemy, the open loop.
 - Two to five words. Concrete nouns and numbers beat adjectives. Readable at phone size in one glance.
-- Each of the four options in a shape uses a different tactic (specific number, open loop, named mistake, contrarian claim, plain question).
+- Write six options per shape, each with a different tactic. In every shape include:
+  1. one that starts with a specific figure from the video ("$7,000 IRA mistake", "3 Roth moves", "73: the age that matters");
+  2. one plain question ending in "?";
+  3. one first-person line that reads like something the advisor would say ("I'd wait on this Roth move");
+  and the rest from: open loop, named mistake, contrarian claim, the stake.
+- Only use figures that are in the script or that you're certain are accurate; never invent statistics.
+- Also give three talking points (at most five words each) that summarize what the video covers, for a checklist-style cover.
 - Short-form covers read on a grid next to other covers: punchier, more personal ("I'd skip this IRA move").
 - No promises of returns, no "guaranteed", "safe", "best", "free money", no superlatives about results, no fear-mongering about markets. Curiosity, not hype.
 - The accent is the single word that carries the punch, copied exactly from the headline.${req.instruction ? `\n\nThe advisor asked: "${req.instruction}"` : ""}`;
