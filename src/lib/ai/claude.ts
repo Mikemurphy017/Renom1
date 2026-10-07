@@ -60,7 +60,16 @@ ${req.video.script ? `Script hook: ${req.video.script.hook}\nScript body:\n${req
 Platforms:
 ${specs}
 
-Write natively for each platform: LinkedIn reads like a short post a professional would write; Instagram and TikTok are tighter; YouTube descriptions can carry a few lines of context. Where a link belongs, use the placeholder {{BOOKING_LINK}}. Don't add disclosures — the app appends them.${revise(req.current, req.instruction)}`;
+Write natively for each platform:
+- LinkedIn: a real post, not a caption. 120 to 220 words in short paragraphs (one to three sentences each, blank line between). The first line must earn the "see more" click on its own. It stands alone for someone who never watches the video, then points to the video.
+- Facebook: the same idea, warmer and shorter (60 to 120 words).
+- Instagram: a caption of 40 to 100 words. Strong first line, short lines, a gentle prompt to watch or save.
+- TikTok: one to three short sentences.
+- YouTube and YouTube Shorts: a description that opens with the hook in one line, then two to four lines of context on what the viewer will learn.
+- X: one or two tight sentences.
+Where a link belongs, use the placeholder {{BOOKING_LINK}}. Don't add disclosures — the app appends them.
+
+Also write three taglines for the video: standalone one-liners (at most 12 words) the advisor can use as a post's opening line, a pinned comment, on-screen text or a headline. Each takes a different angle, all in your voice.${revise(req.current, req.instruction)}`;
     }
 
     case "covers":
@@ -100,6 +109,8 @@ export async function writeWithClaude(req: WriteRequest) {
       { type: "text", text: HOUSE_VOICE, cache_control: { type: "ephemeral" } },
       // Scripts are written by one writer, in one voice, start to finish.
       ...(req.task === "script" ? [{ type: "text" as const, text: `## Your craft for this script\n${getWriter(req.writer).brief}\n\nNever name this writer or any technique in the script.` }] : []),
+      // Post copy too: each version in one writer's voice.
+      ...(req.task === "captions" && req.writer ? [{ type: "text" as const, text: `## Your craft for this post copy\n${getWriter(req.writer).postBrief}\n\nNever name this writer or any technique in the copy.` }] : []),
       { type: "text", text: advisorBlock(req.profile) },
     ],
     messages: [{ role: "user", content: userPrompt(req) }],

@@ -134,6 +134,13 @@ function RequestCard({ r, assigned, defaultOpen, onChanged }: { r: PostRequest; 
 
       {open && (
         <div className="space-y-6 border-t border-border p-4 sm:p-5">
+          {r.tagline && (
+            <div className="flex items-center gap-3 rounded-xl border border-border p-3.5">
+              <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Tagline</span>
+              <span className="min-w-0 flex-1 font-serif text-[15px]">{r.tagline}</span>
+              <CopyButton text={r.tagline} label="Tagline" className="size-7" />
+            </div>
+          )}
           {r.note && <div className="rounded-xl bg-brass-soft/60 p-3.5 text-[14px]"><span className="font-medium">Note from {r.advisorName.split(" ")[0] || "the advisor"}:</span> {r.note}</div>}
           {r.teamNote && <div className="rounded-xl bg-muted p-3.5 text-[14px]"><span className="font-medium">Team note:</span> {r.teamNote}</div>}
 

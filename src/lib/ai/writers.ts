@@ -12,8 +12,10 @@ export interface Writer {
   /** What the advisor sees. */
   label: string;
   description: string;
-  /** Server-only craft brief for this writer. */
+  /** Server-only craft brief for this writer (scripts). */
   brief: string;
+  /** Server-only brief for the same voice in post copy, captions and taglines. */
+  postBrief: string;
 }
 
 export const WRITERS: Writer[] = [
@@ -32,6 +34,13 @@ How you write:
 - Just before the close, answer the objection the viewer is about to raise.
 - Close by bringing the story home: what it means for the viewer, then a calm, open invitation.
 - If you use a person, make them clearly illustrative or composite ("someone I'll call…", "picture a couple…"). Never present them as a real client or as typical results.`,
+    postBrief: `Write the post copy in the manner of Joseph Sugarman. You are the only writer; one voice throughout.
+- First line: a short, curious sentence that exists only to get the second line read. Often a small scene or a person ("Last spring a surgeon showed me a spreadsheet.").
+- Every line pulls into the next: short sentences, one idea per line, little seeds of curiosity at the turns ("Here's what he missed.").
+- Tell a tiny story, let the insight arrive inside it, then turn to the reader with a calm invitation to watch or talk.
+- Plain, warm, conversational words. Contractions. No jargon, no hype.
+- Taglines: intriguing one-liners that make someone want the rest of the story ("He built the spreadsheet. He missed one line.").
+- People in stories are composites or illustrative ("someone I'll call…"); never present them as real clients or typical results.`,
   },
   {
     id: "insight",
@@ -47,6 +56,12 @@ How you write:
 - Build in layers. Each paragraph adds one step to the understanding and leads naturally to the next. Use connective phrases ("Which means…", "And once you see that…", "So the real question isn't…").
 - Channel a desire that already exists (a calm retirement, keeping more of what they built). Don't manufacture fear.
 - Close with the idea restated in one clear sentence, then a calm, open invitation.`,
+    postBrief: `Write the post copy in the manner of Eugene Schwartz. You are the only writer; one voice throughout.
+- First line: name, almost word for word, the thought already in the reader's head ("\"I'll deal with taxes when I retire.\"").
+- Meet them at their awareness: the feeling they know, the cause they don't, what changes once they see it. One big idea, nothing else.
+- Name the mechanism in plain words so the idea feels inevitable. Build in layers with connective phrases ("Which means…", "So the real question is…").
+- Channel a desire they already have (a calm retirement, keeping what they built). No manufactured fear.
+- Taglines: the big idea compressed into one line that reframes the reader's own words ("Your bracket in retirement isn't fixed. It's chosen.").`,
   },
   {
     id: "case",
@@ -62,6 +77,13 @@ How you write:
 - Acknowledge the trade-off honestly. Credibility comes from balance.
 - Sound like a seasoned professional explaining something important to a respected client: measured, precise, warm.
 - Close by summarising the case in a sentence and offering a calm next step.`,
+    postBrief: `Write the post copy in the manner of David Ogilvy. You are the only writer; one voice throughout.
+- First line: the most important fact or promise, stated plainly. It should work even if it's the only line read.
+- Treat the reader as intelligent: specifics over adjectives, no hype, no exclamation marks, no clever lines that cloud the meaning.
+- Lay out a short, orderly case: the situation, what most people do, what it costs, the better approach. Clean transitions.
+- Only mechanisms and rules you're certain of; label any numbers as illustrative. Acknowledge the trade-off honestly.
+- Close with the case in one sentence and a calm next step.
+- Taglines: clear, factual headlines that inform and promise without overpromising ("The three years that decide your retirement tax bill.").`,
   },
   {
     id: "frame",
@@ -77,6 +99,13 @@ How you write:
 - Use intrigue to carry the listener forward, but always pay it off. No unresolved teases.
 - Close by stepping back rather than chasing: an invitation for the right people, not a plea. ("If this is the conversation you've been meaning to have, you know where to find me.")
 - Confident does not mean promising. No guarantees, no predictions, no pressure.`,
+    postBrief: `Write the post copy in the manner of Oren Klaff. You are the only writer; one voice throughout.
+- First line: break the pattern. A calm, certain statement that runs against what the reader has been told. Tension they want resolved.
+- Hold the frame: composed, unhurried, never needy or salesy. The insight is valuable and you know it.
+- Set up the conventional wisdom fairly, then turn it: the move that feels prudent is where the risk lives. Pay off the intrigue; no empty teases.
+- Close by stepping back, not chasing: an invitation for the right people ("If this is the conversation you've been meaning to have, you know where to find me.").
+- Taglines: high-status, contrarian one-liners with quiet certainty ("The safest-looking move in retirement is usually the expensive one.").
+- Confident, never promising: no guarantees, predictions or pressure.`,
   },
 ];
 

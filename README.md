@@ -218,7 +218,7 @@ Recorded takes are processed by a swappable, server-side **video processor**. Th
 2. Edit: the transcript and suggested cuts come from the job result; the filmstrip and waveform come from the real take. Click to cut/restore, the timeline and **Skip cuts** work against the real take. The **Look** panel sets caption style (Classic / Bold / Minimal), position, highlight color, and the AI overlays (name & credentials lower third, key-phrase emphasis, end card), previewed live and saved per video.
 3. **Finish edit** starts a `render` job with the advisor's final cuts and look and stores the MP4 (`video.output`).
 4. **Review**: watch the exact file, download it, or go back and change it.
-5. **Post**: send it to the team to post for you, or download the MP4 and covers, copy each platform's caption (disclosure included) with one click, and mark it posted.
+5. **Post**: pick a cover; then the copy: four writers each write a full set (a LinkedIn post, Instagram/TikTok/Facebook captions, a YouTube description, a line for X, and three taglines), each in its own voice (The Story, The Insight, The Case, The Frame). Pick one, edit it, keep a tagline. Then send it to the team to post for you, or download the MP4 and covers, copy each platform's caption (disclosure included) with one click, and mark it posted.
 
 ```bash
 VIDEO_PROCESSOR=local    # local (default, ffmpeg) | mock | mirage

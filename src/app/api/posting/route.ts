@@ -58,6 +58,7 @@ export async function POST(request: Request) {
     platforms,
     captions,
     disclosureVersion: str(b.disclosureVersion, 40) || "none",
+    tagline: str(b.tagline, 200) || undefined,
     timing,
     note: str(b.note, 2000) || undefined,
   });

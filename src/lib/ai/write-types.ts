@@ -28,6 +28,8 @@ export type WriteRequest =
   | {
       task: "captions";
       profile: VoiceProfile;
+      /** Which of the four writers writes this version. */
+      writer?: WriterId;
       platforms: PlatformId[];
       video: { title: string; format: VideoFormat; script?: Script; outline: string[] };
       current?: CaptionsOutput["captions"];

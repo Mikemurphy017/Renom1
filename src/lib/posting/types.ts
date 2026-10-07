@@ -51,6 +51,8 @@ export interface PostRequest {
   platforms: PlatformId[];
   captions: PostRequestCaption[];
   disclosureVersion: string;
+  /** One-liner the advisor picked to go with the post. */
+  tagline?: string;
   timing: PostRequestTiming;
   note?: string;
   status: PostRequestStatus;

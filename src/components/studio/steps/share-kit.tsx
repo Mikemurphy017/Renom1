@@ -47,7 +47,7 @@ export function CopyButton({ text, label, className }: { text: string; label: st
 }
 
 /** Everything needed to post by hand: the MP4, the covers, and each caption. */
-export function ShareKit({ video, platforms, copies }: { video: Video; platforms: PlatformId[]; copies: PlatformCopy[] }) {
+export function ShareKit({ video, platforms, copies, tagline }: { video: Video; platforms: PlatformId[]; copies: PlatformCopy[]; tagline?: string }) {
   const { updateVideo, profile } = useStore();
   const [posted, setPosted] = React.useState(false);
   const out = video.output;
@@ -122,6 +122,13 @@ export function ShareKit({ video, platforms, copies }: { video: Video; platforms
             <p className="mt-1 text-[13px] text-muted-foreground">Disclosure and hashtags included. Copy, paste, attach the MP4.</p>
           </div>
         </div>
+        {tagline && (
+          <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4 shadow-soft">
+            <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Tagline</span>
+            <span className="min-w-0 flex-1 font-serif text-[15px]">{tagline}</span>
+            <CopyButton text={tagline} label="Tagline" />
+          </div>
+        )}
         {platforms.length === 0 && <p className="rounded-xl border border-dashed border-border p-5 text-center text-[13px] text-muted-foreground">Pick platforms in the Caption step.</p>}
         {platforms.map((p) => {
           const pl = getPlatform(p);

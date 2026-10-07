@@ -17,7 +17,7 @@ import type { PlatformId, Video } from "@/lib/types";
 import { cn, fmtDateTime } from "@/lib/utils";
 
 /** "Have our team post it": the advisor hands the finished video and captions to the team. */
-export function TeamPost({ video, platforms, copies }: { video: Video; platforms: PlatformId[]; copies: PlatformCopy[] }) {
+export function TeamPost({ video, platforms, copies, tagline }: { video: Video; platforms: PlatformId[]; copies: PlatformCopy[]; tagline?: string }) {
   const { requests, refresh } = usePostRequests(video.id);
   const latest = requests?.filter((r) => r.status !== "cancelled").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   const [editing, setEditing] = React.useState(false);
@@ -54,6 +54,7 @@ export function TeamPost({ video, platforms, copies }: { video: Video; platforms
               video={video}
               platforms={platforms}
               copies={copies}
+              tagline={tagline}
               previous={latest}
               onCancel={editing ? () => setEditing(false) : undefined}
               onDone={(r) => { apply(r); setEditing(false); void refresh(); }}
@@ -119,7 +120,7 @@ const localParts = (iso: string) => {
   return { date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, time: `${pad(d.getHours())}:${pad(d.getMinutes())}` };
 };
 
-function RequestForm({ video, platforms, copies, previous, onDone, onCancel }: { video: Video; platforms: PlatformId[]; copies: PlatformCopy[]; previous?: AdvisorPostRequest; onDone: (r: AdvisorPostRequest) => void; onCancel?: () => void }) {
+function RequestForm({ video, platforms, copies, tagline, previous, onDone, onCancel }: { video: Video; platforms: PlatformId[]; copies: PlatformCopy[]; tagline?: string; previous?: AdvisorPostRequest; onDone: (r: AdvisorPostRequest) => void; onCancel?: () => void }) {
   const { profile, account } = useStore();
   const tomorrow = localParts(new Date(Date.now() + 86400000).toISOString());
   const prevAt = previous?.timing.kind === "at" && previous.timing.at ? localParts(previous.timing.at) : null;
@@ -150,6 +151,7 @@ function RequestForm({ video, platforms, copies, previous, onDone, onCancel }: {
           return { platform: p, text: composeCaption(c, p, profile), title: c.title };
         }),
         disclosureVersion: activeDisclosure(profile)?.version ?? "none",
+        tagline: tagline || undefined,
         timing: when === "at" ? { kind: "at", at: new Date(`${date}T${time}`).toISOString() } : { kind: "asap" },
         note: note.trim() || undefined,
       });

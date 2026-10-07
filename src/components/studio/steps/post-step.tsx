@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Bookmark, Check, Hash, Lock, Send, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bookmark, Check, Hash, Lock, RefreshCw, Send, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,19 +13,40 @@ import { PlatformIcon } from "@/components/shared/platform-icon";
 import { ComplianceBadge } from "@/components/shared/badges";
 import { useStore, voiceProfileOf } from "@/lib/store";
 import { useDraft } from "@/lib/drafts";
-import { isAbort, useWriter } from "@/lib/ai/writer";
+import { isAbort, streamWrite } from "@/lib/ai/writer";
+import { WRITERS, getWriter, type WriterId } from "@/lib/ai/writers";
 import type { PlatformCopy } from "@/lib/ai/content";
 import { activeDisclosure, disclosureFor } from "@/lib/compose";
 import { PLATFORMS, getPlatform } from "@/lib/mock/platforms";
 import type { PlatformId } from "@/lib/types";
 import { cn, fmtNumber } from "@/lib/utils";
 import { AskBar, RequestLine, Writing } from "../ask-bar";
+import { CopyButton } from "./share-kit";
 import { CoverStudio } from "./cover-studio";
 import { ShareKit } from "./share-kit";
 import { TeamPost } from "./team-post";
 import type { StepProps } from "../studio-view";
 
 const SUB = ["Cover", "Caption", "Post"] as const;
+
+type Version = { copies: PlatformCopy[]; taglines: string[]; note: string };
+type Versions = Partial<Record<WriterId | "current", Version>>;
+
+function VersionCard({ label, description, selected, onClick, preview, run }: { label: string; description: string; selected: boolean; onClick: () => void; preview?: string; run?: { status: string; error?: string } }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={!preview}
+      className={cn("flex min-h-[132px] flex-col rounded-2xl border bg-card p-3.5 text-left transition-colors sm:p-4", selected ? "border-primary ring-1 ring-primary" : "border-border", preview ? "cursor-pointer hover:border-primary/50" : "cursor-default")}
+    >
+      <span className="text-[14px] font-medium">{label}</span>
+      <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">{description}</span>
+      <span className="mt-auto pt-3 text-[12px] leading-snug">
+        {run?.error ? <span className="text-destructive">Couldn’t write this one.</span> : run ? <span className="text-muted-foreground">{run.status}</span> : preview ? <span className="line-clamp-2 text-foreground/80">{preview.split("\n")[0]}</span> : null}
+      </span>
+    </button>
+  );
+}
 
 export function PostStep({ video }: StepProps) {
   const { profile, updateVideo, requireApproval, submitForReview, reviewer } = useStore();
@@ -36,40 +57,94 @@ export function PostStep({ video }: StepProps) {
   const defaultPlatforms: PlatformId[] = video.platforms.length ? video.platforms : vertical ? ["youtube_shorts", "instagram", "linkedin"] : ["youtube", "linkedin"];
   const [platforms, setPlatforms] = useDraft<PlatformId[]>(video.id, "post.platforms", defaultPlatforms);
 
-  // ── Captions ──
+  // ── Captions: four versions, one per writer (like the script) ──
+  // `desc.copies` is the version being edited; the others wait in `desc.versions`.
   const [copies, setCopies] = useDraft<PlatformCopy[]>(video.id, "desc.copies", []);
+  const [versions, setVersions] = useDraft<Versions>(video.id, "desc.versions", () => (copies.length ? { current: { copies, taglines: [], note: "" } } : {}));
+  const [writer, setWriter] = useDraft<WriterId | "current">(video.id, "desc.writer", copies.length ? "current" : "story");
+  const [tagline, setTagline] = useDraft(video.id, "desc.tagline", "");
+  const [runs, setRuns] = React.useState<Partial<Record<WriterId, { status: string; error?: string }>>>({});
   const [tab, setTab] = React.useState<PlatformId | null>(null);
-  const [note, setNote] = React.useState<string | null>(null);
-  const { write, busy, status, source } = useWriter();
   const activeTab = tab && platforms.includes(tab) ? tab : platforms[0];
+  const ctrl = React.useRef<AbortController | null>(null);
+  const writerRef = React.useRef(writer);
+  writerRef.current = writer;
+  React.useEffect(() => () => ctrl.current?.abort(), []);
+  const busyIds = (Object.keys(runs) as WriterId[]).filter((id) => runs[id] && !runs[id]!.error);
+  const busy = busyIds.length > 0;
+  const current = versions[writer];
 
-  const writeCaptions = React.useCallback(
-    async (instruction?: string) => {
-      try {
-        const out = await write({
+  const writeOne = async (id: WriterId, signal: AbortSignal, instruction?: string) => {
+    setRuns((r) => ({ ...r, [id]: { status: "Starting…" } }));
+    try {
+      const base = writerRef.current === id ? copies : versions[id]?.copies;
+      const out = await streamWrite(
+        {
           task: "captions",
           profile: voiceProfileOf(profile),
+          writer: id,
           platforms,
           video: { title: video.title, format: video.format, script: video.script, outline: video.outline },
-          current: instruction ? copies.map((c) => ({ platform: c.platform, title: c.title ?? null, description: c.description, hashtags: c.hashtags })) : undefined,
+          current: instruction && base ? base.map((c) => ({ platform: c.platform, title: c.title ?? null, description: c.description, hashtags: c.hashtags })) : undefined,
           instruction,
-        });
-        setCopies(out.captions.map((c) => ({ platform: c.platform, title: c.title ?? undefined, description: c.description, hashtags: c.hashtags, cta: "{{BOOKING_LINK}}" })));
-        setNote(out.note);
-      } catch (e) {
-        if (isAbort(e)) return;
-        toast.error("Couldn’t write captions", { description: (e as Error).message });
+        },
+        { signal, onStatus: (status) => setRuns((r) => ({ ...r, [id]: { status } })) }
+      );
+      const next: Version = {
+        copies: out.captions.map((c) => ({ platform: c.platform, title: c.title ?? undefined, description: c.description, hashtags: c.hashtags, cta: "{{BOOKING_LINK}}" })),
+        taglines: out.taglines.slice(0, 3),
+        note: out.note,
+      };
+      setVersions((v) => ({ ...v, [id]: next }));
+      // Open the first version that arrives, and refresh the one being edited.
+      if (writerRef.current === id || !copies.length) {
+        setWriter(id);
+        setCopies(next.copies);
       }
-    },
-    [write, profile, platforms, video, copies, setCopies]
-  );
+      setRuns((r) => {
+        const n = { ...r };
+        delete n[id];
+        return n;
+      });
+    } catch (e) {
+      if (isAbort(e)) return;
+      setRuns((r) => ({ ...r, [id]: { status: "", error: (e as Error).message } }));
+    }
+  };
+
+  const writeAll = () => {
+    ctrl.current?.abort();
+    const c = new AbortController();
+    ctrl.current = c;
+    for (const w of WRITERS) void writeOne(w.id, c.signal);
+  };
+
+  const revise = (instruction: string) => {
+    const id: WriterId = writer === "current" ? "story" : writer;
+    const c = new AbortController();
+    ctrl.current = c;
+    void writeOne(id, c.signal, instruction);
+  };
+
+  const choose = (id: WriterId | "current") => {
+    const v = versions[id];
+    if (!v || id === writer) return;
+    // Keep the edits made to the version being left.
+    setVersions((vs) => ({ ...vs, [writer]: { ...(vs[writer] ?? { taglines: [], note: "" }), copies } }));
+    setWriter(id);
+    setCopies(v.copies);
+  };
 
   React.useEffect(() => {
-    if (sub === 1 && !copies.length && !busy) writeCaptions();
+    if (sub === 1 && !copies.length && !busy && !WRITERS.some((w) => versions[w.id])) writeAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sub]);
 
-  const updateCopy = (p: PlatformId, patch: Partial<PlatformCopy>) => setCopies((cs) => cs.map((c) => (c.platform === p ? { ...c, ...patch } : c)));
+  const updateCopy = (p: PlatformId, patch: Partial<PlatformCopy>) => {
+    const next = copies.map((c) => (c.platform === p ? { ...c, ...patch } : c));
+    setCopies(next);
+    setVersions((vs) => (vs[writer] ? { ...vs, [writer]: { ...vs[writer]!, copies: next } } : vs));
+  };
   const missing = platforms.filter((p) => !copies.some((c) => c.platform === p));
 
   // ── Post ──
@@ -126,40 +201,70 @@ export function PostStep({ video }: StepProps) {
             })}
           </div>
 
-          {(busy || copies.length > 0) && (
-            <RequestLine items={[`${platforms.length} platforms`, "From your script", "Your voice profile", `Disclosure ${activeDisclosure(profile)?.version ?? "not set"} (auto)`]} source={busy ? null : source} />
-          )}
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+            {versions.current && !WRITERS.some((w) => versions[w.id]) && (
+              <VersionCard label="Current" description="The copy saved with this video." selected={writer === "current"} onClick={() => choose("current")} preview={versions.current.copies[0]?.description} />
+            )}
+            {WRITERS.map((w) => (
+              <VersionCard key={w.id} label={w.label} description={w.description} selected={writer === w.id} onClick={() => choose(w.id)} preview={(versions[w.id]?.copies.find((c) => c.platform === "linkedin") ?? versions[w.id]?.copies[0])?.description} run={runs[w.id]} />
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {copies.length > 0 && <RequestLine items={[`${platforms.length} platforms`, "From your script", "Your voice profile", `Disclosure ${activeDisclosure(profile)?.version ?? "not set"} (auto)`]} source={busy ? null : "claude"} />}
+            <Button size="sm" variant="ghost" className="rounded-full" onClick={writeAll} disabled={busy}><RefreshCw className={cn(busy && "animate-spin")} /> Write four new versions</Button>
+          </div>
 
-          {busy && !copies.length ? (
+          {!copies.length ? (
             <div className="space-y-4 rounded-2xl border border-border bg-card p-8">
-              <Writing status={status} />
+              <Writing status={runs[writer as WriterId]?.status ?? Object.values(runs).find((r) => r && !r.error)?.status ?? "Writing…"} />
               <Skeleton className="h-5 w-2/3" />
               <Skeleton className="h-24 w-full" />
+              {Object.values(runs).some((r) => r?.error) && <p className="text-[13px] text-destructive">{Object.values(runs).find((r) => r?.error)?.error}</p>}
             </div>
           ) : (
-            copies.length > 0 && (
-              <div className={cn("overflow-hidden rounded-2xl border border-border bg-card shadow-soft", busy && "opacity-60")}>
-                <div className="scrollbar-thin flex gap-1 overflow-x-auto border-b border-border px-3 pt-3">
-                  {platforms.map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setTab(p)}
-                      className={cn("-mb-px flex shrink-0 cursor-pointer items-center gap-1.5 border-b-2 px-3 pb-2.5 text-[13px]", p === activeTab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}
-                      style={{ ["--pi-bg" as string]: "var(--card)" }}
-                    >
-                      <PlatformIcon id={p} className="size-3.5" /> {getPlatform(p).label}
-                    </button>
-                  ))}
-                </div>
-                {activeTab && <CaptionEditor platform={activeTab} copy={copies.find((c) => c.platform === activeTab)} update={(patch) => updateCopy(activeTab, patch)} />}
+            <div className={cn("overflow-hidden rounded-2xl border border-border bg-card shadow-soft", runs[writer as WriterId] && !runs[writer as WriterId]!.error && "opacity-60")}>
+              <div className="flex items-center justify-between gap-3 px-5 pt-4 sm:px-6">
+                <span className="font-serif text-[18px]">{writer === "current" ? "Current" : getWriter(writer).label}</span>
+                {current?.note && <span className="hidden truncate text-[12px] text-muted-foreground sm:block">{current.note}</span>}
               </div>
-            )
+              <div className="scrollbar-thin flex gap-1 overflow-x-auto border-b border-border px-3 pt-3">
+                {platforms.map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setTab(p)}
+                    className={cn("-mb-px flex shrink-0 cursor-pointer items-center gap-1.5 border-b-2 px-3 pb-2.5 text-[13px]", p === activeTab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}
+                    style={{ ["--pi-bg" as string]: "var(--card)" }}
+                  >
+                    <PlatformIcon id={p} className="size-3.5" /> {getPlatform(p).label}
+                  </button>
+                ))}
+              </div>
+              {activeTab && <CaptionEditor platform={activeTab} copy={copies.find((c) => c.platform === activeTab)} update={(patch) => updateCopy(activeTab, patch)} />}
+            </div>
+          )}
+
+          {current && current.taglines.length > 0 && (
+            <div className="rounded-2xl border border-border bg-card p-5 shadow-soft sm:p-6">
+              <div className="eyebrow">Taglines</div>
+              <p className="mt-1 text-[13px] text-muted-foreground">One-liners for an opening line, a pinned comment, on-screen text or a headline. Pick one to keep with the post.</p>
+              <ul className="mt-4 space-y-2">
+                {current.taglines.map((t) => (
+                  <li key={t} className={cn("flex items-center gap-3 rounded-xl border px-4 py-3", tagline === t ? "border-primary bg-brass-soft/50" : "border-border")}>
+                    <button onClick={() => setTagline(tagline === t ? "" : t)} className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left" aria-pressed={tagline === t}>
+                      <span className={cn("flex size-4 shrink-0 items-center justify-center rounded-full border", tagline === t ? "border-primary bg-primary text-primary-foreground" : "border-border")}>{tagline === t && <Check className="size-3" />}</span>
+                      <span className="font-serif text-[16px] leading-snug">{t}</span>
+                    </button>
+                    <CopyButton text={t} label="Tagline" className="size-8" />
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {missing.length > 0 && copies.length > 0 && !busy && (
             <div className="flex items-center justify-center gap-2 text-[13px] text-muted-foreground">
               No copy yet for {missing.map((m) => getPlatform(m).label).join(", ")}.
-              <Button size="sm" variant="outline" className="rounded-full" onClick={() => writeCaptions()}><Sparkles /> Write all</Button>
+              <Button size="sm" variant="outline" className="rounded-full" onClick={writeAll}><Sparkles /> Write all four again</Button>
             </div>
           )}
 
@@ -167,7 +272,7 @@ export function PostStep({ video }: StepProps) {
             <Button variant="ghost" className="rounded-full" onClick={() => setSub(0)}><ArrowLeft /> Cover</Button>
             <Button className="rounded-full px-6" disabled={!copies.length || busy} onClick={() => setSub(2)}>Post <ArrowRight /></Button>
           </div>
-          {copies.length > 0 && <AskBar busy={busy} status={status} note={note} onAsk={(t) => writeCaptions(t)} suggestions={["Shorter LinkedIn post", "Add a question at the end", "More formal"]} />}
+          {copies.length > 0 && <AskBar busy={!!runs[writer as WriterId] && !runs[writer as WriterId]!.error} status={runs[writer as WriterId]?.status} note={null} onAsk={revise} suggestions={["Shorter LinkedIn post", "Add a question at the end", "More formal"]} />}
         </>
       )}
 
@@ -181,13 +286,13 @@ export function PostStep({ video }: StepProps) {
             />
           ) : (
             <>
-              <TeamPost video={video} platforms={platforms} copies={copies} />
+              <TeamPost video={video} platforms={platforms} copies={copies} tagline={tagline} />
               <div className="space-y-4 border-t border-border pt-8">
                 <div>
                   <h2 className="font-serif text-2xl">Or post it yourself.</h2>
                   <p className="mt-1 text-[14px] text-muted-foreground">Download the MP4, copy each caption, and upload it to your accounts.</p>
                 </div>
-                <ShareKit video={video} platforms={platforms} copies={copies} />
+                <ShareKit video={video} platforms={platforms} copies={copies} tagline={tagline} />
               </div>
               <div className="flex">
                 <Button variant="ghost" className="rounded-full" onClick={() => setSub(1)}><ArrowLeft /> Caption</Button>

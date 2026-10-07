@@ -31,6 +31,7 @@ export const CaptionsSchema = z.object({
       hashtags: z.array(z.string()).describe("Hashtags without the # sign"),
     })
   ),
+  taglines: z.array(z.string()).describe("Exactly three taglines: one line each, at most 12 words, no hashtags, no emoji"),
   note: z.string().describe("One short sentence to the advisor"),
 });
 

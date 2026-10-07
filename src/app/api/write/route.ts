@@ -9,7 +9,7 @@ export const maxDuration = 120;
 const STATUS: Record<WriteRequest["task"], string[]> = {
   ideas: ["Reading your profile…", "Checking what you’ve already made…", "Finding the conversation your clients are already having…", "Sharpening the hooks…"],
   script: ["Reading your profile…", "Finding the hook…", "Writing for the ear…", "Tightening every line…", "Checking compliance language…"],
-  captions: ["Reading the script…", "Writing for each platform…", "Fitting platform limits…"],
+  captions: ["Reading the script…", "Finding the first line…", "Writing for each platform…", "Writing the taglines…", "Fitting platform limits…"],
   covers: ["Reading the script…", "Finding the stake…", "Cutting it to five words…"],
 };
 
@@ -18,7 +18,7 @@ function validate(body: unknown): WriteRequest | string {
   if (!b || typeof b !== "object") return "Invalid request";
   if (!b.task || !["ideas", "script", "captions", "covers"].includes(b.task)) return "Unknown task";
   if (!b.profile || typeof b.profile !== "object") return "Missing profile";
-  if (b.task === "script" && "writer" in b && b.writer !== undefined && !WRITERS.some((w) => w.id === b.writer)) return "Unknown writer";
+  if ((b.task === "script" || b.task === "captions") && "writer" in b && b.writer !== undefined && !WRITERS.some((w) => w.id === b.writer)) return "Unknown writer";
   if (JSON.stringify(b).length > 60_000) return "Request too large";
   return b as WriteRequest;
 }
