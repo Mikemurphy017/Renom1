@@ -34,7 +34,8 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   runtime: "nodejs",
-  // Skip Next's own files and static assets. The take upload checks the session
-  // itself: running middleware on it would buffer the body and cut it off at 10 MB.
-  matcher: ["/((?!_next/|fonts/|favicon|icon|apple-icon|robots.txt|sitemap.xml|api/video/upload$).*)"],
+  // Skip Next's own files and static assets. The two upload routes check the
+  // session themselves: running middleware on them would buffer the body and
+  // cut it off at 10 MB.
+  matcher: ["/((?!_next/|fonts/|favicon|icon|apple-icon|robots.txt|sitemap.xml|api/video/upload$|api/media$).*)"],
 };

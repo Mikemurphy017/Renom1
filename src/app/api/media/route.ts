@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentUser } from "@/lib/auth/server";
 import { objects } from "@/lib/storage/objects";
 import { stockFootageEnabled } from "@/lib/video/local/broll";
 import { MAX_IMAGE_MB, MAX_MEDIA_MB, MEDIA_KINDS, acceptedTypes, mediaKey, mediaUrl, newMediaId, type MediaKind } from "@/lib/storage/media";
@@ -8,7 +9,9 @@ export const dynamic = "force-dynamic";
 const limitFor = (kind: MediaKind) => (kind === "broll" || kind === "music" ? MAX_MEDIA_MB : MAX_IMAGE_MB);
 
 /** Multipart upload of one file: fields `file`, `kind` (headshot | thumbnail | logo: images; broll: images or clips; music: audio). */
+// Left out of the middleware (it would cut big bodies off at 10 MB), so it checks the session itself.
 export async function POST(request: Request) {
+  if (!(await currentUser(request))) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
   const declared = Number(request.headers.get("content-length") ?? 0);
   if (declared > MAX_MEDIA_MB * 1024 * 1024 + 256 * 1024) return NextResponse.json({ ok: false, error: `Files can be up to ${MAX_MEDIA_MB} MB` }, { status: 413 });
   let form: FormData;
@@ -38,6 +41,7 @@ export async function POST(request: Request) {
 }
 
 /** Which store files go to, and whether stock footage is configured. */
-export async function GET() {
+export async function GET(request: Request) {
+  if (!(await currentUser(request))) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
   return NextResponse.json({ storage: objects().kind, stock: stockFootageEnabled() });
 }
