@@ -19,6 +19,8 @@ export async function middleware(req: NextRequest) {
   }
   // The admin pages don't exist for anyone else (the page and its API check again).
   if (user && /^\/admin(\/|$)/.test(pathname) && !isAdmin(user)) return NextResponse.rewrite(new URL("/_admin-not-found", req.url));
+  // Buffer is the team's tool: advisors never see its accounts or posts.
+  if (user && pathname.startsWith("/api/buffer/") && !isAdmin(user)) return NextResponse.json({ ok: false, error: "Not allowed." }, { status: 403 });
   if (user) return NextResponse.next();
 
   // Signed-out visitors to the home page get the sales page.

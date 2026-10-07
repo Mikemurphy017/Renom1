@@ -18,9 +18,6 @@ import { AskBar, RequestLine, Writing } from "../ask-bar";
 import { StepIntro } from "../step-layout";
 import type { StepProps } from "../studio-view";
 import { BRAND } from "@/lib/brand";
-import { createBufferIdea, useAdvisorChannels, useBuffer } from "@/lib/buffer/use-buffer";
-import type { BufferService } from "@/lib/buffer/types";
-import { ME } from "@/lib/profile";
 
 type Idea = IdeasOutput["ideas"][number] & { id: string };
 let n = 0;
@@ -35,23 +32,6 @@ export function IdeaStep({ video, complete }: StepProps) {
   const { write, busy, status, source } = useWriter();
   const others = videos.filter((v) => v.id !== video.id);
   const hasCurrent = video.outline.length > 0;
-  const buffer = useBuffer();
-  const [mine] = useAdvisorChannels(ME);
-
-  /** Copy an idea into Buffer's Ideas board (title + outline), tagged for the advisor's channels. */
-  const sendToBuffer = async (idea: Idea) => {
-    const channels = buffer.status && "channels" in buffer.status ? buffer.status.channels : [];
-    const services = [...new Set(channels.filter((c) => mine.includes(c.id)).map((c) => c.service))] as BufferService[];
-    const r = await createBufferIdea({
-      title: idea.title.replace(/^[“"]|[”"]$/g, ""),
-      text: [...idea.outline.map((o) => `• ${o}`), idea.why ? `\n${idea.why}` : ""].filter(Boolean).join("\n"),
-      services: services.length ? services : undefined,
-      aiAssisted: true,
-    });
-    if (r.ok) toast.success("Sent to Buffer Ideas");
-    else toast.error("Couldn’t send to Buffer", { description: r.error });
-  };
-
   const generate = React.useCallback(
     async (instruction?: string) => {
       try {
@@ -172,7 +152,7 @@ export function IdeaStep({ video, complete }: StepProps) {
                           onClick={() => {
                             addVideo({ title: idea.title.replace(/^[“"]|[”"]$/g, ""), category: idea.category as Category, outline: idea.outline, mode, format: video.format });
                             setIdeas((xs) => xs.filter((x) => x.id !== idea.id));
-                            toast.success("Saved to Videos", buffer.connected ? { duration: 10000, action: { label: "Send to Buffer Ideas", onClick: () => sendToBuffer(idea) } } : undefined);
+                            toast.success("Saved to Videos");
                           }}
                         >
                           <Bookmark /> Save for later

@@ -76,6 +76,8 @@ export interface Video {
   analysisJobId?: string;
   /** Rendered cover images, one per shape. */
   covers?: Partial<Record<VideoFormat, CoverImage>>;
+  /** The latest request for the team to post this video (mirrors the server). */
+  teamPost?: { id: string; status: "submitted" | "in_buffer" | "scheduled" | "posted" | "returned" | "cancelled"; at?: string; note?: string };
 }
 
 export interface RenderedVideo {
@@ -114,7 +116,7 @@ export interface PostRecord {
   caption: string;
   disclosureVersion: string;
   at: string;
-  how: "buffer-now" | "buffer-scheduled" | "buffer-queue" | "buffer-draft" | "manual";
+  how: "buffer-now" | "buffer-scheduled" | "buffer-queue" | "buffer-draft" | "manual" | "team";
 }
 
 export interface Platform {

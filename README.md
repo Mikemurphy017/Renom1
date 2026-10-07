@@ -18,7 +18,7 @@ Next.js (App Router) · TypeScript · Tailwind v4 · shadcn/ui-style components 
 
 ## Operator setup (once, for every studio)
 
-Claude and Buffer are platform services: you set the keys once on the server that hosts the app, and every advisor's studio uses them automatically. Advisors never see or enter a key.
+Claude and Buffer are platform services: you set the keys once on the server that hosts the app, and every advisor's studio uses them automatically. Advisors never see or enter a key, and only admins see Buffer.
 
 - Local: put them in `.env.local` (copy `.env.example`) and restart.
 - Hosted (Vercel, Railway, etc.): add the same names as environment variables in the hosting dashboard and redeploy.
@@ -27,7 +27,7 @@ If a key is missing, advisors see "being switched on" instead of an error, and t
 
 ## First run
 
-The app starts empty. The first visit opens a short setup at `/welcome` (name, practice, who you help, your voice, your opinions, your disclosure and reviewer, and a check of the Claude and Buffer connections). Your answers become the profile Claude writes from; change them any time in Settings.
+The app starts empty. The first visit opens a short setup at `/welcome` (name, practice, who you help, your voice, your opinions, your disclosure and reviewer, and a check that writing is switched on). Your answers become the profile Claude writes from; change them any time in Settings.
 
 Everything you create (profile, videos, reviews, drafts) is saved in this browser's local storage, so it survives a refresh but not a different browser or computer. Settings → Start over erases it and reopens setup. Recorded takes are stored on the server in `.data/`.
 
@@ -46,7 +46,7 @@ Five steps, nothing else: **Idea → Script → Record → Edit → Post** (Post
 | Videos | Every video, filtered by In progress / Approval / Scheduled / Published |
 | Analyze | Four numbers, one chart, what's working and where |
 | Approve | Review queue (comments pinned to script lines and timestamps) and the books-and-records archive |
-| Settings | Your voice (what Claude writes from), disclosures, Buffer, approval rules, team, plan |
+| Settings | Your voice (what Claude writes from), disclosures, publishing (the accounts the team posts to), approval rules, team, plan |
 
 ## Claude writes the content
 
@@ -69,9 +69,27 @@ Without a key, `/api/write` returns hand-written sample copy in the same voice, 
 | `src/components/studio/steps/*` | The five steps |
 | `src/lib/store.tsx` | In-memory store (videos, reviews, the voice profile) |
 
-## Buffer (scheduling and publishing)
+## Posting: the team posts through Buffer
 
-The Post step publishes through Buffer when a key is configured. Add to `.env.local` (git-ignored):
+Buffer is the team's tool and lives only in the admin area. Advisors never see Buffer, its channels or anyone else's posts: every `/api/buffer/*` route answers 403 to anyone who isn't an admin (checked in `src/middleware.ts`).
+
+**Advisors.** In the Post step an advisor either:
+- **Has our team post it**: sends the finished MP4, covers, captions (with disclosure), platforms, when they'd like it out (as soon as possible, or a date) and an optional note. They can change or withdraw it until the team picks it up. They then see its status (with the team, scheduled for …, posted, or sent back with the team's note), and the video's status in Videos, Home and Analyze follows automatically.
+- **Posts it themselves**: downloads the MP4, copies each caption, and taps "I posted it" to keep the record.
+
+Settings → Publishing shows the names of the accounts the team posts to for them (only theirs). Analyze shows their own posting record; per-video views and engagement are still to come.
+
+**Admins** (`/admin`):
+
+| Tab | What |
+|---|---|
+| Posting queue | Every request, grouped To post / Drafts in Buffer / Scheduled / Posted / Sent back. Each shows the video, the advisor's note, the captions (with copy buttons) and the MP4 and cover downloads. **Send to Buffer** has the advisor's channels preselected: per channel choose schedule (defaults to the time they asked for), queue, draft or now, and edit the caption. The MP4 is attached through a public link to the stored file. Or **Mark posted**, **Mark scheduled…**, **Send back…** with a note |
+| Buffer | Connection, channels, **who posts where** (assign each advisor's channels), and what's coming up in Buffer (reschedule, move, delete) |
+| Analytics | Buffer's numbers across all channels |
+
+Requests are kept in the store at `meta/postqueue.json`, channel assignments at `meta/channelmap.json` (`src/lib/posting/`).
+
+**Setup.** Set on the server:
 
 ```bash
 BUFFER_API_KEY=...                 # publish.buffer.com/settings/api
@@ -79,19 +97,7 @@ BUFFER_ORGANIZATION_ID=...         # optional; defaults to the first org on the 
 # BUFFER_API_URL=https://api.buffer.com   # optional override
 ```
 
-- Settings → Connected platforms shows the Buffer channels. Check the ones that post as the advisor and they're pre-selected in the Post step (saved per browser for now).
-- Buffer fetches video from a public https link. Without one, posts are sent to Buffer as drafts so the file can be attached there.
-- Social accounts themselves are connected in Buffer, not in Renom.
-- Without a key, the Post step falls back to simulated publishing, Analyze shows sample numbers, and the Buffer actions are hidden.
-
-**What it does in the app**
-
-| Where | What |
-|---|---|
-| Post step | Schedules, queues or publishes to the advisor's Buffer channels (drafts when there's no public video link) |
-| Home → Coming up | Each Buffer post has a **⋯** menu: **Reschedule** (date and time), **Move to top of queue** (queued posts only; posts set for a fixed time can't be moved), **Delete** (asks first) |
-| Idea step | **Save for later** saves to Videos and offers **Send to Buffer Ideas** (title + outline, marked AI-assisted, tagged with the advisor's channel networks) |
-| Analyze | The four headline numbers come from Buffer (`aggregatedPostMetrics`, all channels, for the 30/60-day range), labelled "From Buffer" with the org and last update. The chart and lists stay labelled "Sample data" |
+Social accounts are connected in Buffer itself. Buffer fetches the video from a public https link, which needs the storage bucket.
 
 **How auth works.** Everything goes through `src/lib/buffer/server.ts`, which POSTs GraphQL to `BUFFER_API_URL` (default `https://api.buffer.com`) with `Authorization: Bearer $BUFFER_API_KEY`. It runs only on the server (route handlers), so the key never reaches the browser, and it is never logged. Locally the key comes from `.env.local`, which is git-ignored. The organization is `BUFFER_ORGANIZATION_ID`, or the first one on the account. All names (fields, inputs, enums) come from Buffer's GraphQL schema.
 
@@ -115,8 +121,8 @@ BUFFER_ORGANIZATION_ID=...         # optional; defaults to the first org on the 
 | `src/lib/buffer/server.ts` | GraphQL client: status, `createBufferPost`, `listPosts`, `getPost`, `editPost`, `deletePost`, `movePostInQueue`, `getAggregatedMetrics`, `listIdeas`, `createIdea`, `listTags` |
 | `src/lib/buffer/types.ts` | Shared types |
 | `src/lib/buffer/route.ts` | Route validation and JSON error helpers |
-| `src/lib/buffer/use-buffer.ts` | Client hooks and calls (`useBuffer`, `useBufferMetrics`, reschedule / move / delete / create idea) |
-| `src/components/buffer/post-menu.tsx` | The Coming up ⋯ menu and its dialogs |
+| `src/lib/buffer/use-buffer.ts` | Client hooks and calls for the admin area (`useBuffer`, `useBufferMetrics`, reschedule / move / delete / create idea) |
+| `src/components/buffer/post-menu.tsx` | The ⋯ menu on Admin → Buffer → Coming up, and its dialogs |
 
 **Test your key from the terminal.** `scripts/buffer.mjs` is a small read-only CLI with no dependencies. It reads `.env.local` itself and sends the same Bearer header as the app, without printing the key:
 
@@ -171,7 +177,7 @@ Everything the platform keeps (recorded takes, rendered videos, headshots, cover
 - **Storage bucket (production).** Set `BUCKET`, `ENDPOINT`, `REGION`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`. On Railway, reference the bucket's Credentials variables (`${{bucket-name.BUCKET}}` …). Any S3-compatible bucket works; `STORAGE_PATH_STYLE=1` for path-style ones. Files are streamed through the app (`/api/video/files/:id`, `/api/media/:id`), with Range support so video seeks.
 - **Local disk (development).** With no bucket set, files go to `.data/`. A container's disk is wiped on every redeploy, so don't run production this way.
 
-A take uploads as soon as recording stops and is stored on the video (`video.take`), so it plays in Edit and Post after a reload. Buffer gets 7-day signed links to the stored video and cover automatically.
+A take uploads as soon as recording stops and is stored on the video (`video.take`), so it plays in Edit and Post after a reload. When the team posts through Buffer, Buffer gets a 7-day signed link to the stored video automatically.
 
 ## Edit styles
 
@@ -206,7 +212,7 @@ Recorded takes are processed by a swappable, server-side **video processor**. Th
 2. Edit: the transcript and suggested cuts come from the job result; the filmstrip and waveform come from the real take. Click to cut/restore, the timeline and **Skip cuts** work against the real take. The **Look** panel sets caption style (Classic / Bold / Minimal), position, highlight color, and the AI overlays (name & credentials lower third, key-phrase emphasis, end card), previewed live and saved per video.
 3. **Finish edit** starts a `render` job with the advisor's final cuts and look and stores the MP4 (`video.output`).
 4. **Review**: watch the exact file, download it, or go back and change it.
-5. **Post**: download the MP4 and covers, copy each platform's caption (disclosure included) with one click, mark it posted, or send captions to Buffer as drafts and attach the MP4 there.
+5. **Post**: send it to the team to post for you, or download the MP4 and covers, copy each platform's caption (disclosure included) with one click, and mark it posted.
 
 ```bash
 VIDEO_PROCESSOR=local    # local (default, ffmpeg) | mock | mirage

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { PageContainer, PageHeader, SectionLabel } from "@/components/shared/page";
+import { PageHeader, SectionLabel } from "@/components/shared/page";
 import { CopyButton } from "@/components/studio/steps/share-kit";
 import { useStore } from "@/lib/store";
 import { cn, fmtDate, relativeTime } from "@/lib/utils";
@@ -109,9 +109,8 @@ export function AdminDashboard() {
   const videos = data?.users.reduce((n, u) => n + u.videos, 0) ?? 0;
 
   return (
-    <PageContainer>
+    <div>
       <PageHeader
-        eyebrow="Admin"
         title="Accounts & health"
         description={`Only ${account?.email ?? "admins"} can see this page.`}
         actions={
@@ -216,7 +215,7 @@ export function AdminDashboard() {
           </div>
         </DialogContent>
       </Dialog>
-    </PageContainer>
+    </div>
   );
 }
 

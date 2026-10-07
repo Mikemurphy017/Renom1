@@ -51,7 +51,7 @@ const INCLUDED = [
   "All edit styles, including Impact and Ignite",
   "Cover thumbnails for short and long videos",
   "Post copy, hashtags and disclosures",
-  "Scheduling through Buffer, or MP4 download",
+  "Our team posts it for you, or download the MP4",
   "Approval step and archive",
 ];
 
@@ -74,7 +74,7 @@ const FAQ = [
   },
   {
     q: "Where can I post?",
-    a: "LinkedIn, Instagram, Facebook, YouTube, TikTok and X through Buffer, or download the finished MP4 and upload it anywhere you like.",
+    a: "LinkedIn, Instagram, Facebook, YouTube, TikTok and X. Our team posts each video to your accounts for you, or you can download the finished MP4 and upload it anywhere you like.",
   },
   {
     q: "What happens when early access ends?",
@@ -246,10 +246,10 @@ export function Landing() {
               <Eyebrow>Results</Eyebrow>
               <H2 accent="what’s working.">Numbers that show you</H2>
               <p className="mt-5 text-[16px] leading-relaxed text-muted-foreground">
-                Views, reach, engagement and clicks for everything you post, pulled straight from your social accounts. See which topics land with your audience, and make more of those.
+                Our team tracks views, reach, engagement and clicks on everything we post for you, and uses them to steer what you make next. Topics that land with your audience come back around.
               </p>
               <ul className="mt-6 space-y-2.5">
-                {["Every post and platform in one place", "Last 7, 30 or 90 days", "Your best performers at the top"].map((x) => (
+                {["Every post and platform tracked", "Reviewed by our team", "More of what works"].map((x) => (
                   <li key={x} className="flex gap-2.5 text-[15px]"><Check className="mt-0.5 size-4 shrink-0 text-primary" /> {x}</li>
                 ))}
               </ul>

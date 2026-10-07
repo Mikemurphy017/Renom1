@@ -11,21 +11,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PlatformIcon } from "@/components/shared/platform-icon";
 import { ComplianceBadge } from "@/components/shared/badges";
-import { BufferConfigure, BufferReview, BufferVideoLink, useBufferPlan } from "@/components/buffer/buffer-publish";
 import { useStore, voiceProfileOf } from "@/lib/store";
 import { useDraft } from "@/lib/drafts";
 import { isAbort, useWriter } from "@/lib/ai/writer";
 import type { PlatformCopy } from "@/lib/ai/content";
-import { useAdvisorChannels, useBuffer } from "@/lib/buffer/use-buffer";
-import { platformForService } from "@/lib/buffer/types";
 import { activeDisclosure, disclosureFor } from "@/lib/compose";
 import { PLATFORMS, getPlatform } from "@/lib/mock/platforms";
-import { ME } from "@/lib/profile";
 import type { PlatformId } from "@/lib/types";
 import { cn, fmtNumber } from "@/lib/utils";
 import { AskBar, RequestLine, Writing } from "../ask-bar";
 import { CoverStudio } from "./cover-studio";
 import { ShareKit } from "./share-kit";
+import { TeamPost } from "./team-post";
 import type { StepProps } from "../studio-view";
 
 const SUB = ["Cover", "Caption", "Post"] as const;
@@ -35,13 +32,8 @@ export function PostStep({ video }: StepProps) {
   const vertical = video.format === "short";
   const [sub, setSub] = useDraft(video.id, "post.sub", 0);
 
-  // ── Platforms (from Buffer when connected) ──
-  const buffer = useBuffer();
-  const bufferOn = buffer.connected;
-  const bufferChannels = buffer.status && "channels" in buffer.status ? buffer.status.channels : [];
-  const [mine] = useAdvisorChannels(ME);
-  const bufferPlatforms = Array.from(new Set(bufferChannels.filter((c) => !mine.length || mine.includes(c.id)).map((c) => platformForService(c.service, video.format)).filter(Boolean))) as PlatformId[];
-  const defaultPlatforms: PlatformId[] = bufferOn && bufferPlatforms.length ? bufferPlatforms : video.platforms.length ? video.platforms : vertical ? ["youtube_shorts", "instagram", "linkedin"] : ["youtube", "linkedin"];
+  // ── Platforms ──
+  const defaultPlatforms: PlatformId[] = video.platforms.length ? video.platforms : vertical ? ["youtube_shorts", "instagram", "linkedin"] : ["youtube", "linkedin"];
   const [platforms, setPlatforms] = useDraft<PlatformId[]>(video.id, "post.platforms", defaultPlatforms);
 
   // ── Captions ──
@@ -80,12 +72,8 @@ export function PostStep({ video }: StepProps) {
   const updateCopy = (p: PlatformId, patch: Partial<PlatformCopy>) => setCopies((cs) => cs.map((c) => (c.platform === p ? { ...c, ...patch } : c)));
   const missing = platforms.filter((p) => !copies.some((c) => c.platform === p));
 
-  // ── Schedule ──
-  const bplan = useBufferPlan(video, bufferChannels);
-  const [bufferPhase, setBufferPhase] = React.useState<"configure" | "review">("configure");
+  // ── Post ──
   const needsApproval = requireApproval && video.compliance !== "approved";
-  // Buffer drafts don't go out, so they can be saved before approval.
-  const [bufferDrafts, setBufferDrafts] = React.useState(false);
   const router = useRouter();
   const saveDraft = () => {
     updateVideo(video.id, { status: "draft" });
@@ -96,7 +84,7 @@ export function PostStep({ video }: StepProps) {
   return (
     <div className="mx-auto max-w-[1000px] space-y-8 pb-28">
       <div className="text-center">
-        <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">{["Pick a cover.", "Say it once, everywhere.", requireApproval ? "Approve it, then post it." : "Download it. Copy it. Post it."][sub]}</h1>
+        <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">{["Pick a cover.", "Say it once, everywhere.", requireApproval ? "Approve it, then post it." : "We post it, or you do."][sub]}</h1>
         <div className="mt-5 flex justify-center">
           <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card p-1">
             {SUB.map((s, i) => (
@@ -137,7 +125,6 @@ export function PostStep({ video }: StepProps) {
               );
             })}
           </div>
-          {bufferOn && bufferPlatforms.length > 0 && bufferPlatforms.every((b) => platforms.includes(b)) && <p className="text-center text-[12px] text-muted-foreground">Includes every platform on your Buffer channels.</p>}
 
           {(busy || copies.length > 0) && (
             <RequestLine items={[`${platforms.length} platforms`, "From your script", "Your voice profile", `Disclosure ${activeDisclosure(profile)?.version ?? "not set"} (auto)`]} source={busy ? null : source} />
@@ -186,36 +173,22 @@ export function PostStep({ video }: StepProps) {
 
       {sub === 2 && (
         <>
-          {needsApproval && !bufferDrafts ? (
+          {needsApproval ? (
             <ApprovalGate
               status={video.compliance}
               onSubmit={() => { submitForReview(video.id); toast.success("Sent for approval", { description: reviewer ? `${reviewer} has it.` : "It’s in the Approve queue." }); }}
               onSaveDraft={saveDraft}
-              onBufferDrafts={bufferOn ? () => setBufferDrafts(true) : undefined}
             />
           ) : (
             <>
-              <ShareKit video={video} platforms={platforms} copies={copies} />
-              {bufferOn ? (
-                <div className="space-y-4 border-t border-border pt-8">
-                  <div>
-                    <h2 className="font-serif text-2xl">Or send it to Buffer.</h2>
-                    <p className="mt-1 text-[14px] text-muted-foreground">Captions go to Buffer as drafts. Attach the MP4 you downloaded there, then schedule.</p>
-                  </div>
-                  {bufferPhase === "configure" ? (
-                    <>
-                      <BufferConfigure channels={bufferChannels} plan={bplan} onBack={() => setSub(1)} onNext={() => setBufferPhase("review")} />
-                      <BufferVideoLink plan={bplan} />
-                    </>
-                  ) : (
-                    <BufferReview video={video} channels={bufferChannels} plan={bplan} onEdit={() => setBufferPhase("configure")} />
-                  )}
+              <TeamPost video={video} platforms={platforms} copies={copies} />
+              <div className="space-y-4 border-t border-border pt-8">
+                <div>
+                  <h2 className="font-serif text-2xl">Or post it yourself.</h2>
+                  <p className="mt-1 text-[14px] text-muted-foreground">Download the MP4, copy each caption, and upload it to your accounts.</p>
                 </div>
-              ) : (
-                <p className="text-center text-[13px] text-muted-foreground">
-                  Want to schedule from here? <Link href="/settings#publishing" className="text-primary hover:underline">Connect Buffer</Link>
-                </p>
-              )}
+                <ShareKit video={video} platforms={platforms} copies={copies} />
+              </div>
               <div className="flex">
                 <Button variant="ghost" className="rounded-full" onClick={() => setSub(1)}><ArrowLeft /> Caption</Button>
               </div>
@@ -278,14 +251,14 @@ function CaptionEditor({ platform, copy, update }: { platform: PlatformId; copy?
   );
 }
 
-function ApprovalGate({ status, onSubmit, onSaveDraft, onBufferDrafts }: { status: string; onSubmit: () => void; onSaveDraft: () => void; onBufferDrafts?: () => void }) {
+function ApprovalGate({ status, onSubmit, onSaveDraft }: { status: string; onSubmit: () => void; onSaveDraft: () => void }) {
   const waiting = status === "submitted";
   return (
     <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-8 text-center shadow-soft">
       <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-brass-soft"><ShieldCheck className="size-6 text-primary" /></div>
       <h2 className="mt-5 font-serif text-2xl">{waiting ? "With your reviewer." : status === "changes_requested" ? "Your reviewer asked for changes." : "One approval before it goes out."}</h2>
       <p className="mt-2 text-[14px] text-muted-foreground">
-        {waiting ? "You’ll be notified the moment it’s approved. Then scheduling is one click." : status === "changes_requested" ? "Make the edits, then send it back." : "Your reviewer sees the script, the captions and the disclosure together."}
+        {waiting ? "You’ll be notified the moment it’s approved. Then it’s one click to send it to the team." : status === "changes_requested" ? "Make the edits, then send it back." : "Your reviewer sees the script, the captions and the disclosure together."}
       </p>
       <div className="mt-2 flex justify-center"><ComplianceBadge status={status as "draft"} /></div>
       <div className="mt-6 flex justify-center gap-2">
@@ -296,7 +269,6 @@ function ApprovalGate({ status, onSubmit, onSaveDraft, onBufferDrafts }: { statu
         )}
       </div>
       <div className="mt-5 flex flex-wrap justify-center gap-x-4 gap-y-1 border-t border-border pt-4 text-[13px]">
-        {onBufferDrafts && <button onClick={onBufferDrafts} className="cursor-pointer text-primary hover:underline">Save to Buffer drafts meanwhile</button>}
         <button onClick={onSaveDraft} className="cursor-pointer text-muted-foreground hover:text-foreground">Save as draft here</button>
       </div>
     </div>

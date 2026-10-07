@@ -55,9 +55,9 @@ const FLOW = [
     id: "post",
     label: "Post",
     icon: Send,
-    title: "Ready to post, everywhere.",
-    body: "A cover thumbnail, the post copy and hashtags, written and designed. Save it as a draft, schedule it through Buffer, or download the MP4 and copy the post with one tap.",
-    points: ["LinkedIn, Instagram, Facebook, YouTube, TikTok, X", "Drafts first, post when you're ready", "MP4 download for anywhere else"],
+    title: "We post it for you. Or you do.",
+    body: "A cover thumbnail, the post copy and hashtags, written and designed. Hand it to our team and we post it to your accounts, or download the MP4 and copy the post with one tap.",
+    points: ["LinkedIn, Instagram, Facebook, YouTube, TikTok, X", "Our team schedules it for you", "MP4 download if you'd rather post it yourself"],
   },
 ] as const;
 
@@ -160,7 +160,7 @@ function FlowVisual({ id }: { id: (typeof FLOW)[number]["id"] }) {
         ))}
       </div>
       <div className="flex gap-2">
-        <span className="flex-1 rounded-full bg-[#D2B07A] py-2 text-center text-[12px] font-medium text-[#0B1F3A]">Schedule</span>
+        <span className="flex-1 rounded-full bg-[#D2B07A] py-2 text-center text-[12px] font-medium text-[#0B1F3A]">Send to our team</span>
         <span className="flex-1 rounded-full border border-white/20 py-2 text-center text-[12px] text-white">Download MP4</span>
       </div>
     </div>

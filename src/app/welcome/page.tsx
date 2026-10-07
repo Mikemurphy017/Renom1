@@ -12,7 +12,6 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Logo } from "@/components/layout/logo";
 import { useStore } from "@/lib/store";
-import { useBuffer } from "@/lib/buffer/use-buffer";
 import { EMPTY_PROFILE, disclosureTemplate, firstDisclosure } from "@/lib/profile";
 import type { AdvisorProfile } from "@/lib/types";
 import { BRAND } from "@/lib/brand";
@@ -51,7 +50,6 @@ function Status({ state, ok, off, children }: { state: boolean | null; ok: strin
 export default function WelcomePage() {
   const router = useRouter();
   const { hydrated, onboarded, completeOnboarding, profile: saved, account } = useStore();
-  const buffer = useBuffer();
   const [step, setStep] = React.useState<Step>("welcome");
   const [dir, setDir] = React.useState(1);
   const [p, setP] = React.useState<AdvisorProfile>(EMPTY_PROFILE);
@@ -281,12 +279,12 @@ export default function WelcomePage() {
             {step === "connect" && (
               <>
                 <h1 className="font-serif text-[40px] leading-tight tracking-tight">Already connected.</h1>
-                <p className="-mt-4 text-[15px] text-muted-foreground">Your studio comes with Claude for writing and Buffer for publishing. Nothing to install, no keys to manage.</p>
+                <p className="-mt-4 text-[15px] text-muted-foreground">Your studio comes with Claude for writing, and our team posts your videos for you. Nothing to install, no keys to manage.</p>
                 <Status state={claude} ok="Claude writes your ideas, scripts and captions." off="Writing is being switched on">
                   Your {BRAND.name} administrator turns writing on once for every studio. You can finish setup now; it starts working as soon as it&rsquo;s on.
                 </Status>
-                <Status state={buffer.loading ? null : buffer.connected} ok={`Buffer publishes for you${buffer.status && "organization" in buffer.status ? `: ${buffer.status.organization.name}` : ""}.`} off="Publishing is being switched on">
-                  Your administrator connects Buffer for every studio. Until then you can post by hand and keep the record here.
+                <Status state={true} ok="Our team posts your finished videos, or you can download them and post them yourself." off="">
+                  {null}
                 </Status>
               </>
             )}

@@ -46,7 +46,7 @@ export function CopyButton({ text, label, className }: { text: string; label: st
   );
 }
 
-/** Everything needed to post by hand (or attach in Buffer): the MP4, the covers, and each caption. */
+/** Everything needed to post by hand: the MP4, the covers, and each caption. */
 export function ShareKit({ video, platforms, copies }: { video: Video; platforms: PlatformId[]; copies: PlatformCopy[] }) {
   const { updateVideo, profile } = useStore();
   const [posted, setPosted] = React.useState(false);

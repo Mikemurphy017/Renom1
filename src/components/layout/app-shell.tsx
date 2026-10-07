@@ -3,6 +3,7 @@
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
+import { usePostingSync } from "@/lib/posting/use-posting";
 import { Navbar } from "./navbar";
 import { TabBar } from "./tab-bar";
 import { CommandPalette } from "./command-palette";
@@ -16,6 +17,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // The studio has its own controls along the bottom on phones.
   const inStudio = pathname.startsWith("/studio");
   const { hydrated, onboarded } = useStore();
+  usePostingSync();
   const [palette, setPalette] = React.useState(false);
   const [newVideo, setNewVideo] = React.useState(false);
 

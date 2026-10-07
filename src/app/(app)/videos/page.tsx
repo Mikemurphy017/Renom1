@@ -30,7 +30,9 @@ const matches: Record<Filter, (v: Video) => boolean> = {
 function statusLine(v: Video) {
   if (v.status === "published") return <span className="inline-flex items-center gap-1 tnum"><Eye className="size-3.5" /> {fmtCompact(videoTotals(v).views)} · {fmtDate(v.publishedAt!)}</span>;
   if (v.status === "scheduled" && v.scheduledFor) return <span className="inline-flex items-center gap-1 tnum"><Clock className="size-3.5" /> {fmtDateTime(v.scheduledFor)}</span>;
-  if (v.status === "draft") return <span className="inline-flex items-center gap-1"><Bookmark className="size-3.5" /> Draft · {v.posts?.some((p) => p.how === "buffer-draft") ? "in Buffer" : "not posted"}</span>;
+  if (v.teamPost?.status === "returned") return <span className="text-destructive">Sent back by your team</span>;
+  if (v.teamPost && ["submitted", "in_buffer"].includes(v.teamPost.status)) return <span className="inline-flex items-center gap-1"><Clock className="size-3.5" /> With your team</span>;
+  if (v.status === "draft") return <span className="inline-flex items-center gap-1"><Bookmark className="size-3.5" /> Draft · not posted</span>;
   if (v.compliance === "changes_requested") return <span className="text-destructive">Changes requested</span>;
   if (v.compliance === "submitted") return <span>Waiting on approval</span>;
   return <span>{getStage(v.stage).label} · {relativeTime(v.lastEdited)}</span>;

@@ -11,13 +11,10 @@ import { StepDots } from "@/components/shared/step-dots";
 import { PlatformIcon } from "@/components/shared/platform-icon";
 import { useStartVideo } from "@/components/layout/use-start-video";
 import { useStore } from "@/lib/store";
-import { useBuffer, useBufferMetrics } from "@/lib/buffer/use-buffer";
-import { platformForService, type BufferScheduledPost } from "@/lib/buffer/types";
-import { BufferPostMenu } from "@/components/buffer/post-menu";
 import { getStage, stageIndex } from "@/lib/stages";
 import { inPipeline, isPublished } from "@/lib/selectors";
 import type { PlatformId, VideoFormat } from "@/lib/types";
-import { TODAY, fmtCompact, relativeTime } from "@/lib/utils";
+import { TODAY, relativeTime } from "@/lib/utils";
 import { BRAND } from "@/lib/brand";
 
 function greeting() {
@@ -30,26 +27,17 @@ export default function HomePage() {
   const start = useStartVideo();
   const [topic, setTopic] = React.useState("");
   const [format, setFormat] = React.useState<VideoFormat>("short");
-  const buffer = useBuffer();
 
   const inProgress = videos.filter(inPipeline).filter((v) => v.status === "in_progress").sort((a, b) => stageIndex(b.stage) - stageIndex(a.stage) || b.lastEdited.localeCompare(a.lastEdited)).slice(0, 3);
   const waiting = reviews.filter((r) => r.status === "submitted").length;
   const needsChanges = reviews.filter((r) => r.status === "changes_requested").length;
-  const week = useBufferMetrics(7, buffer.connected);
-  const metric = (type: string) => week.data?.metrics.find((m) => m.type === type)?.value;
-  const views7 = metric("views") ?? metric("impressions");
+  const withTeam = videos.filter((v) => v.teamPost && ["submitted", "in_buffer"].includes(v.teamPost.status)).length;
   const published = videos.filter(isPublished).length + videos.filter((v) => v.status === "scheduled").length;
 
-  const bufferStatus = buffer.status && "channels" in buffer.status ? buffer.status : null;
-  type Upcoming = { id: string; at: string; title: string; platforms: PlatformId[]; href: string; source: string; buffer?: BufferScheduledPost };
-  const upcoming: Upcoming[] = [
-    ...videos.filter((v) => v.scheduledFor && new Date(v.scheduledFor) >= TODAY).map((v) => ({ id: v.id, at: v.scheduledFor!, title: v.title, platforms: v.platforms, href: `/studio/${v.id}/${v.stage}`, source: BRAND.name })),
-    ...(bufferStatus?.upcoming ?? []).flatMap((p) => {
-      const pl = platformForService(p.channelService, "long");
-      const ch = bufferStatus!.channels.find((c) => c.id === p.channelId);
-      return p.dueAt && pl ? [{ id: p.id, at: p.dueAt, title: p.text.split("\n")[0], platforms: [pl] as PlatformId[], href: "https://publish.buffer.com", source: `Buffer · ${ch?.displayName ?? ch?.name}`, buffer: p }] : [];
-    }),
-  ]
+  type Upcoming = { id: string; at: string; title: string; platforms: PlatformId[]; href: string; source: string };
+  const upcoming: Upcoming[] = videos
+    .filter((v) => v.status === "scheduled" && v.scheduledFor && new Date(v.scheduledFor) >= TODAY)
+    .map((v) => ({ id: v.id, at: v.scheduledFor!, title: v.title, platforms: v.platforms, href: `/studio/${v.id}/post`, source: v.teamPost?.status === "scheduled" ? "Scheduled by your team" : BRAND.name }))
     .sort((a, b) => a.at.localeCompare(b.at))
     .slice(0, 5);
 
@@ -104,7 +92,7 @@ export default function HomePage() {
           {[
             ["1", "Say what’s on your mind", "One sentence. Claude turns it into ideas in your voice, then writes the script."],
             ["2", "Record and trim", "Read from the teleprompter. The edit marks the pauses and retakes for you."],
-            ["3", requireApproval ? "Approve and post" : "Post", "Captions for every platform, your disclosure locked on, scheduled or saved as drafts in Buffer."],
+            ["3", requireApproval ? "Approve and post" : "Post", "Captions for every platform with your disclosure locked on. Our team posts it for you, or download it and post it yourself."],
           ].map(([n, t, d]) => (
             <div key={n} className="rounded-2xl border border-border bg-card p-5">
               <div className="font-serif text-2xl text-primary">{n}</div>
@@ -144,7 +132,7 @@ export default function HomePage() {
 
       <section className="grid gap-4 sm:grid-cols-3">
         {[
-          { label: "Views this week", value: views7 !== undefined ? fmtCompact(views7) : "—", sub: buffer.connected ? (week.loading ? "Loading from Buffer…" : "from Buffer, all channels") : "Connect Buffer to see views", href: buffer.connected ? "/analyze" : "/settings#publishing" },
+          { label: "With your team", value: String(withTeam), sub: withTeam ? "waiting to be scheduled" : "nothing waiting to post", href: "/videos" },
           { label: "Published or scheduled", value: String(published), sub: published ? "videos from this studio" : "your first one is a few steps away", href: "/videos" },
           requireApproval
             ? { label: "Waiting on approval", value: String(waiting), sub: needsChanges ? `${needsChanges} sent back for changes` : "nothing sent back", href: "/approve" }
@@ -166,7 +154,6 @@ export default function HomePage() {
           <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
             {upcoming.map((u) => {
               const d = new Date(u.at);
-              const external = u.href.startsWith("http");
               const inner = (
                 <>
                   <div className="w-14 shrink-0 text-center">
@@ -186,12 +173,7 @@ export default function HomePage() {
               );
               return (
                 <li key={u.id} className="flex items-center hover:bg-muted/50">
-                  {external ? (
-                    <a href={u.href} target="_blank" rel="noreferrer" className="flex min-w-0 flex-1 items-center gap-4 py-3.5 pl-5 pr-3">{inner}</a>
-                  ) : (
-                    <Link href={u.href} className="flex min-w-0 flex-1 items-center gap-4 py-3.5 pl-5 pr-5">{inner}</Link>
-                  )}
-                  {u.buffer && <div className="pr-3"><BufferPostMenu post={u.buffer} title={u.title} /></div>}
+                  <Link href={u.href} className="flex min-w-0 flex-1 items-center gap-4 py-3.5 pl-5 pr-5">{inner}</Link>
                 </li>
               );
             })}

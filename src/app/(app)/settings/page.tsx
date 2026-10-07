@@ -13,7 +13,7 @@ import { PageContainer } from "@/components/shared/page";
 import { HeadshotPicker } from "@/components/settings/headshot-picker";
 import { MediaLibrary } from "@/components/settings/media-library";
 import { AccountSection } from "@/components/settings/account-section";
-import { BufferCard } from "@/components/buffer/buffer-card";
+import { PublishingSection } from "@/components/settings/publishing-section";
 import { useStore } from "@/lib/store";
 import { disclosureTemplate, firstDisclosure, initials } from "@/lib/profile";
 import { useRouter } from "next/navigation";
@@ -186,8 +186,8 @@ export default function SettingsPage() {
             </details>
           </Section>
 
-          <Section id="publishing" title="Publishing" desc={`${BRAND.name} schedules through Buffer. Your social accounts are connected in Buffer.`}>
-            <BufferCard />
+          <Section id="publishing" title="Publishing" desc="How your videos get posted.">
+            <PublishingSection />
           </Section>
 
           <Section id="approval" title="Approval" desc="Who has to say yes before anything goes out.">
@@ -243,7 +243,7 @@ export default function SettingsPage() {
             <AccountSection />
           </Section>
 
-          <Section id="reset" title="Start over" desc="Clears your profile, videos, reviews and settings from your account, then opens setup again. Your sign-in and Buffer posts aren’t touched.">
+          <Section id="reset" title="Start over" desc="Clears your profile, videos, reviews and settings from your account, then opens setup again. Your sign-in and anything already posted aren’t touched.">
             <Button
               variant="outline"
               className="border-destructive/30 text-destructive hover:bg-warning-soft"

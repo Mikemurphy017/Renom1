@@ -107,27 +107,3 @@ export function useBufferMetrics(days: number, enabled: boolean) {
   const current = state?.days === days ? state.result : null;
   return { data: current?.ok ? current : null, error: current && !current.ok ? current.error : null, loading: enabled && !current };
 }
-
-/** Which Buffer channels post as each advisor (per browser for now). */
-const MAP_KEY = "renom.buffer.channels";
-export function useAdvisorChannels(advisorId: string) {
-  const [ids, setIds] = React.useState<string[]>([]);
-  React.useEffect(() => {
-    try {
-      const all = JSON.parse(localStorage.getItem(MAP_KEY) || "{}");
-      setIds(Array.isArray(all[advisorId]) ? all[advisorId] : []);
-    } catch {}
-  }, [advisorId]);
-  const save = React.useCallback(
-    (next: string[]) => {
-      setIds(next);
-      try {
-        const all = JSON.parse(localStorage.getItem(MAP_KEY) || "{}");
-        all[advisorId] = next;
-        localStorage.setItem(MAP_KEY, JSON.stringify(all));
-      } catch {}
-    },
-    [advisorId]
-  );
-  return [ids, save] as const;
-}
