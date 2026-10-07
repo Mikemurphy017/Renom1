@@ -32,12 +32,21 @@ const scriptText = (v: Video) => {
   return [s.hook, ...s.body, s.cta];
 };
 
-function MicMeter({ level, live }: { level: number; live: boolean }) {
+function MicMeter({ level, live, clippedAt }: { level: number; live: boolean; clippedAt: number }) {
+  // The mic is recorded raw (no automatic gain), so its level is what you set.
+  const clipping = live && Date.now() - clippedAt < 2500;
   return (
-    <div className="flex h-2 gap-[2px]" aria-label="Microphone level">
-      {Array.from({ length: 20 }).map((_, i) => (
-        <span key={i} className={cn("flex-1 rounded-[1px] transition-colors duration-75", live && i / 20 < level ? (i > 16 ? "bg-destructive" : i > 12 ? "bg-primary" : "bg-success") : "bg-muted")} />
-      ))}
+    <div>
+      <div className="flex h-2 gap-[2px]" aria-label="Microphone level">
+        {Array.from({ length: 20 }).map((_, i) => (
+          <span key={i} className={cn("flex-1 rounded-[1px] transition-colors duration-75", live && i / 20 < level ? (i > 16 ? "bg-destructive" : i > 12 ? "bg-primary" : "bg-success") : "bg-muted")} />
+        ))}
+      </div>
+      {live && (
+        <p className={cn("mt-1.5 text-[11px]", clipping ? "text-destructive" : "text-muted-foreground")}>
+          {clipping ? "Too loud: it’s distorting. Turn the mic gain down or sit a little further back." : "Studio capture. Speak normally: aim for green and gold, never red."}
+        </p>
+      )}
     </div>
   );
 }
@@ -232,7 +241,7 @@ export function RecordStep({ video, complete }: StepProps) {
                     {capture.mics.map((c) => <SelectItem key={c.deviceId} value={c.deviceId}>{c.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <div className="mt-2.5"><MicMeter level={capture.level} live={!!stream} /></div>
+                <div className="mt-2.5"><MicMeter level={capture.level} live={!!stream} clippedAt={capture.clippedAt} /></div>
               </div>
             </TabsContent>
           </Tabs>

@@ -351,7 +351,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
           {[
             ["Show cuts", showCuts, setShowCuts],
             ["Skip cuts", skipCuts, setSkipCuts],
-            ["Enhance audio", enhance, setEnhance],
+            ["Studio sound", enhance, setEnhance],
           ].map(([label, val, set]) => (
             <label key={label as string} className="flex items-center gap-2 text-[12px] text-muted-foreground">
               <Switch checked={val as boolean} onCheckedChange={set as (v: boolean) => void} /> {label as string}

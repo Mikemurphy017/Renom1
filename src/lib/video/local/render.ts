@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { runFfmpeg } from "./ffmpeg";
 import { buildAss, normWord, type Beat, type TimedWord } from "./ass";
@@ -20,6 +20,28 @@ import type { Aspect, OverlayOptions, TimeRange, TranscriptWord } from "../types
 
 export const OUTPUT_SIZE: Record<Aspect, [number, number]> = { "9:16": [1080, 1920], "16:9": [1920, 1080] };
 const FONT_DIR = path.join(process.cwd(), "assets", "fonts");
+/** RNNoise model for speech in recordings ("somnolent-hogwash", github.com/GregorR/rnnoise-models). */
+const DENOISE_MODEL = path.join(process.cwd(), "assets", "audio", "voice-denoise.rnnn");
+
+/**
+ * "Studio sound" for the voice: rumble cut, neural denoise plus a light
+ * spectral pass, a touch of EQ (less mud, more presence and air), de-essing,
+ * gentle compression, and an expander that drops the room between sentences
+ * without touching the words. Loudness is set on the final mix.
+ */
+function studioVoice() {
+  const denoise = existsSync(DENOISE_MODEL) ? `arnndn=m=${DENOISE_MODEL},afftdn=nf=-35:tn=1` : "afftdn=nf=-25:tn=1";
+  return [
+    "highpass=f=75",
+    denoise,
+    "equalizer=f=220:t=q:w=1.2:g=-2",
+    "equalizer=f=3200:t=q:w=1.4:g=2.5",
+    "highshelf=f=9500:g=2",
+    "deesser=i=0.35",
+    "acompressor=threshold=0.1:ratio=3:attack=10:release=150:makeup=1.6",
+    "agate=threshold=0.02:ratio=2.5:range=0.12:attack=5:release=250",
+  ].join(",");
+}
 
 export interface RenderInput {
   source: string;
@@ -170,7 +192,7 @@ export async function renderVideo(r: RenderInput): Promise<{ durationSec: number
   f.push(`[${v}]ass=${assFile}:fontsdir=${FONT_DIR},format=yuv420p[vout]`);
 
   // ── audio ──
-  f.push(`[ac]aresample=48000,aformat=channel_layouts=stereo${r.enhanceAudio ? ",highpass=f=80,afftdn=nf=-25" : ""}[voice]`);
+  f.push(`[ac]aresample=48000,aformat=channel_layouts=mono${r.enhanceAudio ? `,${studioVoice()}` : ""},aformat=channel_layouts=stereo[voice]`);
   const mix: string[] = [];
   if (musicIn >= 0) {
     const gain = (0.5 * Math.max(0, Math.min(1, ex.musicVolume))).toFixed(3);
@@ -184,7 +206,8 @@ export async function renderVideo(r: RenderInput): Promise<{ durationSec: number
     f.push(`[${s.input}:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.45,adelay=${ms}|${ms}[sx${i}]`);
     mix.push(`[sx${i}]`);
   });
-  const master = r.enhanceAudio ? "loudnorm=I=-16:TP=-1.5:LRA=11" : "alimiter=limit=0.95";
+  // -14 LUFS is where the social networks normalize to.
+  const master = r.enhanceAudio ? "loudnorm=I=-14:TP=-1:LRA=11" : "alimiter=limit=0.95";
   f.push(mix.length > 1 ? `${mix.join("")}amix=inputs=${mix.length}:normalize=0:duration=first,${master},aresample=48000[aout]` : `${mix[0]}${master},aresample=48000[aout]`);
 
   args.push(
@@ -192,7 +215,7 @@ export async function renderVideo(r: RenderInput): Promise<{ durationSec: number
     "-map", "[vout]", "-map", "[aout]",
     "-t", outDur.toFixed(3),
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-profile:v", "high", "-r", String(fps),
-    "-c:a", "aac", "-b:a", "160k", "-ac", "2",
+    "-c:a", "aac", "-b:a", "192k", "-ac", "2",
     "-movflags", "+faststart",
     r.out
   );

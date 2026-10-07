@@ -59,6 +59,8 @@ export function useCapture() {
   const [cameras, setCameras] = React.useState<CaptureDevice[]>([]);
   const [mics, setMics] = React.useState<CaptureDevice[]>([]);
   const [level, setLevel] = React.useState(0);
+  /** When the mic last hit full scale (ms), so the meter can warn about clipping. */
+  const [clippedAt, setClippedAt] = React.useState(0);
   const streamRef = React.useRef<MediaStream | null>(null);
   const audioCtxRef = React.useRef<AudioContext | null>(null);
   const recorderRef = React.useRef<{ rec: MediaRecorder; stopCanvas?: () => void; started: number; w: number; h: number; mime: string } | null>(null);
@@ -110,11 +112,18 @@ export function useCapture() {
             height: { ideal: portrait ? 1920 : 1080 },
             frameRate: { ideal: 30 },
           },
+          // Studio capture: the browser's call processing (echo cancellation,
+          // noise suppression, auto gain) flattens a voice and makes levels pump,
+          // and a good mic doesn't need it. Record it clean at 48 kHz; the edit
+          // does the denoise, EQ, compression and loudness properly.
           audio: {
             deviceId: opts.micId ? { exact: opts.micId } : undefined,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: { ideal: 1 },
+            sampleRate: { ideal: 48000 },
+            sampleSize: { ideal: 24 },
           },
         });
         streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -126,15 +135,20 @@ export function useCapture() {
         const ctx = new AudioContext();
         audioCtxRef.current = ctx;
         const analyser = ctx.createAnalyser();
-        analyser.fftSize = 512;
+        analyser.fftSize = 1024;
         ctx.createMediaStreamSource(s).connect(analyser);
-        const buf = new Uint8Array(analyser.fftSize);
+        const buf = new Float32Array(analyser.fftSize);
+        let lastClip = 0;
         const tick = () => {
           if (audioCtxRef.current !== ctx) return;
-          analyser.getByteTimeDomainData(buf);
+          analyser.getFloatTimeDomainData(buf);
           let peak = 0;
-          for (const v of buf) peak = Math.max(peak, Math.abs(v - 128));
-          setLevel(Math.min(1, (peak / 128) * 1.6));
+          for (const v of buf) peak = Math.max(peak, Math.abs(v));
+          setLevel(Math.min(1, peak * 1.6));
+          if (peak >= 0.98 && performance.now() - lastClip > 300) {
+            lastClip = performance.now();
+            setClippedAt(Date.now());
+          }
           requestAnimationFrame(tick);
         };
         tick();
@@ -197,7 +211,7 @@ export function useCapture() {
     const rec = new MediaRecorder(recStream, {
       mimeType: mime || undefined,
       videoBitsPerSecond: 8_000_000,
-      audioBitsPerSecond: 160_000,
+      audioBitsPerSecond: 256_000,
     });
     const chunks: Blob[] = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
@@ -229,5 +243,5 @@ export function useCapture() {
     []
   );
 
-  return { stream, error, starting, cameras, mics, level, start, stop: stopTracks, startRecording, stopRecording, supported: !!pickMime() };
+  return { stream, error, starting, cameras, mics, level, clippedAt, start, stop: stopTracks, startRecording, stopRecording, supported: !!pickMime() };
 }
