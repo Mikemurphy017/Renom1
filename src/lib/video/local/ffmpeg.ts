@@ -48,11 +48,13 @@ export function runFfmpeg(args: string[], opts: { onTime?: (sec: number) => void
 }
 
 /**
- * Real length of a file. MediaRecorder WebM often has no duration in its
- * header, so remux to nowhere and read the last timestamp.
+ * Real length, frame size and frame rate of a file. MediaRecorder WebM often
+ * has no duration in its header (and a nominal 1000 fps), so remux to nowhere
+ * and read the last timestamp and the number of frames.
  */
-export async function probe(file: string): Promise<{ durationSec: number; hasAudio: boolean; hasVideo: boolean }> {
-  const { stderr } = await runFfmpeg(["-i", file, "-map", "0", "-c", "copy", "-f", "null", "-"]);
+export async function probe(file: string): Promise<{ durationSec: number; hasAudio: boolean; hasVideo: boolean; width: number; height: number; fps: number }> {
+  // verbose: the end summary counts each stream's packets (the frame count).
+  const { stderr } = await runFfmpeg(["-v", "verbose", "-i", file, "-map", "0", "-c", "copy", "-f", "null", "-"]);
   const times = [...stderr.matchAll(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/g)];
   const last = times.at(-1);
   let durationSec = last ? +last[1] * 3600 + +last[2] * 60 + +last[3] : 0;
@@ -60,5 +62,12 @@ export async function probe(file: string): Promise<{ durationSec: number; hasAud
     const d = /Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/.exec(stderr);
     if (d) durationSec = +d[1] * 3600 + +d[2] * 60 + +d[3];
   }
-  return { durationSec, hasAudio: /Stream #\d+:\d+.*: Audio:/.test(stderr), hasVideo: /Stream #\d+:\d+.*: Video:/.test(stderr) };
+  // Frame size as decoded: phones store portrait MP4 as landscape plus a rotation.
+  const size = /Stream #\d+:\d+.*: Video: .*?(\d{2,5})x(\d{2,5})/.exec(stderr);
+  let width = size ? +size[1] : 0;
+  let height = size ? +size[2] : 0;
+  if (/rotation of -?(90|270)\.00 degrees/.test(stderr)) [width, height] = [height, width];
+  const frames = /Input stream #\d+:\d+ \(video\): (\d+) packets read/.exec(stderr);
+  const fps = frames && durationSec > 0 ? +frames[1] / durationSec : 30;
+  return { durationSec, hasAudio: /Stream #\d+:\d+.*: Audio:/.test(stderr), hasVideo: /Stream #\d+:\d+.*: Video:/.test(stderr), width, height, fps };
 }

@@ -13,8 +13,8 @@ export interface VideoProcessor {
   id: ProcessorId;
   /** Whether the provider is configured well enough to accept work. */
   readiness(): { ok: true } | { ok: false; reason: string };
-  /** Send a stored take to the provider. Returns the provider's id for it. */
-  upload(source: StoredUpload, bytes: Uint8Array): Promise<{ remoteId: string }>;
+  /** Send a stored take to the provider (`file` is a local copy). Returns the provider's id for it. */
+  upload(source: StoredUpload, file: string): Promise<{ remoteId: string }>;
   /** Start captions + edit + overlays work on an uploaded source. */
   process(req: ProcessRequest, source: StoredUpload): Promise<{ jobId: string }>;
   getStatus(jobId: string): Promise<JobStatus | null>;

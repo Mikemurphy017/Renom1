@@ -57,6 +57,13 @@ export interface EditOptions {
 
 export type Aspect = "9:16" | "16:9";
 
+/**
+ * Size of the rendered MP4. 1080p (1080×1920 / 1920×1080) is the default: fast
+ * to render and what the social networks show. 2160p (4K) is offered when the
+ * take itself is at least 4K.
+ */
+export type OutputResolution = "1080p" | "2160p";
+
 /** A time range in seconds against the source recording. */
 export interface TimeRange {
   start: number;
@@ -80,6 +87,8 @@ export interface ProcessRequest {
   script?: string[];
   /** render only: ranges to remove, as finally chosen by the advisor. */
   cuts?: TimeRange[];
+  /** render only: output size (default 1080p). 2160p falls back to 1080p for smaller takes. */
+  resolution?: OutputResolution;
 }
 
 export type JobState = "queued" | "processing" | "done" | "failed";
@@ -125,6 +134,9 @@ export interface JobResult {
   /** render: the stored MP4's upload id and size. */
   outputId?: string;
   sizeBytes?: number;
+  /** render: the output frame, e.g. 1080×1920 or 2160×3840. */
+  width?: number;
+  height?: number;
 }
 
 export interface UploadResponse {
@@ -141,6 +153,11 @@ export type JobEvent =
 
 export const DEFAULT_EDIT: EditOptions = { removeSilence: true, removeBadTakes: true, removeFillers: true, enhanceAudio: true };
 
-/** Upload limits shared by the client check and the server route. */
-export const MAX_UPLOAD_MB = 500;
+/**
+ * Upload limits shared by the client check and the server route. A 90-second
+ * 4K take is roughly 300–700 MB; uploads are streamed to disk and on to
+ * storage, so the cap is about time and disk, not server memory.
+ */
+export const MAX_UPLOAD_MB = 2048;
+export const MAX_UPLOAD_LABEL = MAX_UPLOAD_MB >= 1024 ? `${MAX_UPLOAD_MB / 1024} GB` : `${MAX_UPLOAD_MB} MB`;
 export const ACCEPTED_VIDEO_TYPES = ["video/webm", "video/mp4", "video/quicktime"];

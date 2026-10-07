@@ -8,7 +8,7 @@ import { musicBed, sfx, type SfxKind } from "./audio-beds";
 import { objects } from "@/lib/storage/objects";
 import { isMediaId, mediaKey } from "@/lib/storage/media";
 import { getStyle, normalizeOverlays, type MusicMood } from "../styles";
-import type { Aspect, OverlayOptions, TimeRange, TranscriptWord } from "../types";
+import type { Aspect, OutputResolution, OverlayOptions, TimeRange, TranscriptWord } from "../types";
 
 /**
  * Renders the final MP4: keeps what the advisor kept, frames it for the
@@ -19,6 +19,17 @@ import type { Aspect, OverlayOptions, TimeRange, TranscriptWord } from "../types
  */
 
 export const OUTPUT_SIZE: Record<Aspect, [number, number]> = { "9:16": [1080, 1920], "16:9": [1920, 1080] };
+const OUTPUT_SIZE_4K: Record<Aspect, [number, number]> = { "9:16": [2160, 3840], "16:9": [3840, 2160] };
+
+/**
+ * The output frame. 4K only when the take fills a 4K frame without upscaling
+ * (a 4K camera in the same orientation); anything smaller renders at 1080p.
+ */
+export function outputSize(aspect: Aspect, resolution: OutputResolution | undefined, src: { width: number; height: number }): [number, number] {
+  if (resolution !== "2160p" || !src.width || !src.height) return OUTPUT_SIZE[aspect];
+  const [W, H] = OUTPUT_SIZE_4K[aspect];
+  return Math.max(W / src.width, H / src.height) <= 1.05 ? [W, H] : OUTPUT_SIZE[aspect];
+}
 const FONT_DIR = path.join(process.cwd(), "assets", "fonts");
 /** RNNoise model for speech in recordings ("somnolent-hogwash", github.com/GregorR/rnnoise-models). */
 const DENOISE_MODEL = path.join(process.cwd(), "assets", "audio", "voice-denoise.rnnn");
@@ -50,6 +61,10 @@ export interface RenderInput {
   durationSec: number;
   hasAudio: boolean;
   aspect: Aspect;
+  /** Output frame (see outputSize). */
+  size: [number, number];
+  /** Frames per second of the take; 60 fps takes render at 60. */
+  sourceFps: number;
   cuts: TimeRange[];
   transcript: TranscriptWord[];
   keyPhrases: string[];
@@ -103,14 +118,14 @@ async function musicFile(choice: string, dir: string): Promise<string | null> {
 }
 
 export async function renderVideo(r: RenderInput): Promise<{ durationSec: number }> {
-  const [W, H] = OUTPUT_SIZE[r.aspect];
+  const [W, H] = r.size;
   const ov = normalizeOverlays(r.overlays);
   const st = getStyle(ov.captions.style);
   const ex = ov.extras;
   const keep = keepRanges(r.cuts, r.durationSec);
   if (!keep.length) throw new Error("Everything was cut. Restore at least one phrase.");
   const outDur = keep.reduce((a, k) => a + (k.end - k.start), 0);
-  const fps = 30;
+  const fps = r.sourceFps >= 50 ? 60 : 30;
 
   // Words in the edited timeline.
   // A word that starts a hair inside a trimmed pause (recognizers stamp words a
@@ -136,42 +151,82 @@ export async function renderVideo(r: RenderInput): Promise<{ durationSec: number
   const clips = ex.broll ? await footageFor(beats, ex.brollMedia, r.aspect, r.workDir) : new Map();
 
   const assFile = path.join(r.workDir, "overlays.ass");
-  await fs.writeFile(assFile, buildAss({ W, H, outDur, words, keyWords, beats, overlays: ov }));
+  // Overlays are laid out on the 1080p frame; libass scales them (fonts, borders,
+  // positions) to the real frame, so a 4K render looks the same, only sharper.
+  const [LW, LH] = OUTPUT_SIZE[r.aspect];
+  await fs.writeFile(assFile, buildAss({ W: LW, H: LH, outDur, words, keyWords, beats, overlays: ov }));
 
-  // ── inputs ──
-  const args = ["-y", "-i", r.source];
-  let next = 1;
-  const silent = r.hasAudio ? -1 : next++;
-  if (!r.hasAudio) args.push("-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo");
+  // The sound is mixed in its own (quick, audio-only) pass first. In one graph
+  // with the picture, ffmpeg would hold ~3 s of decoded frames while loudnorm
+  // looks ahead: about 1 GB more memory at 4K.
+
+  // ── audio ──
+  const aArgs = ["-y", "-i", r.source];
+  let nextA = 1;
+  const silent = r.hasAudio ? -1 : nextA++;
+  if (!r.hasAudio) aArgs.push("-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo");
   const music = ex.music !== "none" ? await musicFile(ex.music, r.workDir).catch(() => null) : null;
-  const musicIn = music ? next++ : -1;
-  if (music) args.push("-stream_loop", "-1", "-i", music);
+  const musicIn = music ? nextA++ : -1;
+  if (music) aArgs.push("-stream_loop", "-1", "-i", music);
   const sfxEvents: { at: number; kind: SfxKind; input: number }[] = [];
   if (ex.sfx) {
     for (const b of beats.slice(0, 8)) {
       const kind: SfxKind = clips.has(b) ? "whoosh" : st.card === "backdrop" ? "hit" : st.card === "headline" ? "whoosh" : "pop";
       const file = await sfx(kind).catch(() => null);
       if (!file) continue;
-      args.push("-i", file);
-      sfxEvents.push({ at: Math.max(0, b.at - (kind === "whoosh" ? 0.18 : 0.02)), kind, input: next++ });
+      aArgs.push("-i", file);
+      sfxEvents.push({ at: Math.max(0, b.at - (kind === "whoosh" ? 0.18 : 0.02)), kind, input: nextA++ });
     }
   }
+
+  const af: string[] = [];
+  keep.forEach((k, i) => {
+    af.push(r.hasAudio ? `[0:a]atrim=start=${k.start.toFixed(3)}:end=${k.end.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]` : `[${silent}:a]atrim=duration=${(k.end - k.start).toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
+  });
+  af.push(`${keep.map((_, i) => `[a${i}]`).join("")}concat=n=${keep.length}:v=0:a=1[ac]`);
+  af.push(`[ac]aresample=48000,aformat=channel_layouts=mono${r.enhanceAudio ? `,${studioVoice()}` : ""},aformat=channel_layouts=stereo[voice]`);
+  const mix: string[] = [];
+  if (musicIn >= 0) {
+    const gain = (0.5 * Math.max(0, Math.min(1, ex.musicVolume))).toFixed(3);
+    af.push(`[voice]asplit=2[vmain][vkey]`);
+    af.push(`[${musicIn}:a]aresample=48000,aformat=channel_layouts=stereo,atrim=duration=${outDur.toFixed(2)},asetpts=PTS-STARTPTS,volume=${gain},afade=t=in:d=0.6,afade=t=out:st=${Math.max(0, outDur - 1.5).toFixed(2)}:d=1.5[mraw]`);
+    af.push(`[mraw][vkey]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=400[mus]`);
+    mix.push("[vmain]", "[mus]");
+  } else mix.push("[voice]");
+  sfxEvents.forEach((s, i) => {
+    const ms = Math.round(s.at * 1000);
+    af.push(`[${s.input}:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.45,adelay=${ms}|${ms}[sx${i}]`);
+    mix.push(`[sx${i}]`);
+  });
+  // -14 LUFS is where the social networks normalize to.
+  const master = r.enhanceAudio ? "loudnorm=I=-14:TP=-1:LRA=11" : "alimiter=limit=0.95";
+  af.push(mix.length > 1 ? `${mix.join("")}amix=inputs=${mix.length}:normalize=0:duration=first,${master},aresample=48000[aout]` : `${mix[0]}${master},aresample=48000[aout]`);
+
+  const mixFile = path.join(r.workDir, "mix.wav");
+  aArgs.push("-filter_complex", af.join(";"), "-map", "[aout]", "-t", outDur.toFixed(3), "-c:a", "pcm_s16le", "-ac", "2", mixFile);
+  await runFfmpeg(aArgs, { onTime: (s) => r.onProgress?.(0.03 + Math.min(0.05, (s / outDur) * 0.05)) });
+
+  // ── video ──
+  const args = ["-y", "-i", r.source];
+  let next = 1;
   const brollIn: { beat: Beat; input: number; kind: "video" | "image" }[] = [];
   for (const [beat, clip] of clips) {
     if (clip.kind === "image") args.push("-loop", "1", "-framerate", String(fps), "-t", beat.dur.toFixed(2), "-i", clip.file);
     else args.push("-t", (beat.dur + 0.5).toFixed(2), "-i", clip.file);
     brollIn.push({ beat, input: next++, kind: clip.kind });
   }
+  const mixIn = next++;
+  args.push("-i", mixFile);
 
-  // ── video ──
   const f: string[] = [];
-  keep.forEach((k, i) => {
-    f.push(`[0:v]trim=start=${k.start.toFixed(3)}:end=${k.end.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`);
-    f.push(r.hasAudio ? `[0:a]atrim=start=${k.start.toFixed(3)}:end=${k.end.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]` : `[${silent}:a]atrim=duration=${(k.end - k.start).toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
-  });
-  f.push(`${keep.map((_, i) => `[v${i}][a${i}]`).join("")}concat=n=${keep.length}:v=1:a=1[vc][ac]`);
+  // Frame the take first: every filter after this works on W×H at the output
+  // rate, so a 4K or 60 fps take rendered at 1080p costs little more than a
+  // 1080p one (decoding aside).
+  const pieces = keep.map((_, i) => `[s${i}]`).join("");
+  f.push(`[0:v]fps=${fps},scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1${keep.length > 1 ? `,split=${keep.length}` : ""}${pieces}`);
+  keep.forEach((k, i) => f.push(`[s${i}]trim=start=${k.start.toFixed(3)}:end=${k.end.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`));
+  f.push(keep.length > 1 ? `${keep.map((_, i) => `[v${i}]`).join("")}concat=n=${keep.length}:v=1:a=0[vb]` : `[v0]null[vb]`);
   let v = "vb";
-  f.push(`[vc]fps=${fps},scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1[vb]`);
 
   // Punch-in on each moment that isn't covered by b-roll (ease in over 120 ms, hold).
   const zooms = ex.motion ? beats.filter((b) => !clips.has(b)).map((b) => ({ a: b.at, b: Math.min(outDur, b.at + Math.max(1.6, b.dur + 0.4)) })) : [];
@@ -191,34 +246,18 @@ export async function renderVideo(r: RenderInput): Promise<{ durationSec: number
   });
   f.push(`[${v}]ass=${assFile}:fontsdir=${FONT_DIR},format=yuv420p[vout]`);
 
-  // ── audio ──
-  f.push(`[ac]aresample=48000,aformat=channel_layouts=mono${r.enhanceAudio ? `,${studioVoice()}` : ""},aformat=channel_layouts=stereo[voice]`);
-  const mix: string[] = [];
-  if (musicIn >= 0) {
-    const gain = (0.5 * Math.max(0, Math.min(1, ex.musicVolume))).toFixed(3);
-    f.push(`[voice]asplit=2[vmain][vkey]`);
-    f.push(`[${musicIn}:a]aresample=48000,aformat=channel_layouts=stereo,atrim=duration=${outDur.toFixed(2)},asetpts=PTS-STARTPTS,volume=${gain},afade=t=in:d=0.6,afade=t=out:st=${Math.max(0, outDur - 1.5).toFixed(2)}:d=1.5[mraw]`);
-    f.push(`[mraw][vkey]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=400[mus]`);
-    mix.push("[vmain]", "[mus]");
-  } else mix.push("[voice]");
-  sfxEvents.forEach((s, i) => {
-    const ms = Math.round(s.at * 1000);
-    f.push(`[${s.input}:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.45,adelay=${ms}|${ms}[sx${i}]`);
-    mix.push(`[sx${i}]`);
-  });
-  // -14 LUFS is where the social networks normalize to.
-  const master = r.enhanceAudio ? "loudnorm=I=-14:TP=-1:LRA=11" : "alimiter=limit=0.95";
-  f.push(mix.length > 1 ? `${mix.join("")}amix=inputs=${mix.length}:normalize=0:duration=first,${master},aresample=48000[aout]` : `${mix[0]}${master},aresample=48000[aout]`);
-
   args.push(
     "-filter_complex", f.join(";"),
-    "-map", "[vout]", "-map", "[aout]",
+    "-map", "[vout]", "-map", `${mixIn}:a`,
     "-t", outDur.toFixed(3),
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-profile:v", "high", "-r", String(fps),
+    // x264 keeps frames per thread (~75 MB each at 4K) and sizes its pool from
+    // the host's cores, which on a shared host can be dozens: cap it.
+    "-threads:v", W * H > 2_100_000 ? "8" : "16",
     "-c:a", "aac", "-b:a", "192k", "-ac", "2",
     "-movflags", "+faststart",
     r.out
   );
-  await runFfmpeg(args, { onTime: (s) => r.onProgress?.(0.05 + Math.min(0.94, (s / outDur) * 0.94)) });
+  await runFfmpeg(args, { onTime: (s) => r.onProgress?.(0.08 + Math.min(0.91, (s / outDur) * 0.91)) });
   return { durationSec: Math.round(outDur * 100) / 100 };
 }

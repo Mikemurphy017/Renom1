@@ -103,6 +103,9 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
   const [skipCuts, setSkipCuts] = React.useState(true);
   const [enhance, setEnhance] = React.useState(true);
   const vertical = video.format === "short";
+  // 4K export only when the take fills a 4K frame of this shape (a 4K camera, same orientation).
+  const can4k = !!take?.width && !!take?.height && Math.max((vertical ? 2160 : 3840) / take.width, (vertical ? 3840 : 2160) / take.height) <= 1.05;
+  const [export4k, setExport4k] = React.useState(false);
 
   const timeline = React.useMemo(() => {
     let acc = 0;
@@ -209,8 +212,10 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
         overlays: look,
         script: scriptLines(video),
         cuts: cutsFromSegments(segments),
+        resolution: can4k && export4k ? "2160p" : "1080p",
       });
-      toast.success("Your video is ready", { description: `${fmtDuration(out.durationSec)} · ${aspect} MP4` });
+      const fourK = Math.min(out.width ?? 0, out.height ?? 0) >= 2160;
+      toast.success("Your video is ready", { description: `${fmtDuration(out.durationSec)} · ${aspect}${fourK ? " 4K" : ""} MP4` });
       complete({
         runtimeSec: Math.round(out.durationSec),
         outputUrl: out.outputUrl,
@@ -352,6 +357,8 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
             ["Show cuts", showCuts, setShowCuts],
             ["Skip cuts", skipCuts, setSkipCuts],
             ["Studio sound", enhance, setEnhance],
+            // Off by default: 1080p is what the networks show, and renders several times faster.
+            ...(can4k ? [["4K export", export4k, setExport4k]] : []),
           ].map(([label, val, set]) => (
             <label key={label as string} className="flex items-center gap-2 text-[12px] text-muted-foreground">
               <Switch checked={val as boolean} onCheckedChange={set as (v: boolean) => void} /> {label as string}

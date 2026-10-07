@@ -48,6 +48,7 @@ export function validateProcessRequest(body: unknown): ProcessRequest | string {
     else if (!b.cuts.every((c) => c && isNum(c.start) && isNum(c.end) && c.start >= 0 && c.end > c.start && c.end <= 4 * 3600)) errors.push("each cut needs 0 ≤ start < end");
   }
   if (b.kind === "render" && !Array.isArray(b.cuts)) errors.push("cuts are required to render");
+  if (b.resolution !== undefined && b.resolution !== "1080p" && b.resolution !== "2160p") errors.push("resolution must be 1080p or 2160p");
 
   if (errors.length) return errors.join("; ");
   return {
@@ -64,5 +65,6 @@ export function validateProcessRequest(body: unknown): ProcessRequest | string {
     }),
     script: b.script,
     cuts: b.cuts?.map((c) => ({ start: c.start, end: c.end })),
+    resolution: b.resolution,
   };
 }

@@ -204,11 +204,15 @@ Post → Cover builds a long-form (1280×720, YouTube / LinkedIn) and a short-fo
 
 The Record step uses the browser's camera and microphone (https or localhost only). Takes stay in memory for the session and can be downloaded. **Send to AI Edit** uploads the take and starts processing (below).
 
+**Quality.** The camera settings offer Auto (the best the camera has, up to 4K), 4K (2160p), 1440p, 1080p and 720p, at 30 or 60 fps, remembered per browser. Only what the selected camera reports it can do is listed (`getCapabilities()`), and the panel shows what is really being recorded (e.g. "Recording 3840×2160 · 30 fps"). A phone held upright asks for a portrait frame. If the camera refuses a setting it steps down (next size, then 30 fps) instead of failing. The format is H.264 MP4 where the browser offers it (High profile at a level that fits the frame), else WebM (VP9 up to 1080p30; VP8 above that, since software VP9 drops frames at 4K), at a bitrate that follows the frame: about 5 Mbps at 720p, 10 at 1080p, 18 at 1440p and 40 at 4K, 1.5× that at 60 fps (a 90-second 4K take is roughly 450 MB). When the camera's shape doesn't match the video (a landscape webcam for a 9:16 short), the frame is center-cropped through a canvas at full resolution and the camera's frame rate.
+
+**Uploads** go up to 2 GB. `POST /api/video/upload` streams the multipart body to a temp file and on to storage (one streamed PUT), so a big take never sits in server memory; it's left out of the middleware (which buffers bodies and cuts them off at 10 MB) and checks the session itself.
+
 **Studio sound.** The mic is captured clean: the browser's call processing (echo cancellation, noise suppression, automatic gain) is off, mono at 48 kHz, Opus at 256 kbps. Pick an external USB or XLR-interface mic in the Record step's Microphone menu; the level meter warns when the input clips (turn the mic's gain down). With **Studio sound** on in Edit (the default), the voice goes through: rumble cut (75 Hz), neural denoise (RNNoise, model in `assets/audio/voice-denoise.rnnn`) plus a light spectral pass, EQ (−2 dB at 220 Hz for mud, +2.5 dB at 3.2 kHz for presence, +2 dB air above 9.5 kHz), de-essing, 3:1 compression, and a gentle expander that lowers the room between sentences. The final mix is normalized to −14 LUFS with a −1 dBTP ceiling (where the social networks normalize) and encoded as 192 kbps AAC. Music and sound effects are mixed in after the voice chain, so they aren't denoised.
 
 ## AI edit (captions, cuts, overlays)
 
-Recorded takes are processed by a swappable, server-side **video processor**. The default is the built-in **local** editor (ffmpeg, bundled through `ffmpeg-static`, so production needs no system packages): it measures the take's audio to find the pauses, lays the script over the stretches where the advisor was talking, and renders a real MP4 (H.264/AAC, 1080×1920 or 1920×1080) with the advisor's cuts, burned-in captions, name title, end card and cleaned-up audio. Speech recognition times every caption word to the voice and finds restarts (see Word-timed captions).
+Recorded takes are processed by a swappable, server-side **video processor**. The default is the built-in **local** editor (ffmpeg, bundled through `ffmpeg-static`, so production needs no system packages): it measures the take's audio to find the pauses, lays the script over the stretches where the advisor was talking, and renders a real MP4 (H.264/AAC, 1080×1920 or 1920×1080; **4K export** in Edit gives 2160×3840 or 3840×2160 when the take is 4K in the same orientation; a 60 fps take renders at 60) with the advisor's cuts, burned-in captions, name title, end card and cleaned-up audio. Speech recognition times every caption word to the voice and finds restarts (see Word-timed captions).
 
 1. Record: the take uploads to storage as soon as recording stops. **Send to AI Edit** (or just opening Edit) (`POST /api/video/upload`) and an `analyze` job starts. The app moves to Edit right away and shows live progress.
 2. Edit: the transcript and suggested cuts come from the job result; the filmstrip and waveform come from the real take. Click to cut/restore, the timeline and **Skip cuts** work against the real take. The **Look** panel sets caption style (Classic / Bold / Minimal), position, highlight color, and the AI overlays (name & credentials lower third, key-phrase emphasis, end card), previewed live and saved per video.
@@ -243,8 +247,8 @@ API (all server-side, keys never reach the browser):
 
 | Route | What |
 |---|---|
-| `POST /api/video/upload` | Multipart `file` (webm / mp4 / mov, up to 500 MB), `durationSec`, optional `videoId` |
-| `POST /api/video/process` | `{ kind: "analyze" \| "render", sourceId, aspect, edit, overlays, script?, cuts? }` → `{ jobId }`. `GET` says which processor is on and whether it's ready |
+| `POST /api/video/upload` | Multipart `file` (webm / mp4 / mov, up to 2 GB, streamed), `durationSec`, optional `videoId` |
+| `POST /api/video/process` | `{ kind: "analyze" \| "render", sourceId, aspect, edit, overlays, script?, cuts?, resolution?: "1080p" \| "2160p" }` → `{ jobId }`. `GET` says which processor is on and whether it's ready |
 | `GET /api/video/jobs/[id]` | Job status (`queued` / `processing` / `done` / `failed`, progress, status line) |
 | `GET /api/video/jobs/[id]/stream` | NDJSON: status lines, then the result (like `/api/write`) |
 | `GET /api/video/jobs/[id]/result` | Output URL, transcript with word timings, cuts, key phrases (202 while running) |

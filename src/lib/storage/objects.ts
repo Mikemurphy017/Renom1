@@ -1,6 +1,7 @@
-import { createReadStream, promises as fs } from "node:fs";
+import { createReadStream, createWriteStream, promises as fs } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -33,6 +34,8 @@ export interface ReadResult extends ObjectInfo {
 interface Store {
   kind: "bucket" | "disk";
   put(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
+  /** Store a file from local disk, streamed (big takes never sit in memory). */
+  putFile(key: string, file: string, contentType: string): Promise<void>;
   stat(key: string): Promise<ObjectInfo | null>;
   read(key: string, range?: { start: number; end: number }): Promise<ReadResult | null>;
   remove(key: string): Promise<void>;
@@ -74,6 +77,9 @@ function bucketStore(cfg: NonNullable<ReturnType<typeof bucketConfig>>): Store {
     region: cfg.region,
     endpoint: cfg.endpoint,
     forcePathStyle: cfg.pathStyle,
+    // No default CRC32 on uploads: for a streamed body it means aws-chunked
+    // encoding, which some S3-compatible buckets handle slowly or not at all.
+    requestChecksumCalculation: "WHEN_REQUIRED",
     credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey },
   });
   const Bucket = cfg.bucket;
@@ -82,6 +88,12 @@ function bucketStore(cfg: NonNullable<ReturnType<typeof bucketConfig>>): Store {
     async put(key, bytes, contentType) {
       checkKey(key);
       await s3.send(new PutObjectCommand({ Bucket, Key: key, Body: bytes, ContentType: contentType, ContentLength: bytes.byteLength }));
+    },
+    async putFile(key, file, contentType) {
+      checkKey(key);
+      // One streamed PUT: fine up to S3's 5 GB single-object limit, well above our upload cap.
+      const { size } = await fs.stat(file);
+      await s3.send(new PutObjectCommand({ Bucket, Key: key, Body: createReadStream(file), ContentType: contentType, ContentLength: size }));
     },
     async stat(key) {
       checkKey(key);
@@ -131,6 +143,12 @@ function diskStore(): Store {
       const f = file(key);
       await fs.mkdir(path.dirname(f), { recursive: true });
       await fs.writeFile(f, bytes);
+      await fs.writeFile(typeFile(key), contentType);
+    },
+    async putFile(key, src, contentType) {
+      const f = file(key);
+      await fs.mkdir(path.dirname(f), { recursive: true });
+      await fs.copyFile(src, f);
       await fs.writeFile(typeFile(key), contentType);
     },
     async stat(key) {
@@ -184,9 +202,12 @@ export async function getJSON<T>(key: string): Promise<T | null> {
   }
 }
 
-export async function readBytes(key: string): Promise<Uint8Array | null> {
+/** Stream an object to a file on local disk. False if it doesn't exist. */
+export async function downloadTo(key: string, file: string): Promise<boolean> {
   const r = await objects().read(key);
-  return r ? new Uint8Array(await new Response(r.body).arrayBuffer()) : null;
+  if (!r) return false;
+  await pipeline(Readable.fromWeb(r.body as import("node:stream/web").ReadableStream), createWriteStream(file));
+  return true;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { getJSON, objects, putJSON, readBytes } from "@/lib/storage/objects";
+import { downloadTo, getJSON, objects, putJSON } from "@/lib/storage/objects";
 
 /**
  * Uploaded takes and job records, kept in the platform object store
@@ -28,9 +28,10 @@ const extFor = (mime: string) => (mime.includes("mp4") ? "mp4" : mime.includes("
 const metaKey = (id: string) => `uploads/${id}.json`;
 export const uploadKey = (rec: StoredUpload) => `uploads/${rec.id}.${extFor(rec.mimeType)}`;
 
-export async function saveUpload(meta: Omit<StoredUpload, "id" | "createdAt">, bytes: Uint8Array): Promise<StoredUpload> {
+/** Store a take (or a render) from a file on local disk; it's streamed, never read into memory. */
+export async function saveUpload(meta: Omit<StoredUpload, "id" | "createdAt">, file: string): Promise<StoredUpload> {
   const rec: StoredUpload = { ...meta, id: newId("up"), createdAt: new Date().toISOString() };
-  await objects().put(uploadKey(rec), bytes, rec.mimeType);
+  await objects().putFile(uploadKey(rec), file, rec.mimeType);
   await putJSON(metaKey(rec.id), rec);
   return rec;
 }
@@ -48,10 +49,9 @@ export async function updateUpload(id: string, patch: Partial<StoredUpload>) {
   return next;
 }
 
-export async function uploadBytes(rec: StoredUpload) {
-  const bytes = await readBytes(uploadKey(rec));
-  if (!bytes) throw new Error("Upload file is missing");
-  return bytes;
+/** Copy a stored take to a local file for ffmpeg. */
+export async function downloadUpload(rec: StoredUpload, file: string) {
+  if (!(await downloadTo(uploadKey(rec), file))) throw new Error("Upload file is missing");
 }
 
 export async function saveJob<T extends { id: string }>(job: T) {

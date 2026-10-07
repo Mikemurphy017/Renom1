@@ -17,7 +17,7 @@ import { useStore } from "@/lib/store";
 import { generateScript } from "@/lib/ai/content";
 import type { Script, Video } from "@/lib/types";
 import { cn, fmtDuration } from "@/lib/utils";
-import { useCapture } from "@/lib/media/use-capture";
+import { nearestQuality, QUALITY_OPTIONS, recordSize, useCapture, videoBitrate, type CaptureQuality, type QualityId } from "@/lib/media/use-capture";
 import { getTake, saveTake, takeExtension } from "@/lib/media/takes";
 import { peekDraft } from "@/lib/drafts";
 import { analyzeTake, persistTake, resetPipeline } from "@/lib/video/client";
@@ -107,6 +107,24 @@ export function RecordStep({ video, complete }: StepProps) {
     if (v) setCam(v);
     if (a) setMic(a);
   }, [stream]);
+
+  // What's being recorded right now, for the settings readout.
+  const shownQuality = nearestQuality(capture.quality.quality, capture.qualities);
+  const quality = React.useMemo(() => {
+    const cam = capture.settings;
+    if (!cam?.width || !cam.height) return null;
+    const out = recordSize(cam, aspect);
+    const want = QUALITY_OPTIONS.find((o) => o.id === capture.quality.quality)!;
+    const short = Math.min(cam.width, cam.height);
+    const below = (want.id !== "auto" && short < want.short * 0.95) || (capture.quality.fps === 60 && cam.fps < 50);
+    const mbPerMin = Math.round((videoBitrate(out.width, out.height, cam.fps) * 60) / 8 / 1e6 / 10) * 10;
+    return { ...out, cam, below, mbPerMin };
+  }, [capture.settings, capture.quality, aspect]);
+
+  const changeQuality = (patch: Partial<CaptureQuality>) =>
+    capture.setQuality(patch).then((ok) => {
+      if (!ok) toast.error("Your camera couldn’t switch to that", { description: "It kept the current setting." });
+    });
 
   const enableCamera = async (opts?: { cameraId?: string; micId?: string }) => {
     const ok = await capture.start(opts ?? { cameraId: cam || undefined, micId: mic || undefined });
@@ -234,6 +252,35 @@ export function RecordStep({ video, complete }: StepProps) {
                 </Select>
               </div>
               <div>
+                <FieldLabel>Quality</FieldLabel>
+                <div className="space-y-2">
+                  <Select value={shownQuality} onValueChange={(v) => changeQuality({ quality: v as QualityId })} disabled={recording}>
+                    <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {QUALITY_OPTIONS.filter((o) => capture.qualities.includes(o.id)).map((o) => <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {/* Only cameras that can do 60 get the choice; the readout below shows the rate either way. */}
+                  {capture.fps60 && (
+                    <ToggleGroup type="single" value={String(capture.quality.fps)} onValueChange={(v) => v && changeQuality({ fps: v === "60" ? 60 : 30 })} disabled={recording} className="w-full">
+                      <ToggleGroupItem value="30" className="flex-1 tnum">30 fps</ToggleGroupItem>
+                      <ToggleGroupItem value="60" className="flex-1 tnum">60 fps</ToggleGroupItem>
+                    </ToggleGroup>
+                  )}
+                </div>
+                <p className="mt-1.5 text-[11px] text-muted-foreground tnum">
+                  {quality ? (
+                    <>
+                      Recording {quality.width}×{quality.height} · {quality.cam.fps} fps
+                      {quality.cropped && <> (cropped from {quality.cam.width}×{quality.cam.height})</>} · about {quality.mbPerMin} MB a minute.
+                      {quality.below && " That’s the closest this camera can do."}
+                    </>
+                  ) : (
+                    "Turn on your camera to see what it can record."
+                  )}
+                </p>
+              </div>
+              <div>
                 <FieldLabel>Microphone</FieldLabel>
                 <Select value={mic} onValueChange={(v) => { setMic(v); if (stream) enableCamera({ cameraId: cam || undefined, micId: v }); }} disabled={recording || !capture.mics.length}>
                   <SelectTrigger size="sm"><SelectValue placeholder="Enable camera to choose" /></SelectTrigger>
@@ -330,7 +377,7 @@ export function RecordStep({ video, complete }: StepProps) {
               <PopoverTrigger asChild>
                 <Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/10" aria-label="Recording settings"><Settings2 /></Button>
               </PopoverTrigger>
-              <PopoverContent align="start" side="top" className="w-80">{settingsPanel}</PopoverContent>
+              <PopoverContent align="start" side="top" className="max-h-(--radix-popover-content-available-height) w-80 overflow-y-auto">{settingsPanel}</PopoverContent>
             </Popover>
             <Popover>
               <PopoverTrigger asChild>

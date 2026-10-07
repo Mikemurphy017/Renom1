@@ -1,14 +1,14 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { getJob, newId, saveJob, saveUpload, uploadBytes } from "../storage";
+import { downloadUpload, getJob, newId, saveJob, saveUpload } from "../storage";
 import type { VideoProcessor } from "../processor";
 import { VideoProcessorError } from "../processor";
 import type { JobKind, JobResult, JobStatus, ProcessRequest } from "../types";
 import type { StoredUpload } from "../storage";
 import { probe } from "./ffmpeg";
 import { analyzeTake } from "./analyze";
-import { renderVideo } from "./render";
+import { outputSize, renderVideo } from "./render";
 
 /**
  * Built-in editor (ffmpeg). Runs on this server, so it needs nothing but the
@@ -36,7 +36,7 @@ async function withSource<T>(source: StoredUpload, fn: (file: string, dir: strin
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "renom-"));
   try {
     const file = path.join(dir, `source.${source.mimeType.includes("mp4") ? "mp4" : source.mimeType.includes("quicktime") ? "mov" : "webm"}`);
-    await fs.writeFile(file, await uploadBytes(source));
+    await downloadUpload(source, file);
     return await fn(file, dir);
   } finally {
     await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
@@ -73,7 +73,9 @@ async function run(job: LocalJob, req: ProcessRequest, source: StoredUpload) {
         return;
       }
 
+      const frame = outputSize(req.aspect, req.resolution, info);
       await step(0.2, "Cutting and adding your captions…");
+      console.info(`[video] render ${job.id}: ${info.width}×${info.height} @ ${info.fps.toFixed(1)} fps → ${frame.join("×")}`);
       const out = path.join(dir, "final.mp4");
       let lastSave = 0;
       const rendered = await renderVideo({
@@ -83,6 +85,8 @@ async function run(job: LocalJob, req: ProcessRequest, source: StoredUpload) {
         durationSec: a.durationSec,
         hasAudio: info.hasAudio,
         aspect: req.aspect,
+        size: frame,
+        sourceFps: info.fps,
         cuts: req.cuts ?? a.cuts,
         transcript: a.transcript,
         keyPhrases: req.overlays.keyPhrases ? a.keyPhrases : [],
@@ -97,14 +101,16 @@ async function run(job: LocalJob, req: ProcessRequest, source: StoredUpload) {
         },
       });
       await step(0.93, "Saving to your library…");
-      const bytes = new Uint8Array(await fs.readFile(out));
-      const stored = await saveUpload({ filename: "video.mp4", mimeType: "video/mp4", size: bytes.byteLength, durationSec: rendered.durationSec, videoId: source.videoId }, bytes);
+      const { size } = await fs.stat(out);
+      const stored = await saveUpload({ filename: "video.mp4", mimeType: "video/mp4", size, durationSec: rendered.durationSec, videoId: source.videoId }, out);
       job.result = {
         jobId: job.id,
         kind: "render",
         outputUrl: `/api/video/files/${stored.id}`,
         outputId: stored.id,
-        sizeBytes: bytes.byteLength,
+        sizeBytes: size,
+        width: frame[0],
+        height: frame[1],
         durationSec: rendered.durationSec,
         transcript: a.transcript,
         cuts: (req.cuts ?? a.cuts).map((c, i) => ({ id: `r${i}`, kind: "silence" as const, start: c.start, end: c.end })),

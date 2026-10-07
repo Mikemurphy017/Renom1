@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { Take } from "@/lib/media/takes";
 import type { StoredTake } from "@/lib/types";
-import { ACCEPTED_VIDEO_TYPES, MAX_UPLOAD_MB, type JobEvent, type JobKind, type JobResult, type ProcessorId, type ProcessRequest, type UploadResponse } from "./types";
+import { ACCEPTED_VIDEO_TYPES, MAX_UPLOAD_LABEL, MAX_UPLOAD_MB, type JobEvent, type JobKind, type JobResult, type ProcessorId, type ProcessRequest, type UploadResponse } from "./types";
 
 /**
  * Browser side of video processing: upload a take, start a job, follow its
@@ -57,7 +57,7 @@ function sendTake(videoId: string, take: Take, onProgress: (p: number) => void) 
   return new Promise<UploadResponse>((resolve, reject) => {
     const type = take.mimeType.split(";")[0];
     if (!ACCEPTED_VIDEO_TYPES.includes(type)) return reject(new Error(`This browser recorded ${type}, which the editor can't take.`));
-    if (take.blob.size > MAX_UPLOAD_MB * 1024 * 1024) return reject(new Error(`Takes can be up to ${MAX_UPLOAD_MB} MB.`));
+    if (take.blob.size > MAX_UPLOAD_MB * 1024 * 1024) return reject(new Error(`Takes can be up to ${MAX_UPLOAD_LABEL}. Record a shorter take or pick a lower quality in the camera settings.`));
     const form = new FormData();
     form.append("file", new File([take.blob], `take.${type.includes("mp4") ? "mp4" : "webm"}`, { type }));
     form.append("durationSec", String(Math.max(0.5, take.durationSec)));
