@@ -11,7 +11,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 const fraunces = Fraunces({ subsets: ["latin"], style: ["normal", "italic"], variable: "--font-fraunces", display: "swap", axes: ["SOFT", "WONK", "opsz"] });
 
 export const metadata: Metadata = {
-  title: `${BRAND.name} — ${BRAND.tagline}`,
+  title: { default: `${BRAND.name} — ${BRAND.tagline}`, template: `%s · ${BRAND.name}` },
   description: BRAND.description,
   applicationName: BRAND.name,
   appleWebApp: { capable: true, title: BRAND.name, statusBarStyle: "default" },

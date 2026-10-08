@@ -26,6 +26,9 @@ export async function middleware(req: NextRequest) {
   // Signed-out visitors to the home page get the sales page.
   if (pathname === "/") return NextResponse.rewrite(new URL("/landing", req.url));
 
+  // The app shell asks for the studio on every page, the sales and sign-in pages
+  // included: "nobody signed in" is an answer there, not an error.
+  if (pathname === "/api/state" && req.method === "GET") return new NextResponse(null, { status: 204 });
   if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   const to = new URL("/signin", req.url);
   to.searchParams.set("next", pathname + search);

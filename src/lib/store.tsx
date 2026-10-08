@@ -117,7 +117,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const res = await fetch("/api/state", { cache: "no-store" });
-        if (!res.ok) return;
+        // 204: nobody is signed in (sales and sign-in pages).
+        if (!res.ok || res.status === 204) return;
         const body = (await res.json()) as { user: Account; state: Persisted | null; drafts: unknown };
         if (!live) return;
         setAccount(body.user);
