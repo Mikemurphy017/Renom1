@@ -173,7 +173,7 @@ export function Landing() {
     <div className="min-h-dvh bg-background text-foreground">
       {/* Nav */}
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/85 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
+        <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:gap-6 sm:px-6">
           <Link href="/" aria-label={`${NAME} home`}><Logo /></Link>
           <nav className="ml-6 hidden items-center gap-6 text-[14px] text-muted-foreground md:flex">
             <a href="#how" className="hover:text-foreground">How it works</a>
@@ -181,9 +181,9 @@ export function Landing() {
             <a href="#pricing" className="hover:text-foreground">Pricing</a>
             <a href="#faq" className="hover:text-foreground">FAQ</a>
           </nav>
-          <div className="ml-auto flex items-center gap-2">
-            <Link href="/signin" className="px-3 py-2 text-[14px] text-muted-foreground hover:text-foreground">Sign in</Link>
-            <Link href="/signup" className="inline-flex h-9 items-center rounded-full bg-[#0B1F3A] px-4 text-[14px] font-medium text-white hover:bg-[#16304f] dark:bg-primary dark:text-primary-foreground">Start free</Link>
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
+            <Link href="/signin" className="px-2 py-2 text-[14px] whitespace-nowrap text-muted-foreground hover:text-foreground sm:px-3">Sign in</Link>
+            <Link href="/signup" className="inline-flex h-9 items-center rounded-full bg-[#0B1F3A] px-3.5 text-[14px] font-medium whitespace-nowrap sm:px-4 text-white hover:bg-[#16304f] dark:bg-primary dark:text-primary-foreground">Start free</Link>
           </div>
         </div>
       </header>

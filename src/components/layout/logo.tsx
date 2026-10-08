@@ -21,7 +21,7 @@ export function Logo({ className }: { className?: string }) {
           )}
         </svg>
       )}
-      <span className="font-serif text-[20px] tracking-tight">{BRAND.name}</span>
+      <span className="font-serif text-[18px] tracking-tight whitespace-nowrap sm:text-[20px]">{BRAND.name}</span>
     </span>
   );
 }

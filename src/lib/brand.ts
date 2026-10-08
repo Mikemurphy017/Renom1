@@ -34,8 +34,11 @@ export interface Brand {
 
 const primary = hex(process.env.NEXT_PUBLIC_BRAND_PRIMARY);
 
+/** The product's own name. Resellers replace it with NEXT_PUBLIC_BRAND_NAME. */
+const DEFAULT_NAME = "Renom Video™";
+
 export const BRAND: Brand = {
-  name: env(process.env.NEXT_PUBLIC_BRAND_NAME) ?? "Renom",
+  name: env(process.env.NEXT_PUBLIC_BRAND_NAME) ?? DEFAULT_NAME,
   tagline: env(process.env.NEXT_PUBLIC_BRAND_TAGLINE) ?? "Video studio for financial advisors",
   description: env(process.env.NEXT_PUBLIC_BRAND_DESCRIPTION) ?? "Go from idea to published, compliance-approved video in one place.",
   logoUrl: env(process.env.NEXT_PUBLIC_BRAND_LOGO_URL),
@@ -52,7 +55,7 @@ export const BRAND: Brand = {
 };
 
 /** True when we are running under the default Renom brand. */
-export const isDefaultBrand = BRAND.name === "Renom";
+export const isDefaultBrand = BRAND.name === DEFAULT_NAME;
 
 /**
  * CSS that overrides the primary/brass tokens in globals.css.
