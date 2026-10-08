@@ -19,7 +19,7 @@ export function PageHeader({
     <div className={cn("flex flex-wrap items-end justify-between gap-4", className)}>
       <div className="min-w-0">
         {eyebrow && <div className="eyebrow mb-2">{eyebrow}</div>}
-        <h1 className="font-serif text-[30px] leading-tight font-normal tracking-tight">{title}</h1>
+        <h1 className="font-serif text-[30px] leading-tight font-normal tracking-tight text-balance">{title}</h1>
         {description && <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
@@ -69,7 +69,7 @@ export function EmptyState({
           <Icon className="size-5 text-primary" />
         </div>
       )}
-      <h3 className="font-serif text-xl">{title}</h3>
+      <h3 className="font-serif text-xl text-balance">{title}</h3>
       {description && <p className="mt-1.5 max-w-sm text-sm text-muted-foreground">{description}</p>}
       {action && <div className="mt-5">{action}</div>}
     </div>

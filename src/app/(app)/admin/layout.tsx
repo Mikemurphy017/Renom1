@@ -11,7 +11,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const user = await userForToken((await cookies()).get(SESSION_COOKIE)?.value);
   if (!isAdmin(user)) notFound();
   return (
-    <PageContainer>
+    <PageContainer className="max-w-[1200px] pt-10">
       <AdminNav />
       {children}
     </PageContainer>

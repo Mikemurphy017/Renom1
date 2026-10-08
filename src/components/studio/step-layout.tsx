@@ -7,7 +7,7 @@ export function StepIntro({ title, subtitle, action, className }: { title: strin
   return (
     <div className={cn("flex flex-wrap items-end justify-between gap-4", className)}>
       <div>
-        <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">{title}</h1>
+        <h1 className="font-serif text-[34px] leading-tight tracking-tight text-balance sm:text-[40px]">{title}</h1>
         {subtitle && <div className="mt-2 text-[15px] text-muted-foreground">{subtitle}</div>}
       </div>
       {action}

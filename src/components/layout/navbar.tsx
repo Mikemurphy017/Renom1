@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { Command, LogOut, Moon, Plus, Settings, ShieldCheck, Sun, UserRound } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Logo } from "./logo";
@@ -20,11 +20,14 @@ export function Navbar({ className }: { className?: string }) {
   const { openNewVideo, openPalette } = useShell();
   const { resolvedTheme, setTheme } = useTheme();
   const waiting = reviews.filter((r) => r.status === "submitted").length;
+  const name = profile.name || account?.name || "";
+  const credential = profile.credentials.split(",")[0]?.trim();
+  const monogram = (name || account?.email || "").split(/\s+/).filter(Boolean).map((w) => w[0]!.toUpperCase()).join("").slice(0, 2);
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href) || (href === "/videos" && pathname.startsWith("/studio")));
 
   return (
-    <header className={cn("sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-xl", className)}>
-      <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-6 px-4 pt-[env(safe-area-inset-top)] sm:px-6 md:h-16">
+    <header className={cn("sticky top-0 z-40 border-b border-border/70 bg-background/80 pt-[env(safe-area-inset-top)] backdrop-blur-xl", className)}>
+      <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-6 px-4 sm:px-8 md:h-16">
         <Link href="/" aria-label={`${BRAND.name} home`}><Logo /></Link>
         {/* Phones use the tab bar at the bottom instead. */}
         <nav className="hidden flex-1 items-center justify-center gap-1 md:flex">
@@ -51,14 +54,15 @@ export function Navbar({ className }: { className?: string }) {
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger className="flex size-9 cursor-pointer items-center justify-center rounded-full bg-gradient-to-br from-[#D2B07A] to-[#9C7A47] font-serif text-[13px] text-[#0B1F3A] outline-none focus-visible:ring-2 focus-visible:ring-ring/50" aria-label="Account">
-              {(profile.name || account?.name || "").split(" ").map((w) => w[0]).join("").slice(0, 2)}
+              {monogram}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60">
-              <DropdownMenuLabel className="normal-case tracking-normal">
-                <div className="text-[13px] font-medium text-foreground">{profile.name}, {profile.credentials.split(",")[0]}</div>
-                <div className="text-[12px] font-normal text-muted-foreground">{profile.firm}</div>
+              {/* Not DropdownMenuLabel: its eyebrow style would put the name in small caps. */}
+              <div className="min-w-0 px-2 py-1.5">
+                {name && <div className="truncate text-[13px] font-medium text-foreground">{name}{credential ? `, ${credential}` : ""}</div>}
+                {profile.firm && <div className="truncate text-[12px] font-normal text-muted-foreground">{profile.firm}</div>}
                 {account && <div className="truncate text-[12px] font-normal text-muted-foreground">{account.email}</div>}
-              </DropdownMenuLabel>
+              </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild><Link href="/settings#voice"><UserRound /> Your voice</Link></DropdownMenuItem>
               <DropdownMenuItem asChild><Link href="/settings"><Settings /> Settings</Link></DropdownMenuItem>
@@ -66,7 +70,7 @@ export function Navbar({ className }: { className?: string }) {
               <DropdownMenuItem onSelect={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>
                 {resolvedTheme === "dark" ? <Sun /> : <Moon />} {resolvedTheme === "dark" ? "Light mode" : "Navy mode"}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={openPalette}><Command /> Quick jump <span className="ml-auto text-[11px] text-muted-foreground">⌘K</span></DropdownMenuItem>
+              <DropdownMenuItem onSelect={openPalette}><Command /> Quick jump <span className="ml-auto hidden text-[11px] text-muted-foreground md:inline">⌘K</span></DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => void signOut()}><LogOut /> Sign out</DropdownMenuItem>
             </DropdownMenuContent>

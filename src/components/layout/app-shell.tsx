@@ -9,7 +9,21 @@ import { TabBar } from "./tab-bar";
 import { CommandPalette } from "./command-palette";
 import { NewVideoDialog } from "./new-video-dialog";
 import { ShellContext } from "./shell-context";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+
+/** While the studio loads: the page's outline instead of a blank screen. */
+function ShellSkeleton() {
+  return (
+    <div className="mx-auto w-full max-w-[1200px] space-y-6 px-4 pt-10 sm:px-8" aria-busy="true" aria-label="Loading">
+      <Skeleton className="h-10 w-56 rounded-lg" />
+      <Skeleton className="h-4 w-80 max-w-full" />
+      <div className="grid gap-5 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+        {[0, 1, 2].map((i) => <Skeleton key={i} className="h-48 rounded-2xl" />)}
+      </div>
+    </div>
+  );
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -45,7 +59,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen flex-col">
         {/* In the studio, phones get the studio header only. */}
         <Navbar className={cn(inStudio && "hidden md:block")} />
-        <main className={cn("flex-1", !inStudio && "pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0")}>{hydrated && !needsSetup ? children : null}</main>
+        <main className={cn("flex-1", !inStudio && "pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0")}>{hydrated && !needsSetup ? children : <ShellSkeleton />}</main>
       </div>
       {!inStudio && <TabBar />}
       <CommandPalette open={palette} onOpenChange={setPalette} onNewVideo={() => setNewVideo(true)} />

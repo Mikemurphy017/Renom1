@@ -241,7 +241,7 @@ export function Landing() {
 
         {/* Results */}
         <section id="results" className="scroll-mt-16">
-          <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-24 sm:px-6 lg:grid-cols-[1fr_1.2fr]">
+          <div className="mx-auto grid max-w-6xl grid-cols-[minmax(0,1fr)] items-center gap-12 px-4 py-24 sm:px-6 lg:grid-cols-[1fr_1.2fr]">
             <div>
               <Eyebrow>Results</Eyebrow>
               <H2 accent="what’s working.">Numbers that show you</H2>

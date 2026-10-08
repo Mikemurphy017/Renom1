@@ -11,7 +11,7 @@ import { NAV } from "./nav";
 
 export function CommandPalette({ open, onOpenChange, onNewVideo }: { open: boolean; onOpenChange: (o: boolean) => void; onNewVideo: () => void }) {
   const router = useRouter();
-  const { videos } = useStore();
+  const { videos, requireApproval } = useStore();
   const { resolvedTheme, setTheme } = useTheme();
   const go = (href: string) => {
     onOpenChange(false);
@@ -22,23 +22,23 @@ export function CommandPalette({ open, onOpenChange, onNewVideo }: { open: boole
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden p-0 sm:max-w-xl" showClose={false}>
-        <DialogTitle className="sr-only">Command palette</DialogTitle>
+        <DialogTitle className="sr-only">Quick jump</DialogTitle>
         <Command>
           <CommandInput placeholder="Jump to a video, step or page…" />
           <CommandList>
-            <CommandEmpty>No results.</CommandEmpty>
+            <CommandEmpty>Nothing matches that.</CommandEmpty>
             <CommandGroup heading="Actions">
               <CommandItem onSelect={() => { onOpenChange(false); onNewVideo(); }}>
                 <Plus /> New video
               </CommandItem>
               <CommandItem onSelect={() => { setTheme(resolvedTheme === "dark" ? "light" : "dark"); onOpenChange(false); }}>
-                <Moon /> Toggle navy mode
+                <Moon /> {resolvedTheme === "dark" ? "Switch to light mode" : "Switch to navy mode"}
               </CommandItem>
             </CommandGroup>
             <CommandGroup heading="Pages">
               {NAV.map((n) => (
                 <CommandItem key={n.href} onSelect={() => go(n.href)}>
-                  <n.icon /> {n.label}
+                  <n.icon /> {n.href === "/approve" && !requireApproval ? "Archive" : n.label}
                 </CommandItem>
               ))}
             </CommandGroup>

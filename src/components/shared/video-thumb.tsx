@@ -1,4 +1,4 @@
-import { ImageOff } from "lucide-react";
+import { Clapperboard } from "lucide-react";
 import type { ThumbnailSpec, VideoFormat } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Headshot } from "./headshot";
@@ -34,16 +34,14 @@ export function VideoThumb({ spec, format = "short", className, size = "md", lab
     );
   }
   if (!spec) {
+    // No cover yet: a quiet brand placeholder rather than a "missing image" glyph.
     return (
       <div
-        className={cn(
-          aspect,
-          "relative flex items-center justify-center overflow-hidden rounded-md border border-dashed border-border bg-muted text-muted-foreground",
-          className
-        )}
-        style={{ backgroundImage: "repeating-linear-gradient(135deg, transparent 0 8px, color-mix(in oklab, var(--border) 50%, transparent) 8px 9px)" }}
+        className={cn(aspect, "relative flex items-center justify-center overflow-hidden rounded-md border border-border/70 text-primary/70", className)}
+        style={{ background: "linear-gradient(160deg, var(--card) 0%, var(--muted) 100%)" }}
       >
-        <ImageOff className="size-4 opacity-60" />
+        <Clapperboard className={cn("opacity-70", size === "xs" ? "size-3" : "size-5")} strokeWidth={1.5} />
+        {label && <span className="absolute top-1.5 right-1.5 rounded bg-black/45 px-1.5 py-0.5 text-[10px] font-medium text-white tnum backdrop-blur-sm">{label}</span>}
       </div>
     );
   }
