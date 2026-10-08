@@ -14,7 +14,7 @@ import {
 import { Logo } from "@/components/layout/logo";
 import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
-import { FlowTabs, PaysForItself } from "./landing-interactive";
+import { FlowTabs, RoiCalculator } from "./landing-interactive";
 
 /**
  * The public sales page (signed-out visitors to "/"). Every call to action
@@ -342,12 +342,12 @@ export function Landing() {
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-24 sm:px-6 lg:grid-cols-2">
             <div>
               <Eyebrow className="text-[#D2B07A]">The math</Eyebrow>
-              <H2 light accent="pay for itself.">{NAME} should</H2>
+              <H2 light accent="Calculator">{NAME} ROI</H2>
               <p className="mt-5 max-w-lg text-[16px] leading-relaxed text-[#AAB4C4]">
-                Video is how people decide whether they want to meet you. If being seen every week brings in even one new relationship, the studio has paid for itself many times over. Put in your own numbers.
+                Video is how people decide whether they want to meet you. If being seen every week brings in even one new relationship, the studio pays for itself many times over. Put in your own numbers.
               </p>
             </div>
-            <PaysForItself price={PLANNED_PRICE} />
+            <RoiCalculator price={PLANNED_PRICE} />
           </div>
         </section>
 

@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { ArrowRight, Check, Captions, FileText, Lightbulb, MonitorPlay, Send, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BRAND } from "@/lib/brand";
 
 /**
  * The two interactive parts of the sales page: the "one flow" step tabs and
@@ -208,43 +209,108 @@ export function FlowTabs() {
 
 const money = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 
-/** What one new client is worth against the planned yearly price. The visitor's numbers, not ours. */
-export function PaysForItself({ price }: { price: number }) {
-  const [assets, setAssets] = React.useState(500_000);
-  const [fee, setFee] = React.useState(1);
+/** Numbers typed with commas or a $ sign still count. */
+const parseNum = (v: string) => {
+  const n = Number(v.replace(/[^0-9.]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+};
+const grouped = (n: number) => (n ? Math.round(n).toLocaleString("en-US") : "");
+
+function Choice({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      className={cn("flex min-h-12 cursor-pointer flex-col items-center justify-center rounded-xl border px-3 py-2.5 text-center text-[14px] transition-colors", on ? "border-[#B08D57] bg-[#F4ECDF] text-[#14213A] ring-1 ring-[#B08D57]" : "border-[#E5E1D8] text-[#6B675E] hover:border-[#B08D57]/60 hover:text-[#14213A]")}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Field({ label, hint, prefix, suffix, value, onChange, inputMode = "decimal" }: { label: string; hint?: string; prefix?: string; suffix?: string; value: string; onChange: (v: string) => void; inputMode?: "decimal" | "numeric" }) {
+  return (
+    <label className="block">
+      <span className="text-[13px] font-medium">{label}</span>
+      <span className="mt-1.5 flex h-11 items-center gap-2 rounded-xl border border-[#E5E1D8] bg-white px-3.5 focus-within:border-[#B08D57] focus-within:ring-2 focus-within:ring-[#B08D57]/25">
+        {prefix && <span className="text-[15px] text-[#6B675E]">{prefix}</span>}
+        <input value={value} onChange={(e) => onChange(e.target.value)} inputMode={inputMode} className="min-w-0 flex-1 bg-transparent text-[16px] tnum outline-none" />
+        {suffix && <span className="text-[15px] text-[#6B675E]">{suffix}</span>}
+      </span>
+      {hint && <span className="mt-1.5 block text-[12px] text-[#6B675E]">{hint}</span>}
+    </label>
+  );
+}
+
+/** Renom ROI calculator: first-year fees from new clients against the yearly plan price. The visitor's numbers, not ours. */
+export function RoiCalculator({ price }: { price: number }) {
   const yearly = price * 12;
-  const perClient = (assets * fee) / 100;
-  const clients = perClient > 0 ? yearly / perClient : Infinity;
+  const [kind, setKind] = React.useState<"aum" | "flat">("aum");
+  const [clients, setClients] = React.useState("1");
+  const [assets, setAssets] = React.useState("750,000");
+  const [fee, setFee] = React.useState("1");
+  const [flatFee, setFlatFee] = React.useState("5,000");
+  const [plan, setPlan] = React.useState<"renom" | "custom">("renom");
+  const [custom, setCustom] = React.useState("");
+
+  const perClient = kind === "aum" ? (parseNum(assets) * parseNum(fee)) / 100 : parseNum(flatFee);
+  const revenue = parseNum(clients) * perClient;
+  const investment = plan === "renom" ? yearly : parseNum(custom);
+  const roi = investment > 0 ? revenue / investment : null;
+  const cents = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
   return (
     <div className="rounded-3xl bg-white p-6 text-[#14213A] shadow-[0_30px_80px_-30px_rgba(0,0,0,0.5)] sm:p-8">
-      <div className="text-[15px] font-medium">What one new client is worth</div>
-      <label className="mt-6 block">
-        <span className="flex justify-between text-[13px]"><span>Assets a typical new client brings</span><span className="font-medium tnum">{money(assets)}</span></span>
-        <input type="range" min={100_000} max={5_000_000} step={50_000} value={assets} onChange={(e) => setAssets(Number(e.target.value))} className="mt-2 w-full accent-[#B08D57]" />
-      </label>
-      <label className="mt-5 block">
-        <span className="flex justify-between text-[13px]"><span>Your annual fee</span><span className="font-medium tnum">{fee.toFixed(2)}%</span></span>
-        <input type="range" min={0.25} max={2} step={0.05} value={fee} onChange={(e) => setFee(Number(e.target.value))} className="mt-2 w-full accent-[#B08D57]" />
-      </label>
-      <div className="mt-7 grid grid-cols-2 gap-3">
-        <div className="rounded-2xl bg-[#F7F5F0] p-4">
-          <div className="text-[12px] text-[#6B675E]">One client, per year</div>
-          <div className="mt-1 font-serif text-[26px] leading-none tnum">{money(perClient)}</div>
-        </div>
-        <div className="rounded-2xl bg-[#F7F5F0] p-4">
-          <div className="text-[12px] text-[#6B675E]">Studio, per year</div>
-          <div className="mt-1 font-serif text-[26px] leading-none tnum">{money(yearly)}</div>
-        </div>
+      <div className="text-center">
+        <div className="font-serif text-[24px] leading-tight">Calculate your return</div>
+        <p className="mt-1 text-[14px] text-[#6B675E]">First-year fees from new clients, against the cost of the studio.</p>
       </div>
-      <p className="mt-5 text-[14px] leading-relaxed">
-        {clients <= 1 ? (
-          <>One new client covers <span className="font-semibold">{(1 / clients).toFixed(1)} years</span> of {money(price)}/month, from that client’s first year of fees alone.</>
+
+      <div className="mt-6 text-[13px] font-medium">How you charge</div>
+      <div className="mt-1.5 grid grid-cols-2 gap-3">
+        <Choice on={kind === "aum"} onClick={() => setKind("aum")}>Assets under management</Choice>
+        <Choice on={kind === "flat"} onClick={() => setKind("flat")}>Flat fee</Choice>
+      </div>
+
+      <div className="mt-5 space-y-4">
+        <Field label="New clients added" hint="An example. Enter your own." inputMode="numeric" value={clients} onChange={(v) => setClients(v.replace(/[^0-9]/g, "").slice(0, 4))} />
+        {kind === "aum" ? (
+          <>
+            <Field label="Assets per client" prefix="$" value={assets} onChange={(v) => setAssets(grouped(parseNum(v)))} />
+            <Field label="AUM fee" suffix="%" value={fee} onChange={(v) => setFee(v.replace(/[^0-9.]/g, "").slice(0, 5))} />
+          </>
         ) : (
-          <>About <span className="font-semibold">{clients.toFixed(1)} new clients</span> a year cover the planned {money(price)}/month.</>
+          <Field label="Annual fee per client" prefix="$" value={flatFee} onChange={(v) => setFlatFee(grouped(parseNum(v)))} />
         )}
+      </div>
+
+      <div className="mt-5 text-[13px] font-medium">Annual marketing investment</div>
+      <div className="mt-1.5 grid grid-cols-2 gap-3">
+        <Choice on={plan === "renom"} onClick={() => setPlan("renom")}>
+          <span className="font-medium text-[#14213A]">Your {BRAND.name} plan</span>
+          <span className="text-[13px] tnum">{money(yearly)}</span>
+        </Choice>
+        <Choice on={plan === "custom"} onClick={() => setPlan("custom")}>
+          <span className="font-medium text-[#14213A]">Custom</span>
+          <span className="text-[13px]">Enter your amount</span>
+        </Choice>
+      </div>
+      {plan === "custom" && (
+        <div className="mt-3">
+          <Field label="Your annual marketing spend" prefix="$" value={custom} onChange={(v) => setCustom(grouped(parseNum(v)))} />
+        </div>
+      )}
+
+      <div className="mt-6 rounded-2xl border border-[#B08D57]/30 bg-[#F4ECDF]/60 px-5 py-5 text-center" aria-live="polite">
+        <div className="text-[14px] text-[#6B675E]">Your ROI</div>
+        <div className="mt-1 font-serif text-[44px] leading-none tnum">{roi === null ? "—" : `${roi >= 100 ? Math.round(roi) : roi.toFixed(1)}x`}</div>
+        <div className="mt-2 text-[14px] text-[#6B675E] tnum">Return: {cents(revenue)}</div>
+      </div>
+      <p className="mt-3 text-center text-[11px] leading-relaxed text-[#6B675E]">
+        Illustration only, using the numbers you enter: one year of fees from new clients divided by the annual cost. Not a prediction of results. {BRAND.name} is free during early access; {money(yearly)} a year is the planned price.
       </p>
-      <p className="mt-2 text-[11px] text-[#6B675E]">Illustration using the numbers you enter. Free during early access.</p>
-      <Link href="/signup" className="mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#0B1F3A] text-[14px] font-medium text-white hover:bg-[#16304f]">
+      <Link href="/signup" className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#0B1F3A] text-[14px] font-medium text-white hover:bg-[#16304f]">
         Start free <ArrowRight className="size-4" />
       </Link>
     </div>
