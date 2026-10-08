@@ -15,8 +15,9 @@ import {
   circle,
   darken,
   drawLines,
+  faceSide,
+  fillRound,
   fit,
-  headline,
   heroOf,
   hitsOf,
   inkOn,
@@ -33,9 +34,40 @@ import {
   rounded,
   shortPoint,
   splitByline,
+  type CoverInput,
   type CoverTemplate,
+  type PhotoOpts,
+  type Shot,
   type TextStyle,
 } from "./kit";
+
+/** Outer margin shared by every long layout. */
+const M = 64;
+
+/**
+ * Full-bleed photo with the words down one side: the face goes right (or left,
+ * when the speaker sits far left in the frame) and the words get the column
+ * beside it, never over the head.
+ */
+function sided(ctx: CanvasRenderingContext2D, i: CoverInput, W: number, H: number, o: PhotoOpts & { bias: { x: number; y: number } }, prefer: "left" | "right" = "right") {
+  const faceRight = faceSide(i.still, W, H, o, prefer) === "right";
+  const bx = Math.max(o.bias.x, 1 - o.bias.x);
+  const shot = photo(ctx, i.still, 0, 0, W, H, { ...o, bias: { x: faceRight ? bx : 1 - bx, y: o.bias.y } });
+  return { faceRight, shot, ...column(W, shot, faceRight) };
+}
+
+/** The words' column beside a face: from the margin to just short of the head. */
+function column(W: number, shot: Shot, faceRight: boolean, gap = 40, max = 0.56, min = 0.4) {
+  const room = faceRight ? shot.head.x - gap - M : W - M - (shot.head.x + shot.head.w) - gap;
+  const colW = Math.round(Math.max(W * min, Math.min(W * max, room)));
+  return { colW, x: faceRight ? M : W - M - colW };
+}
+
+/** A dark wash from the words' side toward the face. */
+function scrim(ctx: CanvasRenderingContext2D, W: number, H: number, faceRight: boolean, stops: [number, string][], reach = 0.8) {
+  ctx.fillStyle = faceRight ? linear(ctx, 0, 0, W * reach, 0, stops) : linear(ctx, W, 0, W * (1 - reach), 0, stops);
+  ctx.fillRect(0, 0, W, H);
+}
 
 /** 1280×720: YouTube and LinkedIn. Read small, next to a face, in a grid of other thumbnails. */
 export const LONG: CoverTemplate[] = [
@@ -49,19 +81,21 @@ export const LONG: CoverTemplate[] = [
       const acc = readable(p.accent, p.bg);
       ctx.fillStyle = p.bg;
       ctx.fillRect(0, 0, W, H);
-      photo(ctx, i.still, W * 0.4, 0, W * 0.6, H, { bias: { x: 0.5, y: 0.4 } });
-      ctx.fillStyle = linear(ctx, W * 0.4, 0, W * 0.66, 0, [[0, p.bg], [0.35, rgba(p.bg, 0.75)], [1, rgba(p.bg, 0)]]);
-      ctx.fillRect(W * 0.4, 0, W * 0.27, H);
+      const px = W * 0.4;
+      photo(ctx, i.still, px, 0, W - px, H, { bias: { x: 0.6, y: 0.42 }, face: 0.38, safe: { left: 170, right: 16, top: 12 } });
+      ctx.fillStyle = linear(ctx, px, 0, W * 0.66, 0, [[0, p.bg], [0.35, rgba(p.bg, 0.75)], [1, rgba(p.bg, 0)]]);
+      ctx.fillRect(px, 0, W * 0.27, H);
       ctx.fillStyle = linear(ctx, 0, H * 0.7, 0, H, [[0, rgba(p.bg, 0)], [1, rgba(p.bg, 0.6)]]);
       ctx.fillRect(0, H * 0.7, W, H * 0.3);
       const st = HEAVY(f);
-      const fitted = fit(ctx, i.headline, st, { w: W * 0.5, h: H * 0.58, lines: 3, max: 128, min: 54 }, hitsOf(i));
-      const top = Math.max(H * 0.2, (H - blockHeight(fitted, st)) / 2 + 10);
-      kicker(ctx, i.kicker, 64, top - 48, 26, acc, f, "left", W * 0.5);
-      const b = drawLines(ctx, fitted, st, { x: 64, y: top, color: p.paper, accent: acc, hits: hitsOf(i) });
+      const w = W * 0.5;
+      const fitted = fit(ctx, i.headline, st, { w, h: H * 0.56, lines: 3, max: 124, min: 52 }, hitsOf(i));
+      const top = Math.max(H * 0.22, (H - blockHeight(fitted, st)) / 2);
+      kicker(ctx, i.kicker, M, top - 46, 24, acc, f, "left", w);
+      const b = drawLines(ctx, fitted, st, { x: M, y: top, color: p.paper, accent: acc, hits: hitsOf(i) });
       ctx.fillStyle = acc;
-      ctx.fillRect(64, b.bottom + 22, 96, 7);
-      byline(ctx, i.byline, 64, H - 44, 24, rgba(p.paper, 0.8), f);
+      ctx.fillRect(M, b.bottom + 24, 88, 6);
+      byline(ctx, i.byline, M, H - 44, 24, rgba(p.paper, 0.82), f);
     },
   },
   {
@@ -71,29 +105,27 @@ export const LONG: CoverTemplate[] = [
     look: "Bold",
     palettes: ["signal", "coral", "cobalt", "teal"],
     draw(ctx, W, H, i, f, p) {
-      // YouTube-style: a few huge outlined words, face large on the right.
+      // YouTube-style: a few huge outlined words, the face large beside them.
       const acc = readable(p.accent, "#000000", 6);
-      photo(ctx, i.still, 0, 0, W, H, { bias: { x: 0.74, y: 0.45 }, zoom: 1.5 });
-      ctx.fillStyle = linear(ctx, 0, 0, W * 0.8, 0, [[0, "rgba(0,0,0,.82)"], [0.5, "rgba(0,0,0,.5)"], [1, "rgba(0,0,0,0)"]]);
-      ctx.fillRect(0, 0, W, H);
+      const { faceRight, colW, x } = sided(ctx, i, W, H, { bias: { x: 0.74, y: 0.45 }, zoom: 1.5, face: 0.42, safe: { top: 16, bottom: 8 } });
+      scrim(ctx, W, H, faceRight, [[0, "rgba(0,0,0,.82)"], [0.5, "rgba(0,0,0,.5)"], [1, "rgba(0,0,0,0)"]]);
       const st = ANTON(f);
-      const fitted = fit(ctx, i.headline, st, { w: W * 0.55, h: H * 0.68, lines: 3, max: 200, min: 64 }, hitsOf(i));
+      const fitted = fit(ctx, i.headline, st, { w: colW, h: H * 0.64, lines: 3, max: 196, min: 60 }, hitsOf(i));
       const bh = blockHeight(fitted, st);
-      const tagH = i.kicker.trim() ? 52 : 0;
+      const tagH = i.kicker.trim() ? 56 : 0;
       const top = (H - bh - tagH) / 2 + tagH;
       if (tagH) {
+        const font = (s: number) => `italic 900 ${s}px ${f.mont}`;
         ctx.save();
-        ctx.font = `italic 900 26px ${f.mont}`;
-        const tw = Math.min(W * 0.5, ctx.measureText(i.kicker.toUpperCase()).width + 36);
-        ctx.fillStyle = acc;
-        ctx.beginPath();
-        ctx.roundRect(56, top - tagH - 4, tw, 42, 6);
-        ctx.fill();
+        ctx.font = font(24);
+        const tw = Math.min(colW, ctx.measureText(i.kicker.trim().toUpperCase()).width + 36);
         ctx.restore();
-        label(ctx, i.kicker, 74, top - tagH + 17, { size: 26, font: (s) => `italic 900 ${s}px ${f.mont}`, color: inkOn(acc), upper: true, baseline: "middle", maxW: W * 0.5 - 36 });
+        ctx.fillStyle = acc;
+        fillRound(ctx, x - 2, top - tagH, tw, 40, 6);
+        label(ctx, i.kicker, x + 16, top - tagH + 21, { size: 24, font, color: inkOn(acc), upper: true, baseline: "middle", maxW: tw - 32 });
       }
-      drawLines(ctx, fitted, st, { x: 58, y: top, color: "#FFFFFF", accent: acc, hits: hitsOf(i), outline: { width: 0.045, color: "#000000" }, shadow: "hard" });
-      byline(ctx, i.byline, 60, H - 36, 22, "rgba(255,255,255,.88)", f);
+      drawLines(ctx, fitted, st, { x, y: top, color: "#FFFFFF", accent: acc, hits: hitsOf(i), outline: { width: 0.045, color: "#000000" }, shadow: "hard" });
+      byline(ctx, i.byline, x, H - 38, 22, "rgba(255,255,255,.9)", f);
     },
   },
   {
@@ -104,13 +136,13 @@ export const LONG: CoverTemplate[] = [
     palettes: ["classic", "coral", "teal", "plum"],
     draw(ctx, W, H, i, f, p) {
       const shade = darken(p.bg, 0.5);
-      photo(ctx, i.still, 0, 0, W, H, { bias: { x: 0.7, y: 0.45 }, zoom: 1.45 });
-      ctx.fillStyle = linear(ctx, 0, 0, W * 0.75, 0, [[0, rgba(shade, 0.92)], [0.55, rgba(shade, 0.62)], [1, rgba(shade, 0)]]);
-      ctx.fillRect(0, 0, W, H);
-      pill(ctx, i.kicker, 60, 56, 22, p.paper, p.ink, f);
+      const { faceRight, colW, x } = sided(ctx, i, W, H, { bias: { x: 0.7, y: 0.45 }, zoom: 1.45, face: 0.4, safe: { top: 16, bottom: 40 } });
+      scrim(ctx, W, H, faceRight, [[0, rgba(shade, 0.92)], [0.55, rgba(shade, 0.62)], [1, rgba(shade, 0)]], 0.75);
+      pill(ctx, i.kicker, x, 56, 20, p.paper, p.ink, f, "left", colW);
       const st = HEAVY(f);
-      headline(ctx, i.headline, st, { w: W * 0.54, h: H * 0.6, lines: 3, max: 136, min: 56 }, { x: 64, y: H - 84, anchor: "bottom", color: "#FFFFFF", accent: p.accent, hits: hitsOf(i), accentMode: "box", boxText: inkOn(p.accent, p.ink), shadow: "soft" });
-      byline(ctx, i.byline, W - 48, H - 40, 22, "rgba(255,255,255,.88)", f, "right");
+      const fitted = fit(ctx, i.headline, st, { w: colW, h: H * 0.58, lines: 3, max: 132, min: 54 }, hitsOf(i));
+      drawLines(ctx, fitted, st, { x, y: H - 92, anchor: "bottom", color: "#FFFFFF", accent: p.accent, hits: hitsOf(i), accentMode: "box", boxText: inkOn(p.accent, p.ink), shadow: "soft" });
+      byline(ctx, i.byline, x, H - 40, 22, "rgba(255,255,255,.88)", f);
     },
   },
   {
@@ -125,14 +157,14 @@ export const LONG: CoverTemplate[] = [
       const ink = inkOn(block, p.ink);
       ctx.fillStyle = block;
       ctx.fillRect(0, 0, W, H);
-      photo(ctx, i.still, 0, 0, W * 0.52, H, { bias: { x: 0.5, y: 0.4 }, clip: poly([[0, 0], [W * 0.52, 0], [W * 0.44, H], [0, H]]) });
-      const x = W * 0.52 + 36;
-      const w = W - x - 56;
+      photo(ctx, i.still, 0, 0, W * 0.52, H, { bias: { x: 0.46, y: 0.42 }, face: 0.38, safe: { right: W * 0.08 + 20, top: 12 }, clip: poly([[0, 0], [W * 0.52, 0], [W * 0.44, H], [0, H]]) });
+      const x = W * 0.52 + 40;
+      const w = W - x - M;
       const st = MONT(f);
-      const fitted = fit(ctx, i.headline, st, { w, h: H * 0.6, lines: 4, max: 104, min: 42 }, hitsOf(i));
+      const fitted = fit(ctx, i.headline, st, { w, h: H * 0.58, lines: 4, max: 100, min: 40 }, hitsOf(i));
       const bh = blockHeight(fitted, st);
       const top = (H - bh) / 2 + 6;
-      kicker(ctx, i.kicker, x, top - 50, 22, rgba(ink, 0.75), f, "left", w);
+      kicker(ctx, i.kicker, x, top - 48, 20, rgba(ink, 0.78), f, "left", w);
       const box = ink === "#FFFFFF" ? p.paper : p.bg;
       drawLines(ctx, fitted, st, { x, y: top, color: ink, accent: box, hits: hitsOf(i), accentMode: "box", boxText: inkOn(box, p.ink) });
       byline(ctx, i.byline, x, H - 44, 22, rgba(ink, 0.8), f, "left", false);
@@ -146,24 +178,31 @@ export const LONG: CoverTemplate[] = [
     palettes: ["classic", "signal", "cobalt", "forest", "coral"],
     draw(ctx, W, H, i, f, p) {
       const acc = readable(p.accent, p.bg, 4);
-      const { hero, rest } = heroOf(i);
+      const { hero, before, after } = heroOf(i);
       ctx.fillStyle = p.bg;
       ctx.fillRect(0, 0, W, H);
-      photo(ctx, i.still, W * 0.58, 0, W * 0.42, H, { bias: { x: 0.5, y: 0.4 } });
+      const px = W * 0.58;
+      photo(ctx, i.still, px, 0, W - px, H, { bias: { x: 0.5, y: 0.42 }, face: 0.36, safe: { left: 16, right: 16, top: 12 } });
       ctx.fillStyle = acc;
-      ctx.fillRect(W * 0.58 - 4, 0, 8, H);
+      ctx.fillRect(px - 4, 0, 8, H);
       const hs = ANTON(f);
       const rs: TextStyle = { font: (s) => `800 ${s}px ${f.mont}`, upper: true, lineHeight: 1.08, tracking: 0.01 };
-      const w = W * 0.58 - 120;
-      const hf = fit(ctx, hero, hs, { w, h: H * 0.5, lines: 1, max: 330, min: 90 });
-      const rf = fit(ctx, rest, rs, { w, h: H * 0.26, lines: 3, max: 60, min: 26 }, hitsOf(i));
-      const gap = rest ? 18 : 0;
-      const total = blockHeight(hf, hs) + gap + blockHeight(rf, rs);
-      const top = Math.max(96, (H - total) / 2 + 12);
-      kicker(ctx, i.kicker, 64, top - 44, 24, rgba(p.paper, 0.75), f, "left", w);
-      const b = drawLines(ctx, hf, hs, { x: 60, y: top, color: acc, accent: acc, hits: new Set() });
-      drawLines(ctx, rf, rs, { x: 64, y: b.bottom + gap, color: p.paper, accent: acc, hits: hitsOf(i) });
-      byline(ctx, i.byline, 64, H - 40, 22, rgba(p.paper, 0.75), f);
+      const w = px - M - 56;
+      const hf = fit(ctx, hero, hs, { w, h: H * 0.48, lines: 1, max: 320, min: 90 });
+      const bf = fit(ctx, before, rs, { w, h: H * 0.16, lines: 2, max: 52, min: 24 }, hitsOf(i));
+      const af = fit(ctx, after, rs, { w, h: H * 0.24, lines: 3, max: 56, min: 24 }, hitsOf(i));
+      // One size for the words around the figure.
+      const size = Math.min(before ? bf.size : 99, after ? af.size : 99);
+      const bF = before ? fit(ctx, before, rs, { w, lines: 2, max: size, min: Math.min(size, 24) }, hitsOf(i)) : null;
+      const aF = after ? fit(ctx, after, rs, { w, lines: 3, max: size, min: Math.min(size, 24) }, hitsOf(i)) : null;
+      const gap = 16;
+      const total = (bF ? blockHeight(bF, rs) + gap : 0) + blockHeight(hf, hs) + (aF ? gap + blockHeight(aF, rs) : 0);
+      let y = Math.max(96, (H - total) / 2 + 8);
+      kicker(ctx, i.kicker, M, y - 44, 22, rgba(p.paper, 0.75), f, "left", w);
+      if (bF) y = drawLines(ctx, bF, rs, { x: M, y, color: p.paper, accent: acc, hits: hitsOf(i) }).bottom + gap;
+      y = drawLines(ctx, hf, hs, { x: M - 4, y, color: acc, accent: acc, hits: new Set() }).bottom + gap;
+      if (aF) drawLines(ctx, aF, rs, { x: M, y, color: p.paper, accent: acc, hits: hitsOf(i) });
+      byline(ctx, i.byline, M, H - 40, 22, rgba(p.paper, 0.75), f, "left", false);
     },
   },
   {
@@ -176,29 +215,29 @@ export const LONG: CoverTemplate[] = [
       const acc = readable(p.accent, p.bg, 4);
       ctx.fillStyle = p.bg;
       ctx.fillRect(0, 0, W, H);
-      photo(ctx, i.still, W * 0.6, 0, W * 0.4, H, { bias: { x: 0.5, y: 0.4 } });
-      ctx.fillStyle = linear(ctx, W * 0.6, 0, W * 0.72, 0, [[0, p.bg], [1, rgba(p.bg, 0)]]);
-      ctx.fillRect(W * 0.6, 0, W * 0.12, H);
-      const x = 64;
-      const w = W * 0.56 - x;
-      kicker(ctx, i.kicker, x, 52, 22, acc, f, "left", w);
+      const px = W * 0.6;
+      photo(ctx, i.still, px, 0, W - px, H, { bias: { x: 0.56, y: 0.42 }, face: 0.36, safe: { left: 120, right: 16, top: 12 } });
+      ctx.fillStyle = linear(ctx, px, 0, W * 0.72, 0, [[0, p.bg], [1, rgba(p.bg, 0)]]);
+      ctx.fillRect(px, 0, W * 0.12, H);
+      const x = M;
+      const w = W * 0.55 - x;
+      kicker(ctx, i.kicker, x, 56, 20, acc, f, "left", w);
       const st = MONT(f, false);
-      const b = headline(ctx, i.headline, st, { w, h: H * 0.32, lines: 3, max: 72, min: 36 }, { x, y: 90, color: p.paper, accent: acc, hits: hitsOf(i) });
+      const hf = fit(ctx, i.headline, st, { w, h: H * 0.3, lines: 3, max: 70, min: 34 }, hitsOf(i));
+      const b = drawLines(ctx, hf, st, { x, y: 92, color: p.paper, accent: acc, hits: hitsOf(i) });
       const points = (i.points ?? []).map((s) => shortPoint(s, 30)).filter(Boolean).slice(0, 3);
-      const rowH = Math.min(78, (H - 70 - b.bottom - 36) / 3);
-      const box = Math.round(rowH * 0.52);
+      const rowH = Math.min(76, (H - 76 - b.bottom - 40) / 3);
+      const box = Math.round(rowH * 0.5);
       for (let k = 0; k < 3; k++) {
-        const y = b.bottom + 34 + k * rowH;
+        const y = b.bottom + 40 + k * rowH;
         checkbox(ctx, x, y, box, acc, k === 0, inkOn(acc));
-        if (points[k]) label(ctx, points[k], x + box + 22, y + box / 2, { size: Math.round(box * 0.78), font: (s) => `600 ${s}px ${f.mont}`, color: rgba(p.paper, 0.92), baseline: "middle", maxW: w - box - 22 });
+        if (points[k]) label(ctx, points[k], x + box + 22, y + box / 2 + 1, { size: Math.round(box * 0.78), font: (s) => `600 ${s}px ${f.mont}`, color: rgba(p.paper, 0.92), baseline: "middle", maxW: w - box - 22 });
         else {
           ctx.fillStyle = rgba(p.paper, 0.22);
-          ctx.beginPath();
-          ctx.roundRect(x + box + 22, y + box * 0.32, (w - box - 22) * [0.82, 0.64, 0.74][k], box * 0.36, box * 0.18);
-          ctx.fill();
+          fillRound(ctx, x + box + 22, y + box * 0.32, (w - box - 22) * [0.82, 0.64, 0.74][k], box * 0.36, box * 0.18);
         }
       }
-      byline(ctx, i.byline, x, H - 34, 20, rgba(p.paper, 0.7), f);
+      byline(ctx, i.byline, x, H - 40, 20, rgba(p.paper, 0.7), f, "left", false);
     },
   },
   {
@@ -211,17 +250,17 @@ export const LONG: CoverTemplate[] = [
       const mark = readable(p.mark, p.paper, 4.5);
       ctx.fillStyle = p.paper;
       ctx.fillRect(0, 0, W, H);
-      photo(ctx, i.still, W * 0.5, 0, W * 0.5, H, { bias: { x: 0.52, y: 0.4 }, clip: poly([[W * 0.6, 0], [W, 0], [W, H], [W * 0.52, H]]) });
+      photo(ctx, i.still, W * 0.52, 0, W * 0.48, H, { bias: { x: 0.58, y: 0.42 }, face: 0.36, safe: { left: W * 0.08 + 24, right: 16, top: 12 }, clip: poly([[W * 0.6, 0], [W, 0], [W, H], [W * 0.52, H]]) });
       ctx.fillStyle = p.accent;
       ctx.fill(poly([[W * 0.6 - 10, 0], [W * 0.6, 0], [W * 0.52, H], [W * 0.52 - 10, H]]));
       // The question mark is the picture.
-      label(ctx, "?", W * 0.03, H * 0.98, { size: H * 1.15, font: (s) => `italic 900 ${s}px ${f.playfair}`, color: rgba(p.accent, 0.2) });
-      const x = 64;
+      label(ctx, "?", W * 0.03, H * 0.98, { size: H * 1.15, font: (s) => `italic 900 ${s}px ${f.playfair}`, color: rgba(p.accent, 0.16) });
+      const x = M;
       const w = W * 0.47 - x;
       const st = MONT(f, false);
-      const fitted = fit(ctx, i.headline, st, { w, h: H * 0.6, lines: 4, max: 92, min: 40 }, hitsOf(i));
+      const fitted = fit(ctx, i.headline, st, { w, h: H * 0.58, lines: 4, max: 90, min: 38 }, hitsOf(i));
       const top = (H - blockHeight(fitted, st)) / 2 + 8;
-      kicker(ctx, i.kicker, x, top - 46, 22, mark, f, "left", w);
+      kicker(ctx, i.kicker, x, top - 46, 20, mark, f, "left", w);
       drawLines(ctx, fitted, st, { x, y: top, color: p.ink, accent: mark, hits: hitsOf(i) });
       byline(ctx, i.byline, x, H - 40, 22, rgba(p.ink, 0.7), f, "left", false);
     },
@@ -233,34 +272,32 @@ export const LONG: CoverTemplate[] = [
     look: "Bold",
     palettes: ["signal", "coral", "cobalt", "teal"],
     draw(ctx, W, H, i, f, p) {
-      photo(ctx, i.still, 0, 0, W, H, { bias: { x: 0.28, y: 0.45 }, zoom: 1.5 });
-      ctx.fillStyle = linear(ctx, W * 0.3, 0, W, 0, [[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,.35)"]]);
-      ctx.fillRect(0, 0, W, H);
+      // The face on one side, a tilted card of words on the other.
+      const { faceRight, shot } = sided(ctx, i, W, H, { bias: { x: 0.28, y: 0.45 }, zoom: 1.5, face: 0.42, safe: { top: 16 } }, "left");
+      scrim(ctx, W, H, !faceRight, [[0, "rgba(0,0,0,.35)"], [1, "rgba(0,0,0,0)"]], 0.7);
       const st = MONT_ITALIC(f);
-      const sw = W * 0.46;
+      const room = faceRight ? shot.head.x - 70 : W - (shot.head.x + shot.head.w) - 70;
+      const sw = Math.max(W * 0.38, Math.min(W * 0.46, room));
       const pad = 34;
-      const fitted = fit(ctx, i.headline, st, { w: sw - pad * 2, h: H * 0.56, lines: 4, max: 92, min: 40 }, hitsOf(i));
+      const fitted = fit(ctx, i.headline, st, { w: sw - pad * 2, h: H * 0.56, lines: 4, max: 92, min: 38 }, hitsOf(i));
       const sh = blockHeight(fitted, st) + pad * 2;
-      const cx = W * 0.72;
-      const cy = H * 0.52;
+      const cx = faceRight ? 44 + sw / 2 : W - 44 - sw / 2;
       ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(-0.06);
+      ctx.translate(cx, H * 0.52);
+      ctx.rotate(-0.05);
       ctx.save();
       ctx.shadowColor = "rgba(0,0,0,.4)";
       ctx.shadowBlur = 36;
       ctx.shadowOffsetY = 14;
       ctx.fillStyle = p.paper;
-      ctx.beginPath();
-      ctx.roundRect(-sw / 2, -sh / 2, sw, sh, 24);
-      ctx.fill();
+      fillRound(ctx, -sw / 2, -sh / 2, sw, sh, 24);
       ctx.restore();
       drawLines(ctx, fitted, st, { x: 0, y: 0, anchor: "middle", align: "center", color: p.ink, accent: p.accent, hits: hitsOf(i), accentMode: "box", boxText: inkOn(p.accent, p.ink) });
       if (i.kicker.trim()) {
-        // Round badge pinned to the corner.
-        const r = 64;
-        ctx.translate(-sw / 2 + 10, -sh / 2 + 4);
-        ctx.rotate(-0.16);
+        // Round badge pinned to the card's top-left corner, kept inside the canvas.
+        const r = 62;
+        ctx.translate(-sw / 2 + Math.max(10, r + 20 - (cx - sw / 2)), -sh / 2 + Math.max(4, r + 16 - (H * 0.52 - sh / 2)));
+        ctx.rotate(-0.12);
         ctx.fillStyle = p.bg;
         ctx.beginPath();
         ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -268,11 +305,12 @@ export const LONG: CoverTemplate[] = [
         ctx.strokeStyle = p.paper;
         ctx.lineWidth = 5;
         ctx.stroke();
-        const kf = fit(ctx, i.kicker, { font: (s) => `900 ${s}px ${f.mont}`, upper: true, lineHeight: 1.0 }, { w: r * 1.5, h: r * 1.2, lines: 3, max: 26, min: 12 });
-        drawLines(ctx, kf, { font: (s) => `900 ${s}px ${f.mont}`, upper: true, lineHeight: 1.0 }, { x: 0, y: 0, anchor: "middle", align: "center", color: readable(p.accent, p.bg, 4), accent: p.accent, hits: new Set() });
+        const ks: TextStyle = { font: (s) => `900 ${s}px ${f.mont}`, upper: true, lineHeight: 1.0 };
+        const kf = fit(ctx, i.kicker, ks, { w: r * 1.45, h: r * 1.15, lines: 3, max: 24, min: 15 });
+        drawLines(ctx, kf, ks, { x: 0, y: 0, anchor: "middle", align: "center", color: readable(p.accent, p.bg, 4), accent: p.accent, hits: new Set() });
       }
       ctx.restore();
-      byline(ctx, i.byline, 48, H - 40, 22, "#FFFFFF", f);
+      byline(ctx, i.byline, faceRight ? M : W - M, H - 40, 22, "#FFFFFF", f, faceRight ? "left" : "right");
     },
   },
   {
@@ -283,17 +321,19 @@ export const LONG: CoverTemplate[] = [
     palettes: ["classic", "teal", "forest", "coral"],
     draw(ctx, W, H, i, f, p) {
       const acc = readable(p.accent, p.bg);
-      photo(ctx, i.still, 0, 0, W, H, { bias: { x: 0.5, y: 0.34 } });
-      const bandH = H * 0.36;
+      const bandH = Math.round(H * 0.36);
+      // The photo only fills what the band leaves, so a low face rises above it.
+      photo(ctx, i.still, 0, 0, W, H - bandH + 8, { bias: { x: 0.5, y: 0.44 }, face: 0.5, safe: { top: 8, bottom: 40 } });
       ctx.fillStyle = linear(ctx, 0, H - bandH - 80, 0, H - bandH, [[0, rgba(p.bg, 0)], [1, rgba(p.bg, 0.5)]]);
       ctx.fillRect(0, H - bandH - 80, W, 80);
-      ctx.fillStyle = rgba(p.bg, 0.95);
+      ctx.fillStyle = rgba(p.bg, 0.97);
       ctx.fillRect(0, H - bandH, W, bandH);
       ctx.fillStyle = p.accent;
       ctx.fillRect(0, H - bandH, W, 6);
       const st = HEAVY(f);
-      headline(ctx, i.headline, st, { w: W - 128, h: bandH - 56, lines: 2, max: 112, min: 44 }, { x: W / 2, y: H - bandH / 2 + 6, anchor: "middle", align: "center", color: p.paper, accent: acc, hits: hitsOf(i) });
-      pill(ctx, i.kicker, W / 2, H - bandH - 19, 20, p.accent, inkOn(p.accent, p.ink), f, "center");
+      const fitted = fit(ctx, i.headline, st, { w: W - M * 2, h: bandH - 64, lines: 2, max: 108, min: 42 }, hitsOf(i));
+      drawLines(ctx, fitted, st, { x: W / 2, y: H - bandH / 2 + 8, anchor: "middle", align: "center", color: p.paper, accent: acc, hits: hitsOf(i) });
+      pill(ctx, i.kicker, W / 2, H - bandH - 18, 18, p.accent, inkOn(p.accent, p.ink), f, "center", W * 0.6);
     },
   },
   {
@@ -307,18 +347,21 @@ export const LONG: CoverTemplate[] = [
       const rule = readable(p.accent, p.paper, 1.8);
       ctx.fillStyle = p.paper;
       ctx.fillRect(0, 0, W, H);
-      photo(ctx, i.still, W * 0.53, 0, W * 0.47, H, { bias: { x: 0.5, y: 0.4 } });
+      const px = W * 0.53;
+      photo(ctx, i.still, px, 0, W - px, H, { bias: { x: 0.5, y: 0.42 }, face: 0.36, safe: { left: 16, right: 16, top: 12 } });
       ctx.fillStyle = rule;
-      ctx.fillRect(W * 0.53 - 4, 0, 8, H);
+      ctx.fillRect(px - 4, 0, 8, H);
       ctx.strokeStyle = rgba(p.ink, 0.18);
       ctx.lineWidth = 2;
-      ctx.strokeRect(28, 28, W * 0.53 - 56, H - 56);
+      ctx.strokeRect(28, 28, px - 56, H - 56);
       const st = SERIF(f);
-      const fitted = fit(ctx, i.headline, st, { w: W * 0.4, h: H * 0.6, lines: 4, max: 116, min: 44 }, hitsOf(i));
-      const top = (H - blockHeight(fitted, st)) / 2 + 12;
-      kicker(ctx, i.kicker, 72, top - 46, 22, mark, f, "left", W * 0.4);
-      drawLines(ctx, fitted, st, { x: 72, y: top, color: p.ink, accent: mark, hits: hitsOf(i) });
-      byline(ctx, i.byline, 72, H - 64, 22, rgba(p.ink, 0.7), f, "left", false);
+      const x = 72;
+      const w = px - x - 64;
+      const fitted = fit(ctx, i.headline, st, { w, h: H * 0.58, lines: 4, max: 112, min: 42 }, hitsOf(i));
+      const top = (H - blockHeight(fitted, st)) / 2 + 8;
+      kicker(ctx, i.kicker, x, top - 44, 20, mark, f, "left", w);
+      drawLines(ctx, fitted, st, { x, y: top, color: p.ink, accent: mark, hits: hitsOf(i) });
+      byline(ctx, i.byline, x, H - 62, 22, rgba(p.ink, 0.7), f, "left", false);
     },
   },
   {
@@ -334,15 +377,15 @@ export const LONG: CoverTemplate[] = [
       ctx.fillStyle = paper;
       ctx.fillRect(0, 0, W, H);
       const { name, creds } = splitByline(i.byline);
-      label(ctx, name || "The Brief", W / 2, 82, { size: 56, font: (s) => `italic 900 ${s}px ${f.playfair}`, color: ink, align: "center", maxW: W * 0.56 });
-      kicker(ctx, i.kicker || "Planning notes", 48, 44, 18, readable(p.mark, paper, 4.5), f, "left", W * 0.2);
-      label(ctx, creds, W - 48, 44, { size: 18, font: (s) => `700 ${s}px ${f.sans}`, color: rgba(ink, 0.7), align: "right", baseline: "top", tracking: 0.12, upper: true, maxW: W * 0.2 });
+      label(ctx, name || "The Brief", W / 2, 82, { size: 54, font: (s) => `italic 900 ${s}px ${f.playfair}`, color: ink, align: "center", maxW: W * 0.5 });
+      kicker(ctx, i.kicker || "Planning notes", 48, 46, 16, readable(p.mark, paper, 4.5), f, "left", W * 0.22);
+      label(ctx, creds, W - 48, 46, { size: 16, font: (s) => `700 ${s}px ${f.sans}`, color: rgba(ink, 0.7), align: "right", baseline: "top", tracking: 0.12, upper: true, maxW: W * 0.22 });
       ctx.fillStyle = ink;
       ctx.fillRect(40, 104, W - 80, 4);
       ctx.fillRect(40, 113, W - 80, 1.5);
       const py = 140;
       const pw = W * 0.4;
-      photo(ctx, i.still, 40, py, pw, H - py - 40, { bias: { x: 0.5, y: 0.38 }, tone: "mono" });
+      photo(ctx, i.still, 40, py, pw, H - py - 40, { bias: { x: 0.5, y: 0.42 }, face: 0.38, safe: { left: 10, right: 10, top: 10 }, tone: "mono" });
       ctx.strokeStyle = ink;
       ctx.lineWidth = 2;
       ctx.strokeRect(40, py, pw, H - py - 40);
@@ -350,7 +393,7 @@ export const LONG: CoverTemplate[] = [
       ctx.fillStyle = rgba(ink, 0.3);
       ctx.fillRect(x - 20, py, 1.5, H - py - 40);
       const st = PLAYFAIR(f);
-      const fitted = fit(ctx, i.headline, st, { w: W - x - 48, h: H - py - 70, lines: 4, max: 120, min: 40 }, hitsOf(i));
+      const fitted = fit(ctx, i.headline, st, { w: W - x - 48, h: H - py - 80, lines: 4, max: 116, min: 38 }, hitsOf(i));
       const top = py + (H - py - 40 - blockHeight(fitted, st)) / 2 - 6;
       drawLines(ctx, fitted, st, { x, y: top, color: ink, accent: p.accent === "#101010" ? "#FFD23F" : p.accent, hits: hitsOf(i), accentMode: "marker" });
     },
@@ -365,29 +408,30 @@ export const LONG: CoverTemplate[] = [
       const acc = readable(p.accent, p.bg, 4);
       ctx.fillStyle = p.bg;
       ctx.fillRect(0, 0, W, H);
-      const g = ctx.createRadialGradient(W * 0.78, H * 0.5, 40, W * 0.78, H * 0.5, W * 0.5);
+      const r = H * 0.34;
+      const cx = W * 0.79;
+      const cy = H * 0.5;
+      const g = ctx.createRadialGradient(cx, cy, 40, cx, cy, W * 0.5);
       g.addColorStop(0, rgba(mix(p.bg, "#FFFFFF", 0.14), 1));
       g.addColorStop(1, rgba(p.bg, 0));
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, W, H);
-      const r = H * 0.34;
-      const cx = W * 0.79;
-      const cy = H * 0.5;
-      photo(ctx, i.still, cx - r, cy - r, r * 2, r * 2, { bias: { x: 0.5, y: 0.45 }, clip: circle(cx, cy, r) });
+      photo(ctx, i.still, cx - r, cy - r, r * 2, r * 2, { bias: { x: 0.5, y: 0.5 }, face: 0.46, safe: { left: r * 0.3, right: r * 0.3, top: r * 0.22, bottom: r * 0.22 }, clip: circle(cx, cy, r) });
       ctx.strokeStyle = acc;
       ctx.lineWidth = 5;
       ctx.beginPath();
       ctx.arc(cx, cy, r + 14, 0, Math.PI * 2);
       ctx.stroke();
-      label(ctx, "“", 46, 240, { size: 300, font: (s) => `italic 900 ${s}px ${f.playfair}`, color: acc });
       const st = PLAYFAIR(f);
       const x = 72;
       const w = W * 0.56 - x;
-      const fitted = fit(ctx, i.headline, st, { w, h: H * 0.48, lines: 4, max: 100, min: 36 }, hitsOf(i));
-      const top = Math.max(200, (H - blockHeight(fitted, st)) / 2 + 30);
+      const fitted = fit(ctx, i.headline, st, { w, h: H * 0.46, lines: 4, max: 96, min: 36 }, hitsOf(i));
+      const bh = blockHeight(fitted, st);
+      const top = Math.max(196, (H - bh) / 2 + 24);
+      label(ctx, "“", x - 8, top - 26, { size: 220, font: (s) => `italic 900 ${s}px ${f.playfair}`, color: acc });
       const b = drawLines(ctx, fitted, st, { x, y: top, color: p.paper, accent: acc, hits: hitsOf(i) });
-      if (i.byline.trim()) label(ctx, `— ${i.byline}`, x, Math.min(H - 40, b.bottom + 52), { size: 24, font: (s) => `600 ${s}px ${f.mont}`, color: acc, tracking: 0.02, maxW: w });
-      kicker(ctx, i.kicker, W - 48, 40, 18, rgba(p.paper, 0.6), f, "right", W * 0.3);
+      if (i.byline.trim()) label(ctx, `— ${i.byline}`, x, Math.min(H - 44, b.bottom + 52), { size: 22, font: (s) => `600 ${s}px ${f.mont}`, color: acc, tracking: 0.02, maxW: w });
+      kicker(ctx, i.kicker, W - 48, 40, 16, rgba(p.paper, 0.6), f, "right", W * 0.3);
     },
   },
   {
@@ -401,15 +445,16 @@ export const LONG: CoverTemplate[] = [
       ctx.fillStyle = p.paper;
       ctx.fillRect(0, 0, W, H);
       const px = W * 0.6;
-      photo(ctx, i.still, px, 48, W - px - 48, H - 96, { bias: { x: 0.5, y: 0.4 }, clip: rounded(px, 48, W - px - 48, H - 96, 20) });
+      const pad = 48;
+      photo(ctx, i.still, px, pad, W - px - pad, H - pad * 2, { bias: { x: 0.5, y: 0.42 }, face: 0.36, safe: { left: 14, right: 14, top: 14 }, clip: rounded(px, pad, W - px - pad, H - pad * 2, 20) });
       const x = 72;
       const w = px - x - 64;
       const st = CLEAN(f);
-      const fitted = fit(ctx, i.headline, st, { w, h: H * 0.52, lines: 4, max: 96, min: 34 }, hitsOf(i));
+      const fitted = fit(ctx, i.headline, st, { w, h: H * 0.5, lines: 4, max: 92, min: 34 }, hitsOf(i));
       const top = (H - blockHeight(fitted, st)) / 2 - 14;
-      kicker(ctx, i.kicker, x, top - 42, 18, mark, f, "left", w);
+      kicker(ctx, i.kicker, x, top - 42, 17, mark, f, "left", w);
       drawLines(ctx, fitted, st, { x, y: top, color: p.ink, accent: mark, hits: hitsOf(i) });
-      monogram(ctx, i.byline, x, H - 76, 22, p.ink, p.paper, rgba(p.ink, 0.8), f);
+      monogram(ctx, i.byline, x, H - pad - 24, 22, p.ink, p.paper, rgba(p.ink, 0.8), f);
     },
   },
   {
@@ -420,17 +465,18 @@ export const LONG: CoverTemplate[] = [
     palettes: ["classic", "plum", "forest", "cobalt", "teal"],
     draw(ctx, W, H, i, f, p) {
       const acc = readable(p.accent, p.bg, 4.5);
-      photo(ctx, i.still, 0, 0, W, H, { bias: { x: 0.72, y: 0.45 }, zoom: 1.45, tone: { dark: darken(p.bg, 0.35), light: mix(p.accent, "#FFFFFF", 0.45) } });
-      ctx.fillStyle = linear(ctx, 0, 0, W * 0.72, 0, [[0, rgba(p.bg, 0.9)], [0.6, rgba(p.bg, 0.55)], [1, rgba(p.bg, 0)]]);
-      ctx.fillRect(0, 0, W, H);
+      const { faceRight, colW, x } = sided(ctx, i, W, H, { bias: { x: 0.72, y: 0.45 }, zoom: 1.45, face: 0.42, safe: { top: 16 }, tone: { dark: darken(p.bg, 0.35), light: mix(p.accent, "#FFFFFF", 0.45) } });
+      scrim(ctx, W, H, faceRight, [[0, rgba(p.bg, 0.9)], [0.6, rgba(p.bg, 0.55)], [1, rgba(p.bg, 0)]], 0.72);
       const st = BEBAS(f);
-      const b = headline(ctx, i.headline, st, { w: W * 0.52, h: H * 0.62, lines: 3, max: 190, min: 64 }, { x: 64, y: H - 92, anchor: "bottom", color: "#FFFFFF", accent: acc, hits: hitsOf(i) });
+      const fitted = fit(ctx, i.headline, st, { w: colW, h: H * 0.6, lines: 3, max: 184, min: 60 }, hitsOf(i));
+      const b = drawLines(ctx, fitted, st, { x, y: H - 92, anchor: "bottom", color: "#FFFFFF", accent: acc, hits: hitsOf(i) });
       if (i.kicker.trim()) {
+        const ky = Math.max(52, b.top - 46);
         ctx.fillStyle = acc;
-        ctx.fillRect(64, Math.max(56, b.top - 40), 36, 4);
-        kicker(ctx, i.kicker, 112, Math.max(48, b.top - 48), 20, "rgba(255,255,255,.85)", f, "left", W * 0.42);
+        ctx.fillRect(x, ky + 7, 32, 4);
+        kicker(ctx, i.kicker, x + 46, ky, 18, "rgba(255,255,255,.88)", f, "left", colW - 46);
       }
-      byline(ctx, i.byline, 64, H - 44, 22, "rgba(255,255,255,.8)", f);
+      byline(ctx, i.byline, x, H - 44, 22, "rgba(255,255,255,.82)", f);
     },
   },
   {
@@ -440,23 +486,37 @@ export const LONG: CoverTemplate[] = [
     look: "Editorial",
     palettes: ["classic", "teal", "signal", "plum"],
     draw(ctx, W, H, i, f, p) {
-      const bar = Math.round(H * 0.12);
+      // Letterboxed still, a title card in the lower third beside the face.
+      const bar = Math.round(H * 0.11);
       ctx.fillStyle = "#050505";
       ctx.fillRect(0, 0, W, H);
-      photo(ctx, i.still, 0, bar, W, H - bar * 2, { bias: { x: 0.64, y: 0.42 }, zoom: 1.35 });
-      // A gentle grade toward the palette, then a floor of shadow for the words.
+      const ph = H - bar * 2;
+      const o: PhotoOpts & { bias: { x: number; y: number } } = { bias: { x: 0.68, y: 0.42 }, zoom: 1.4, face: 0.42, safe: { top: 12 } };
+      const faceRight = faceSide(i.still, W, ph, o) === "right";
+      const shot = photo(ctx, i.still, 0, bar, W, ph, { ...o, bias: { x: faceRight ? 0.68 : 0.32, y: 0.42 } });
+      // A gentle grade toward the palette, then shadow under the words.
       ctx.save();
       ctx.globalCompositeOperation = "soft-light";
       ctx.fillStyle = rgba(p.bg, 0.55);
-      ctx.fillRect(0, bar, W, H - bar * 2);
+      ctx.fillRect(0, bar, W, ph);
       ctx.restore();
-      ctx.fillStyle = linear(ctx, 0, H * 0.4, 0, H - bar, [[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,.85)"]]);
-      ctx.fillRect(0, H * 0.4, W, H * 0.6 - bar);
+      ctx.fillStyle = linear(ctx, 0, bar + ph * 0.35, 0, H - bar, [[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,.8)"]]);
+      ctx.fillRect(0, bar + ph * 0.35, W, ph * 0.65);
+      scrim(ctx, W, H, faceRight, [[0, "rgba(0,0,0,.55)"], [1, "rgba(0,0,0,0)"]], 0.6);
+      ctx.fillStyle = "#050505";
+      ctx.fillRect(0, 0, W, bar);
+      ctx.fillRect(0, H - bar, W, bar);
+      const { colW, x } = column(W, shot, faceRight, 40, 0.54, 0.4);
       const acc = readable(p.accent, "#000000", 6);
-      const st: TextStyle = { ...BEBAS(f), tracking: 0.06, lineHeight: 0.92 };
-      headline(ctx, i.headline, st, { w: W * 0.82, h: H * 0.34, lines: 2, max: 124, min: 46 }, { x: W / 2, y: H - bar - 28, anchor: "bottom", align: "center", color: "#FFFFFF", accent: acc, hits: hitsOf(i) });
-      label(ctx, i.kicker, W / 2, bar / 2 + 2, { size: 30, font: (s) => `400 ${s}px ${f.bebas}`, color: acc, align: "center", baseline: "middle", tracking: 0.4, upper: true, maxW: W * 0.7 });
-      label(ctx, i.byline, W / 2, H - bar / 2 + 1, { size: 18, font: (s) => `600 ${s}px ${f.sans}`, color: "rgba(255,255,255,.7)", align: "center", baseline: "middle", tracking: 0.22, upper: true, maxW: W * 0.7 });
+      const st: TextStyle = { ...BEBAS(f), tracking: 0.03, lineHeight: 0.92 };
+      const fitted = fit(ctx, i.headline, st, { w: colW, h: ph * 0.56, lines: 3, max: 132, min: 48 }, hitsOf(i));
+      const b = drawLines(ctx, fitted, st, { x, y: H - bar - 34, anchor: "bottom", color: "#FFFFFF", accent: acc, hits: hitsOf(i) });
+      if (i.kicker.trim()) {
+        ctx.fillStyle = acc;
+        ctx.fillRect(x, b.top - 30, 32, 4);
+        label(ctx, i.kicker, x + 46, b.top - 28, { size: 26, font: (s) => `400 ${s}px ${f.bebas}`, color: acc, baseline: "middle", tracking: 0.2, upper: true, maxW: colW - 46 });
+      }
+      label(ctx, i.byline, W / 2, H - bar / 2 + 1, { size: 17, font: (s) => `600 ${s}px ${f.sans}`, color: "rgba(255,255,255,.72)", align: "center", baseline: "middle", tracking: 0.2, upper: true, maxW: W * 0.7 });
     },
   },
 ];

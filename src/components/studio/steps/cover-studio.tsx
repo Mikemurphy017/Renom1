@@ -14,7 +14,7 @@ import { isAbort, useWriter } from "@/lib/ai/writer";
 import { getTake, subscribeTakes } from "@/lib/media/takes";
 import { uploadImage } from "@/lib/media/upload";
 import { framesFromVideo, stillFromImage, type Still } from "@/lib/thumbs/frames";
-import { COVER_SIZE, LOOKS, PALETTES, TEMPLATES, renderCover, templateOf, toJpeg, type CoverLook, type CoverTemplate, type CoverText } from "@/lib/thumbs/render";
+import { COVER_SIZE, LOOKS, PALETTES, TEMPLATES, releaseCanvas, renderCover, templateOf, toJpeg, type CoverLook, type CoverTemplate, type CoverText } from "@/lib/thumbs/render";
 import type { CoverImage, Video, VideoFormat } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { AskBar } from "../ask-bar";
@@ -28,6 +28,8 @@ interface Option {
   stillId?: string;
   /** Which frame to use until the advisor picks one. */
   shot?: number;
+  /** Words that are the advisor's own (a saved cover reopened): automatic rewrites leave them be. */
+  own?: boolean;
 }
 type Options = Record<VideoFormat, Option[]>;
 
@@ -41,15 +43,39 @@ const BATCH = 8;
 
 const STOP = /^(a|an|the|and|or|of|for|to|in|on|your|my|is|i|it|you|are|with|what|why|how)$/i;
 
-/** Words from the title while Claude writes (or if writing is off). */
+/** Where a title can be cut and still read as a phrase ("The $7,000 IRA mistake | most couples make"). */
+const CUT = /^(most|that|which|who|when|while|because|if|so|but|and|for|before|after|without|nobody|everyone|you|we|i)$/i;
+
+/** Words from the title while Claude writes (or if writing is off): whole phrases, never fragments. */
 function fallbackLines(title: string): CoverText[] {
-  const words = title.replace(/[?.!:—]/g, " ").split(/\s+/).filter(Boolean);
-  const strong = words.filter((w) => !STOP.test(w));
-  const pick = (ws: string[]) => ws.slice(0, 4).join(" ");
-  const accentOf = (h: string) => h.split(" ").find((w) => /\d|\$|%/.test(w)) ?? h.split(" ").sort((a, b) => b.length - a.length)[0] ?? "";
-  const lines = [pick(strong), pick(strong.slice(-4)), pick(words.slice(0, 4)), pick(strong.slice(1))].map((h) => ({ headline: h || title, accent: accentOf(h || title), kicker: "" }));
-  if (/\?\s*$/.test(title.trim())) lines.push({ headline: title.trim(), accent: accentOf(title), kicker: "" });
-  return lines;
+  const t = title.trim().replace(/\s+/g, " ");
+  const words = t.split(" ").filter(Boolean);
+  const accentOf = (h: string) => {
+    const ws = h.split(" ");
+    const word = ws.find((w) => /\d|\$|%/.test(w)) ?? [...ws].filter((w) => !STOP.test(w.replace(/[^\w]/g, ""))).sort((a, b) => b.length - a.length)[0] ?? ws[0] ?? "";
+    return word.replace(/[.,:;!?]+$/, "");
+  };
+  const out: string[] = [];
+  // Before a colon or dash, and the clause after it.
+  // (No lookbehind in these regexes: Safari before 16.4 can't parse it.)
+  const parts = t
+    .replace(/([.!?])\s+/g, "$1\n")
+    .split(/\n|\s*[:—–]\s*|\s+-\s+/)
+    .map((p) => p.replace(/\.$/, ""))
+    .filter((p) => p.split(" ").length >= 2 && p.split(" ").length <= 8)
+    .map((p) => p[0].toUpperCase() + p.slice(1));
+  if (parts.length > 1 || words.length <= 8) out.push(...parts);
+  // Up to a natural break.
+  const cut = parts.length > 1 ? -1 : words.findIndex((w, k) => k >= 3 && CUT.test(w.replace(/[^\w]/g, "")));
+  if (cut > 0) out.push(words.slice(0, cut).join(" "));
+  if (words.length <= 8) out.push(t);
+  // Last resort: the first few strong words.
+  if (!out.length) out.push(words.filter((w) => !STOP.test(w)).slice(0, 5).join(" ") || t);
+  const seen = new Set<string>();
+  return out
+    .map((h) => h.replace(/[,;]$/, "").trim())
+    .filter((h) => h && !seen.has(h.toLowerCase()) && !!seen.add(h.toLowerCase()))
+    .map((h) => ({ headline: h, accent: accentOf(h), kicker: "" }));
 }
 
 function rng(seed: number) {
@@ -62,6 +88,9 @@ function rng(seed: number) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+/** A word as the covers match it for highlighting (case and punctuation aside). */
+const bare = (w: string) => w.toLowerCase().replace(/[^a-z0-9$%]/g, "");
 
 const hasNumber = (t: CoverText) => /\d/.test(t.headline);
 const isQuestion = (t: CoverText) => /\?\s*$/.test(t.headline.trim());
@@ -128,17 +157,49 @@ function buildOptions(shape: VideoFormat, lines: Lines, o: { seed: number; count
   return out;
 }
 
-/** New words from Claude on the same layouts, colors and photos. */
-function retext(opts: Option[], shape: VideoFormat, lines: Lines): Option[] {
+/** New words from Claude on the same layouts, colors and photos (`all`: even the advisor's own). */
+function retext(opts: Option[], shape: VideoFormat, lines: Lines, all: boolean): Option[] {
   const pool = poolFor(lines, shape);
   const used = new Map<string, number>();
   return opts.map((o, k) => {
     const t = templateOf(shape, o.template) ?? TEMPLATES[shape][0];
-    return pool.length ? { ...o, text: lineFor(t, pool, used, opts[k - 1]?.text.headline) } : o;
+    if (!pool.length || (o.own && !all)) return o;
+    const { own: _own, ...rest } = o;
+    return { ...rest, text: lineFor(t, pool, used, opts[k - 1]?.text.headline) };
   });
 }
 
-const retextAll = (opts: Options, lines: Lines): Options => ({ long: retext(opts.long, "long", lines), short: retext(opts.short, "short", lines) });
+const retextAll = (opts: Options, lines: Lines, all = false): Options => ({ long: retext(opts.long, "long", lines, all), short: retext(opts.short, "short", lines, all) });
+
+/** The cover id of a saved cover's photo. */
+const savedStill = (c: CoverImage) => c.still ?? (c.frameMs !== undefined ? `f${Math.round(c.frameMs / 100)}` : undefined);
+
+/**
+ * Reopening the step: put each saved cover back in the set (as it was saved:
+ * layout, colors, words, photo) and select it, so the editor matches the
+ * cover in the library. Covers saved before palettes were stored keep the
+ * layout's default colors.
+ */
+function withSaved(opts: Options, picks: Record<VideoFormat, number>, covers: Video["covers"]) {
+  let options = opts;
+  let picked = picks;
+  for (const s of ["long", "short"] as VideoFormat[]) {
+    const c = covers?.[s];
+    if (!c || !templateOf(s, c.template)) continue;
+    const still = savedStill(c);
+    const same = (o: Option) =>
+      o.template === c.template &&
+      o.text.headline === c.headline &&
+      (c.palette === undefined || o.palette === c.palette) &&
+      (c.accent === undefined || o.text.accent === c.accent) &&
+      (c.kicker === undefined || o.text.kicker === c.kicker);
+    const k = options[s].findIndex(same);
+    const saved: Option = k >= 0 ? { ...options[s][k], stillId: options[s][k].stillId ?? still, own: true } : { template: c.template, palette: c.palette, text: { headline: c.headline, accent: c.accent ?? "", kicker: c.kicker ?? "" }, stillId: still, shot: 0, own: true };
+    options = { ...options, [s]: k >= 0 ? options[s].map((o, n) => (n === k ? saved : o)) : [saved, ...options[s]] };
+    picked = { ...picked, [s]: Math.max(0, k) };
+  }
+  return { options, picks: picked };
+}
 
 const freshOptions = (lines: Lines, brand: boolean, seed = 1): Options => ({
   long: buildOptions("long", lines, { seed, count: BATCH, brand }),
@@ -159,18 +220,19 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
 
   const [shape, setShape] = React.useState<VideoFormat>(video.format);
   const [lines, setLines] = useDraft<Lines | null>(video.id, "cover.lines", null);
-  const [options, setOptions] = useDraft<Options>(video.id, "cover.options", () => freshOptions({ long: fallbackLines(video.title), short: fallbackLines(video.title) }, !!brand));
+  const [options, setOptions] = useDraft<Options>(video.id, "cover.options", () => freshOptions(lines ?? { long: fallbackLines(video.title), short: fallbackLines(video.title) }, !!brand));
   const [picks, setPicks] = useDraft<Record<VideoFormat, number>>(video.id, "cover.picks", { long: 0, short: 0 });
   const [note, setNote] = React.useState<string | null>(null);
   const [look, setLook] = React.useState<CoverLook | null>(null);
   const linesNow = React.useCallback((): Lines => lines ?? { long: fallbackLines(video.title), short: fallbackLines(video.title) }, [lines, video.title]);
 
-  // Sets saved before there were palettes (four options, one per layout): start over with a varied set.
+  // On opening: sets saved before there were palettes (four options, one per layout) start over
+  // with a varied set; saved covers go back in, selected, exactly as they were saved.
   React.useEffect(() => {
-    if (!options.long.some((o) => o.palette) && !options.short.some((o) => o.palette)) {
-      setOptions(freshOptions(linesNow(), !!brand));
-      setPicks({ long: 0, short: 0 });
-    }
+    const stale = !options.long.some((o) => o.palette) && !options.short.some((o) => o.palette);
+    const next = withSaved(stale ? freshOptions(linesNow(), !!brand) : options, stale ? { long: 0, short: 0 } : picks, video.covers);
+    if (next.options !== options) setOptions(next.options);
+    if (next.picks !== picks) setPicks(next.picks);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const { write, busy, status } = useWriter();
@@ -185,7 +247,9 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
       const out: Still[] = [];
       if (takeSrc) {
         try {
-          out.push(...(await framesFromVideo(takeSrc, takeSec, 4)));
+          // The frames of saved covers come back too, so a reopened cover has its own photo.
+          const keep = (["long", "short"] as VideoFormat[]).flatMap((s) => (video.covers?.[s]?.frameMs !== undefined && !video.covers[s]!.still?.startsWith("h-") ? [video.covers[s]!.frameMs! / 1000] : []));
+          out.push(...(await framesFromVideo(takeSrc, takeSec, keep.length ? 4 + keep.length : 4, keep)));
         } catch (e) {
           console.warn("[covers] couldn't read frames", e);
         }
@@ -218,7 +282,7 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
         const next = { long: out.long.slice(0, 6), short: out.short.slice(0, 6) };
         setLines(next);
         if (out.points?.length) setAiPoints(out.points.slice(0, 3));
-        setOptions((prev) => retextAll(prev, next));
+        setOptions((prev) => retextAll(prev, next, !!instruction));
         if (instruction) setNote("New words on every option.");
       } catch (e) {
         if (isAbort(e)) return;
@@ -257,6 +321,7 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
             const t = templateOf(s, o.template) ?? TEMPLATES[s][0];
             const c = await renderCover(t, inputFor(o, k), s === "long" ? 0.5 : 0.4);
             drawn.current.set(key, c.toDataURL("image/jpeg", 0.82));
+            releaseCanvas(c);
             // Typing redraws an option per keystroke; keep only the recent ones.
             if (drawn.current.size > 120) drawn.current.delete(drawn.current.keys().next().value!);
           }
@@ -275,7 +340,7 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
   const sel = Math.min(picks[shape], current.length - 1);
   const selected = current[sel];
   const editSelected = (patch: { stillId?: string; template?: string; palette?: string; text?: Partial<CoverText> }) =>
-    setOptions((prev) => ({ ...prev, [shape]: prev[shape].map((o, k) => (k === sel ? { ...o, ...patch, text: { ...o.text, ...patch.text } } : o)) }));
+    setOptions((prev) => ({ ...prev, [shape]: prev[shape].map((o, k) => (k === sel ? { ...o, ...patch, text: { ...o.text, ...patch.text }, own: o.own || !!patch.text } : o)) }));
 
   // ── more, shuffle, filter ──
   const seed = () => Math.floor(Math.random() * 1e9);
@@ -311,7 +376,9 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
         const k = Math.min(picks[s], options[s].length - 1);
         const o = options[s][k];
         const t = templateOf(s, o.template) ?? TEMPLATES[s][0];
-        const blob = await toJpeg(await renderCover(t, inputFor(o, k)), 0.9);
+        const full = await renderCover(t, inputFor(o, k));
+        const blob = await toJpeg(full, 0.9);
+        releaseCanvas(full);
         const up = await uploadImage(blob, "thumbnail", `${s}-cover`);
         const still = stillFor(o, k)!;
         covers[s] = {
@@ -319,6 +386,10 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
           url: up.url,
           headline: o.text.headline,
           template: t.id,
+          palette: o.palette,
+          accent: o.text.accent,
+          kicker: o.text.kicker,
+          still: still.id,
           frameMs: still.source === "frame" && still.time !== undefined ? Math.round(still.time * 1000) : undefined,
           createdAt: new Date().toISOString(),
         };
@@ -361,7 +432,16 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
 
   return (
     <div className="space-y-6">
-      <p className="text-center text-[14px] text-muted-foreground">Real frames from your take, words by {busy ? "Claude (writing…)" : "Claude"}. Pick one of each shape.</p>
+      <p className="text-center text-[14px] text-muted-foreground">
+        {!stills ? (
+          <>
+            <LoaderCircle className="mr-1.5 inline size-3.5 animate-spin align-[-2px]" />
+            Finding your best frames…
+          </>
+        ) : (
+          <>Real frames from your take, words by {busy ? "Claude (writing…)" : "Claude"}. Pick one of each shape.</>
+        )}
+      </p>
 
       <div className="flex justify-center">
         <div className="inline-flex rounded-full border border-border bg-card p-1">
@@ -400,7 +480,7 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
               <div className={cn("relative overflow-hidden rounded-xl bg-muted", vertical ? "aspect-[9/16]" : "aspect-video")}>
                 {src ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={src} alt={o.text.headline} className="absolute inset-0 h-full w-full object-cover" />
+                  <img src={src} alt={o.text.headline} className="absolute inset-0 h-full w-full animate-in object-cover duration-300 fade-in" />
                 ) : (
                   <Skeleton className="absolute inset-0 rounded-none" />
                 )}
@@ -426,7 +506,6 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
         </Button>
         <span className="tnum text-[12px] text-muted-foreground">{W}×{H}</span>
       </div>
-      {!stills && <p className="text-center text-[12px] text-muted-foreground"><LoaderCircle className="mr-1 inline size-3.5 animate-spin" /> Finding your best frames…</p>}
 
       {selected && stills && stills.length > 0 && (
         <div className="grid gap-5 rounded-2xl border border-border bg-card p-5 md:grid-cols-[1fr_1.1fr]">
@@ -457,13 +536,14 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
           <div className="space-y-3">
             <div className="eyebrow">Words</div>
             <Input value={selected.text.headline} onChange={(e) => editSelected({ text: { headline: e.target.value } })} className="font-semibold" aria-label="Headline" />
+            {selected.text.headline.trim().split(/\s+/).length > 8 && <p className="-mt-1 text-[12px] text-muted-foreground">Long headlines print small. Two to six words read best on a phone.</p>}
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="mr-1 text-[12px] text-muted-foreground">Highlight</span>
               {selected.text.headline.split(/\s+/).filter(Boolean).map((w, i) => (
                 <button
                   key={i}
                   onClick={() => editSelected({ text: { accent: w } })}
-                  className={cn("cursor-pointer rounded-full border px-2.5 py-0.5 text-[12px]", selected.text.accent.toLowerCase() === w.toLowerCase() ? "border-primary bg-brass-soft text-foreground" : "border-border text-muted-foreground hover:text-foreground")}
+                  className={cn("cursor-pointer rounded-full border px-2.5 py-0.5 text-[12px]", selected.text.accent.split(/\s+/).map(bare).includes(bare(w)) ? "border-primary bg-brass-soft text-foreground" : "border-border text-muted-foreground hover:text-foreground")}
                 >
                   {w}
                 </button>
@@ -544,6 +624,7 @@ function StillImg({ still }: { still: Still }) {
     s.height = 160;
     s.getContext("2d")!.drawImage(still.canvas, 0, 0, s.width, s.height);
     setSrc(s.toDataURL("image/jpeg", 0.8));
+    s.width = s.height = 0;
   }, [still]);
   // eslint-disable-next-line @next/next/no-img-element
   return src ? <img src={src} alt="" className="h-full w-full object-cover" /> : null;

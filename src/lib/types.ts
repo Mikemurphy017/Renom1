@@ -105,6 +105,13 @@ export interface CoverImage {
   url: string;
   headline: string;
   template: string;
+  /** Palette id ("brand" = the advisor's own color). Older covers don't have one: the layout's default. */
+  palette?: string;
+  /** The highlighted word(s) and the small label above the headline, so the editor reopens as saved. */
+  accent?: string;
+  kicker?: string;
+  /** Which photo: a frame id ("f123") or a headshot ("h-<id>"). */
+  still?: string;
   /** When the photo is a frame of the take: where it is, so networks that pick a frame can match. */
   frameMs?: number;
   createdAt: string;

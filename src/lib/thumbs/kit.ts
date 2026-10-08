@@ -170,7 +170,7 @@ export function loadFonts(): Promise<Fonts> {
         document.fonts.load(`600 100px ${serif}`),
         document.fonts.load(`italic 600 100px ${serif}`),
       ]);
-      return {
+      const f: Fonts = {
         sans,
         serif,
         anton: `"Cover Anton", Impact, ${sans}`,
@@ -178,18 +178,83 @@ export function loadFonts(): Promise<Fonts> {
         mont: `"Cover Montserrat", ${sans}`,
         playfair: `"Cover Playfair", ${serif}`,
       };
+      // Draw each face once: WebKit can paint the fallback on a canvas's first use of a just-loaded font.
+      const warm = document.createElement("canvas");
+      warm.width = warm.height = 4;
+      const w = warm.getContext("2d");
+      if (w)
+        for (const font of [`900 4px ${sans}`, `700 4px ${sans}`, `600 4px ${serif}`, `italic 600 4px ${serif}`, `4px ${f.anton}`, `4px ${f.bebas}`, `900 4px ${f.mont}`, `italic 900 4px ${f.mont}`, `700 4px ${f.playfair}`, `italic 900 4px ${f.playfair}`]) {
+          w.font = font;
+          w.fillText("Ag", 0, 4);
+        }
+      release(warm);
+      return f;
     })();
   }
   return fontsReady;
 }
 
+// ── canvas helpers (work the same in Safari 15+, Firefox and Chrome) ─────────────
+
+/** A rounded rectangle on a path or context. (`roundRect` itself is Safari 16+ only.) */
+export function rrect(p: CanvasRenderingContext2D | Path2D, x: number, y: number, w: number, h: number, r: number) {
+  const q = Math.max(0, Math.min(r, w / 2, h / 2));
+  p.moveTo(x + q, y);
+  p.arcTo(x + w, y, x + w, y + h, q);
+  p.arcTo(x + w, y + h, x, y + h, q);
+  p.arcTo(x, y + h, x, y, q);
+  p.arcTo(x, y, x + w, y, q);
+  p.closePath();
+}
+
+/** Fill a rounded rectangle. */
+export function fillRound(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  rrect(ctx, x, y, w, h, r);
+  ctx.fill();
+}
+
+/** Free a scratch canvas's memory now rather than at the next GC (iOS caps total canvas memory). */
+export function release(c: HTMLCanvasElement) {
+  c.width = 0;
+  c.height = 0;
+}
+
+function scratch(w: number, h: number) {
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(w));
+  c.height = Math.max(1, Math.round(h));
+  return c;
+}
+
+/** How much the context is scaled (previews draw the full-size layout at a fraction). */
+function scaleOf(ctx: CanvasRenderingContext2D) {
+  try {
+    const m = ctx.getTransform();
+    return Math.hypot(m.a, m.b) || 1;
+  } catch {
+    return 1;
+  }
+}
+
 // ── photo ─────────────────────────────────────────────────────────────────────
 
+export interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface PhotoOpts {
-  /** Where the face lands in the box, 0–1. */
+  /** Where the face's centre should land in the box, 0–1. */
   bias?: { x: number; y: number };
-  /** How far we may zoom in so the face can sit off-centre (1 = never). */
+  /** How far we may zoom in so the face can sit at `bias` (1 = never). */
   zoom?: number;
+  /** Face height we'd like, as a share of the box height (we zoom in on faces far from the camera). */
+  face?: number;
+  /** Insets (px) the head must stay inside: covered by words, a scrim or a clip. */
+  safe?: { top?: number; right?: number; bottom?: number; left?: number };
   /** Clip to this shape instead of the box. */
   clip?: Path2D;
   /** Two-color tint (shadows → highlights), or black and white. */
@@ -200,24 +265,130 @@ export interface PhotoOpts {
   blur?: number;
 }
 
-/** Cover-fit the still into a box, keeping its focus point (the face) in frame. */
-export function photo(ctx: CanvasRenderingContext2D, s: Still, x: number, y: number, w: number, h: number, o: PhotoOpts = {}) {
+/** Where a photo landed: the face and the whole head (hair to chin), in canvas pixels. */
+export interface Shot {
+  face: Box;
+  head: Box;
+}
+
+/**
+ * The face in a still, as a box (centre x/y, width, height; 0–1 of the frame).
+ * Without a detected box we assume a speaker's usual size around the focus point.
+ */
+export function faceOf(s: Still): Box {
+  if (s.face) return s.face;
   const c = s.canvas;
+  const m = Math.min(c.width, c.height);
+  return { x: s.focus.x, y: s.focus.y, w: (0.22 * m) / c.width, h: (0.28 * m) / c.height };
+}
+
+interface Crop extends Shot {
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+}
+
+/**
+ * Cover-fit a still into a w×h box: the face lands near `bias`, at a sensible
+ * size, and the whole head stays inside the safe area whenever the frame
+ * allows (else at least the face, from brow to chin). Positions are relative to the box.
+ */
+export function crop(s: Still, w: number, h: number, o: PhotoOpts = {}): Crop {
+  const cw = s.canvas.width;
+  const ch = s.canvas.height;
+  const F = faceOf(s);
+  const fx = F.x * cw;
+  const fy = F.y * ch;
+  const fw = F.w * cw;
+  const fh = F.h * ch;
+  // A detector's box runs brow to chin; hair and ears sit outside it.
+  const head = { x0: fx - fw * 0.7, x1: fx + fw * 0.7, y0: fy - fh * 0.9, y1: fy + fh * 0.62 };
+  const core = { x0: fx - fw * 0.42, x1: fx + fw * 0.42, y0: fy - fh * 0.42, y1: fy + fh * 0.5 };
   const bias = o.bias ?? { x: 0.5, y: 0.42 };
-  const k0 = Math.max(w / c.width, h / c.height);
-  // Zoom in just enough that the face can reach `bias` without running out of picture.
+  const safe = { l: o.safe?.left ?? 0, r: w - (o.safe?.right ?? 0), t: o.safe?.top ?? 0, b: h - (o.safe?.bottom ?? 0) };
+  const k0 = Math.max(w / cw, h / ch);
+  // Never blow source pixels up more than ~2.4×, or zoom in so far the face fills the box.
+  const zCap = Math.max(1, Math.min(2.6, 2.4 / k0, (0.6 * h) / (fh * k0)));
   const need = (f: number, b: number, size: number, full: number) => {
     const room = Math.min(b > 0 ? (f * full) / b : Infinity, b < 1 ? ((1 - f) * full) / (1 - b) : Infinity);
     return room >= size ? 1 : size / Math.max(1, room);
   };
-  const z = Math.min(o.zoom ?? 1.3, Math.max(1, need(s.focus.x, bias.x, w / k0, c.width), need(s.focus.y, bias.y, h / k0, c.height)));
-  const k = k0 * z;
-  const sw = w / k;
-  const sh = h / k;
-  const sx = Math.min(c.width - sw, Math.max(0, s.focus.x * c.width - sw * bias.x));
-  const sy = Math.min(c.height - sh, Math.max(0, s.focus.y * c.height - sh * bias.y));
+  // Zoom to move the face sideways only: a face high in the frame is better left high than blown up
+  // (the safe area still pulls it in when it must).
+  const zBias = Math.min(o.zoom ?? 1.3, need(F.x, bias.x, w / k0, cw));
+  const zSize = Math.min(2.2, ((o.face ?? 0.34) * h) / (fh * k0));
+  const zPref = Math.max(1, Math.min(zCap, Math.max(zBias, zSize)));
 
-  const plain = !o.tone && !o.fadeTop && !o.blur;
+  const place = (z: number) => {
+    const k = k0 * z;
+    const sw = w / k;
+    const sh = h / k;
+    let sx = Math.min(cw - sw, Math.max(0, fx - sw * bias.x));
+    let sy = Math.min(ch - sh, Math.max(0, fy - sh * bias.y));
+    // Slide the window so the region sits inside the safe area, if any slide does.
+    const into = (v: number, lo: number, hi: number, a0: number, a1: number, s0: number, s1: number) => {
+      const a = Math.max(lo, a1 - s1 / k);
+      const b = Math.min(hi, a0 - s0 / k);
+      return a <= b + 0.5 ? Math.min(b, Math.max(a, v)) : null;
+    };
+    let level = 0;
+    for (const [n, r] of [[2, head], [1, core]] as const) {
+      const x = into(sx, 0, cw - sw, r.x0, r.x1, safe.l, safe.r);
+      const y = into(sy, 0, ch - sh, r.y0, r.y1, safe.t, safe.b);
+      if (x !== null && y !== null) {
+        sx = x;
+        sy = y;
+        level = n;
+        break;
+      }
+      // Close-ups: keep the eyes and mouth in, let the hair go.
+      if (n === 1 && x !== null) sx = x;
+      if (n === 1 && y !== null) sy = y;
+    }
+    return { z, k, sx, sy, sw, sh, level };
+  };
+  // Best fit nearest the zoom we'd like; zoom further in only when that's what keeps the face clear.
+  let best = place(zPref);
+  for (let z = 1; z <= zCap + 1e-6; z += 0.05) {
+    const p = place(z);
+    if (p.level > best.level || (p.level === best.level && Math.abs(z - zPref) < Math.abs(best.z - zPref))) best = p;
+  }
+  const { k, sx, sy, sw, sh } = best;
+  const box = (x0: number, y0: number, x1: number, y1: number): Box => ({ x: (x0 - sx) * k, y: (y0 - sy) * k, w: (x1 - x0) * k, h: (y1 - y0) * k });
+  return { sx, sy, sw, sh, face: box(fx - fw / 2, fy - fh / 2, fx + fw / 2, fy + fh / 2), head: box(head.x0, head.y0, head.x1, head.y1) };
+}
+
+const shift = (b: Box, x: number, y: number): Box => ({ x: b.x + x, y: b.y + y, w: b.w, h: b.h });
+
+/** Cover-fit the still into a box (see `crop`) and return where the face landed. */
+export function photo(ctx: CanvasRenderingContext2D, s: Still, x: number, y: number, w: number, h: number, o: PhotoOpts = {}): Shot {
+  const p = crop(s, w, h, o);
+  // Work on a copy at the box's on-screen size: pixel work is the same in every
+  // browser (older Safari has no ctx.filter), and it’s cheap for previews.
+  const sc = scaleOf(ctx);
+  const off = scratch(w * sc, h * sc);
+  const octx = off.getContext("2d", { willReadFrequently: true })!;
+  octx.imageSmoothingQuality = "high";
+  octx.drawImage(s.canvas, p.sx, p.sy, p.sw, p.sh, 0, 0, off.width, off.height);
+  if (o.blur) {
+    // Shrink and grow back: a cheap blur that works everywhere.
+    const d = Math.max(2, Math.round((o.blur * sc) / 4));
+    const tiny = scratch(off.width / d, off.height / d);
+    const t = tiny.getContext("2d")!;
+    t.imageSmoothingQuality = "high";
+    t.drawImage(off, 0, 0, tiny.width, tiny.height);
+    octx.clearRect(0, 0, off.width, off.height);
+    octx.drawImage(tiny, 0, 0, off.width, off.height);
+    release(tiny);
+  }
+  grade(octx, off.width, off.height, o.tone ?? (o.blur ? null : "grade"));
+  if (o.fadeTop) {
+    octx.globalCompositeOperation = "destination-in";
+    octx.fillStyle = linear(octx, 0, 0, 0, o.fadeTop * sc, [[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,1)"]]);
+    octx.fillRect(0, 0, off.width, off.height);
+    octx.globalCompositeOperation = "source-over";
+  }
   ctx.save();
   if (o.clip) ctx.clip(o.clip);
   else {
@@ -225,73 +396,103 @@ export function photo(ctx: CanvasRenderingContext2D, s: Still, x: number, y: num
     ctx.rect(x, y, w, h);
     ctx.clip();
   }
-  if (plain) {
-    ctx.filter = "contrast(1.08) saturate(1.06) brightness(1.03)";
-    ctx.drawImage(c, sx, sy, sw, sh, x, y, w, h);
-  } else {
-    // Work on a copy at the box's size (pixel work is the same in every browser, unlike ctx.filter).
-    const bw = Math.max(1, Math.round(w));
-    const bh = Math.max(1, Math.round(h));
-    let off = document.createElement("canvas");
-    off.width = bw;
-    off.height = bh;
-    let octx = off.getContext("2d", { willReadFrequently: !!o.tone })!;
-    octx.drawImage(c, sx, sy, sw, sh, 0, 0, bw, bh);
-    if (o.blur) {
-      // Shrink and grow back: a cheap blur that works everywhere.
-      const d = Math.max(2, Math.round(o.blur / 4));
-      const tiny = document.createElement("canvas");
-      tiny.width = Math.max(1, Math.round(bw / d));
-      tiny.height = Math.max(1, Math.round(bh / d));
-      const t = tiny.getContext("2d")!;
-      t.imageSmoothingQuality = "high";
-      t.drawImage(off, 0, 0, tiny.width, tiny.height);
-      octx.imageSmoothingQuality = "high";
-      octx.clearRect(0, 0, bw, bh);
-      octx.drawImage(tiny, 0, 0, bw, bh);
-    }
-    if (o.tone) tone(octx, bw, bh, o.tone);
-    if (o.fadeTop) {
-      const m = document.createElement("canvas");
-      m.width = bw;
-      m.height = bh;
-      const mctx = m.getContext("2d")!;
-      mctx.drawImage(off, 0, 0);
-      mctx.globalCompositeOperation = "destination-in";
-      mctx.fillStyle = linear(mctx, 0, 0, 0, o.fadeTop, [[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,1)"]]);
-      mctx.fillRect(0, 0, bw, bh);
-      off = m;
-      octx = mctx;
-    }
-    ctx.drawImage(off, x, y, w, h);
-  }
+  ctx.drawImage(off, x, y, w, h);
   ctx.restore();
+  release(off);
+  return { face: shift(p.face, x, y), head: shift(p.head, x, y) };
 }
 
-function tone(ctx: CanvasRenderingContext2D, w: number, h: number, t: NonNullable<PhotoOpts["tone"]>) {
-  const img = ctx.getImageData(0, 0, w, h);
+/** A gentle lift (a touch more contrast, color and light), a two-color tint, or black and white. */
+function grade(ctx: CanvasRenderingContext2D, w: number, h: number, t: PhotoOpts["tone"] | "grade" | null) {
+  if (!t) return;
+  let img: ImageData;
+  try {
+    img = ctx.getImageData(0, 0, w, h);
+  } catch {
+    return; // a cross-origin photo without CORS: leave it as it is
+  }
   const d = img.data;
-  const [a, b] = t === "mono" ? [[18, 18, 18], [246, 244, 238]] : [rgb(t.dark), rgb(t.light)];
-  for (let i = 0; i < d.length; i += 4) {
-    let l = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
-    l = Math.min(1, Math.max(0, (l - 0.5) * 1.18 + 0.52));
-    d[i] = a[0] + (b[0] - a[0]) * l;
-    d[i + 1] = a[1] + (b[1] - a[1]) * l;
-    d[i + 2] = a[2] + (b[2] - a[2]) * l;
+  if (t === "grade") {
+    for (let i = 0; i < d.length; i += 4) {
+      const l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      for (let c = 0; c < 3; c++) {
+        const v = l + (d[i + c] - l) * 1.06; // saturation
+        d[i + c] = ((v - 128) * 1.08 + 128) * 1.03; // contrast, brightness (Uint8Clamped clamps)
+      }
+    }
+  } else {
+    const [a, b] = t === "mono" ? [[18, 18, 18], [246, 244, 238]] : [rgb(t.dark), rgb(t.light)];
+    for (let i = 0; i < d.length; i += 4) {
+      let l = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
+      l = Math.min(1, Math.max(0, (l - 0.5) * 1.18 + 0.52));
+      d[i] = a[0] + (b[0] - a[0]) * l;
+      d[i + 1] = a[1] + (b[1] - a[1]) * l;
+      d[i + 2] = a[2] + (b[2] - a[2]) * l;
+    }
   }
   ctx.putImageData(img, 0, 0);
 }
 
 /**
+ * For layouts with words down one side over a full-bleed photo: which side the
+ * face should go so the words stay clear of it. `prefer` wins unless the frame
+ * leaves clearly more room the other way (a speaker sitting far to one side).
+ */
+export function faceSide(s: Still, w: number, h: number, o: PhotoOpts & { bias: { x: number; y: number } }, prefer: "left" | "right" = "right"): "left" | "right" {
+  const bx = Math.max(o.bias.x, 1 - o.bias.x);
+  const r = crop(s, w, h, { ...o, bias: { x: bx, y: o.bias.y } });
+  const l = crop(s, w, h, { ...o, bias: { x: 1 - bx, y: o.bias.y } });
+  const roomR = r.head.x / w;
+  const roomL = (w - (l.head.x + l.head.w)) / w;
+  if (prefer === "right") return roomL > roomR + 0.06 ? "left" : "right";
+  return roomR > roomL + 0.06 ? "right" : "left";
+}
+
+/** Tall covers: the sharp frame sits from `top` down over a soft, darkened copy (see `bleed`). */
+const BLEED: PhotoOpts = { bias: { x: 0.5, y: 0.36 }, zoom: 1.3, face: 0.25, safe: { top: 40, left: 24, right: 24 } };
+/** The face's centre may sit no lower than this share of a tall cover (below it, the app's buttons). */
+const BLEED_LOW = 0.68;
+
+/**
+ * Where the sharp photo of a `bleed` can start: from `top` down to well past the
+ * middle. Starting lower slides the face down and, for a landscape take, shows
+ * it smaller, both of which make room for words above it.
+ */
+function bleedStarts(s: Still, W: number, H: number, top: number, o: PhotoOpts) {
+  const out: { y: number; headTop: number }[] = [];
+  for (let y = top; y <= Math.max(top, H * 0.62); y += 12) {
+    const p = crop(s, W, H - y, o);
+    if (y > top && y + p.face.y + p.face.h / 2 > H * BLEED_LOW) break;
+    out.push({ y, headTop: y + p.head.y });
+  }
+  return out;
+}
+
+/**
+ * Lowest y the words above a `bleed` photo can reach and still leave the head clear.
+ */
+export function headroom(s: Still, W: number, H: number, top: number, o: PhotoOpts = {}) {
+  return Math.max(...bleedStarts(s, W, H, top, { ...BLEED, ...o }).map((b) => b.headTop));
+}
+
+/**
  * Tall covers: a soft, darkened copy of the frame fills the canvas and the sharp
  * frame sits from `top` down, so the face lands below the words whatever shape
- * the take was recorded in.
+ * the take was recorded in. With `clear`, the photo starts lower (within
+ * reason) until the head is below that line.
  */
-export function bleed(ctx: CanvasRenderingContext2D, s: Still, W: number, H: number, top: number, o: PhotoOpts = {}) {
-  photo(ctx, s, -40, -40, W + 80, H + 80, { bias: { x: 0.5, y: 0.3 }, blur: 48, tone: o.tone });
+export function bleed(ctx: CanvasRenderingContext2D, s: Still, W: number, H: number, top: number, o: PhotoOpts & { clear?: number } = {}): Shot {
+  const { clear, ...rest } = o;
+  photo(ctx, s, -40, -40, W + 80, H + 80, { bias: { x: 0.5, y: 0.3 }, blur: 48, tone: rest.tone });
   ctx.fillStyle = "rgba(0,0,0,.35)";
   ctx.fillRect(0, 0, W, H);
-  photo(ctx, s, 0, top, W, H - top, { bias: { x: 0.5, y: 0.36 }, zoom: 1.7, fadeTop: Math.min(320, top), ...o });
+  const opts: PhotoOpts = { ...BLEED, ...rest };
+  let y = top;
+  if (clear !== undefined) {
+    const starts = bleedStarts(s, W, H, top, opts);
+    y = (starts.find((b) => b.headTop >= clear) ?? starts.reduce((a, b) => (b.headTop > a.headTop ? b : a))).y;
+  }
+  return photo(ctx, s, 0, y, W, H - y, { ...opts, fadeTop: Math.min(320, y) });
 }
 
 export function linear(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, stops: [number, string][]) {
@@ -309,7 +510,7 @@ export function poly(points: [number, number][]) {
 
 export function rounded(x: number, y: number, w: number, h: number, r: number) {
   const p = new Path2D();
-  p.roundRect(x, y, w, h, r);
+  rrect(p, x, y, w, h, r);
   return p;
 }
 
@@ -470,9 +671,7 @@ export function drawLines(ctx: CanvasRenderingContext2D, fitted: Fitted, st: Tex
         const px = size * 0.14;
         const py = size * 0.12;
         ctx.fillStyle = o.accent;
-        ctx.beginPath();
-        ctx.roundRect(x - px, base - capH - py, widths[k] + px * 2, capH + py * 2, size * 0.06);
-        ctx.fill();
+        fillRound(ctx, x - px, base - capH - py, widths[k] + px * 2, capH + py * 2, size * 0.06);
       } else if (hit && o.accentMode === "marker") {
         ctx.fillStyle = rgba(o.accent, 0.85);
         ctx.fillRect(x - size * 0.06, base - capH * 0.42, widths[k] + size * 0.12, capH * 0.52);
@@ -514,6 +713,34 @@ export function headline(ctx: CanvasRenderingContext2D, text: string, st: TextSt
   return { ...drawLines(ctx, fitted, st, o), size: fitted.size };
 }
 
+/**
+ * Wide letter-spacing is drawn letter by letter: canvas `letterSpacing` only
+ * arrived in Safari 18.4 (and adds a trailing gap where it exists), so this
+ * keeps small capitals looking the same everywhere.
+ */
+const MANUAL_TRACKING = 0.04;
+
+function trackedWidth(ctx: CanvasRenderingContext2D, t: string, px: number) {
+  if (!px) return ctx.measureText(t).width;
+  const chars = Array.from(t);
+  return chars.reduce((a, c) => a + ctx.measureText(c).width, 0) + px * (chars.length - 1);
+}
+
+function fillTracked(ctx: CanvasRenderingContext2D, t: string, x: number, y: number, px: number, align: CanvasTextAlign) {
+  if (!px) {
+    ctx.textAlign = align;
+    ctx.fillText(t, x, y);
+    return;
+  }
+  const w = trackedWidth(ctx, t, px);
+  let cx = align === "center" ? x - w / 2 : align === "right" || align === "end" ? x - w : x;
+  ctx.textAlign = "left";
+  for (const c of Array.from(t)) {
+    ctx.fillText(c, cx, y);
+    cx += ctx.measureText(c).width + px;
+  }
+}
+
 /** One line of small type; shrinks (then trims) to fit `maxW`. Returns its width. */
 export function label(
   ctx: CanvasRenderingContext2D,
@@ -522,59 +749,58 @@ export function label(
   y: number,
   o: { size: number; font: (s: number) => string; color: string; align?: CanvasTextAlign; tracking?: number; upper?: boolean; maxW?: number; baseline?: CanvasTextBaseline; shadow?: boolean }
 ) {
-  let t = o.upper ? text.toUpperCase() : text;
-  if (!t.trim()) return 0;
+  let t = (o.upper ? text.toUpperCase() : text).trim();
+  if (!t) return 0;
   ctx.save();
+  const manual = Math.abs(o.tracking ?? 0) >= MANUAL_TRACKING;
   let size = o.size;
+  const px = () => (manual ? (o.tracking ?? 0) * size : 0);
   const set = () => {
     ctx.font = o.font(size);
-    setTracking(ctx, (o.tracking ?? 0) * size);
+    setTracking(ctx, manual ? 0 : (o.tracking ?? 0) * size);
   };
+  const width = () => trackedWidth(ctx, t, px());
   set();
   if (o.maxW) {
-    while (ctx.measureText(t).width > o.maxW && size > o.size * 0.7) {
+    while (width() > o.maxW && size > o.size * 0.7) {
       size -= 1;
       set();
     }
-    while (ctx.measureText(t).width > o.maxW && t.length > 2) t = t.slice(0, -2).trimEnd() + "…";
+    while (width() > o.maxW && t.length > 2) t = t.slice(0, -2).trimEnd() + "…";
   }
   ctx.fillStyle = o.color;
-  ctx.textAlign = o.align ?? "left";
   ctx.textBaseline = o.baseline ?? "alphabetic";
   if (o.shadow) {
     ctx.shadowColor = "rgba(0,0,0,.45)";
     ctx.shadowBlur = size * 0.45;
   }
-  ctx.fillText(t, x, y);
-  const w = ctx.measureText(t).width;
+  fillTracked(ctx, t, x, y, px(), o.align ?? "left");
+  const w = width();
   ctx.restore();
   return w;
 }
 
 /** Small tracked capitals above a headline. */
 export function kicker(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, color: string, f: Fonts, align: CanvasTextAlign = "left", maxW?: number) {
-  return label(ctx, text, x, y, { size, font: (s) => `700 ${s}px ${f.sans}`, color, align, tracking: 0.18, upper: true, baseline: "top", maxW });
+  return label(ctx, text, x, y, { size, font: (s) => `700 ${s}px ${f.sans}`, color, align, tracking: 0.16, upper: true, baseline: "top", maxW });
 }
 
 /** Rounded label. Returns its height. */
-export function pill(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, bg: string, fg: string, f: Fonts, align: "left" | "center" = "left") {
+export function pill(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, bg: string, fg: string, f: Fonts, align: "left" | "center" = "left", maxW?: number) {
   if (!text.trim()) return 0;
+  const padX = size * 0.75;
+  const font = (s: number) => `800 ${s}px ${f.sans}`;
   ctx.save();
-  ctx.font = `800 ${size}px ${f.sans}`;
-  setTracking(ctx, size * 0.12);
-  const t = text.toUpperCase();
-  const w = ctx.measureText(t).width;
-  const padX = size * 0.7;
+  ctx.font = font(size);
+  setTracking(ctx, 0);
+  const t = text.trim().toUpperCase();
+  const w = Math.min(trackedWidth(ctx, t, size * 0.12), maxW ? maxW - padX * 2 : Infinity);
   if (align === "center") x -= w / 2 + padX;
-  const h = size * 1.9;
+  const h = Math.round(size * 1.9);
   ctx.fillStyle = bg;
-  ctx.beginPath();
-  ctx.roundRect(x, y, w + padX * 2, h, h / 2);
-  ctx.fill();
-  ctx.fillStyle = fg;
-  ctx.textBaseline = "middle";
-  ctx.fillText(t, x + padX, y + h / 2 + size * 0.04);
+  fillRound(ctx, x, y, w + padX * 2, h, h / 2);
   ctx.restore();
+  label(ctx, t, x + padX, y + h / 2 + size * 0.05, { size, font, color: fg, tracking: 0.12, baseline: "middle", maxW: w + 1 });
   return h;
 }
 
@@ -614,19 +840,24 @@ export function monogram(ctx: CanvasRenderingContext2D, b: string, x: number, y:
 
 /**
  * The figure that carries a "big number" layout: the first number in the
- * headline ("$7,000", "73%", "3"), or the highlighted word if there isn't one.
+ * headline ("$7,000", "73%", "401(k)"), or the highlighted word if there isn't
+ * one, with the words before and after it so the layout can keep reading order.
  */
 export function heroOf(text: CoverText) {
   const words = text.headline.split(/\s+/).filter(Boolean);
-  const clean = (w: string) => w.replace(/^[^\w$€£]+|[^\w%+]+$/g, "");
+  if (!words.length) return { hero: "", before: "", after: "", rest: "", isNumber: false };
+  // Strip outer punctuation, but keep a closing bracket that has its opener ("401(k)").
+  const clean = (w: string) => {
+    const t = w.replace(/^[^\w$€£(]+|[^\w%+)]+$/g, "");
+    return t.endsWith(")") && !t.includes("(") ? t.slice(0, -1) : t;
+  };
   let k = words.findIndex((w) => /\d/.test(w));
   if (k < 0) k = words.findIndex((w) => norm(w) && text.accent.split(/\s+/).map(norm).includes(norm(w)));
   if (k < 0) k = words.reduce((best, w, n) => (w.length > words[best].length ? n : best), 0);
-  if (!words.length) return { hero: "", rest: "", isNumber: false };
   const hero = clean(words[k]) || words[k];
-  // A figure pulled from the end leaves a lead-in ("I'd split it in…"); mark it as one.
-  const rest = words.filter((_, n) => n !== k).join(" ") + (k === words.length - 1 && words.length > 1 ? "…" : "");
-  return { hero, rest, isNumber: /\d/.test(hero) };
+  const before = words.slice(0, k).join(" ");
+  const after = words.slice(k + 1).join(" ");
+  return { hero, before, after, rest: [before, after].filter(Boolean).join(" "), isNumber: /\d/.test(hero) };
 }
 
 /** Trim a talking point to a few words that read at thumbnail size. */
@@ -644,7 +875,7 @@ export function checkbox(ctx: CanvasRenderingContext2D, x: number, y: number, s:
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.roundRect(x, y, s, s, s * 0.2);
+  rrect(ctx, x, y, s, s, s * 0.2);
   if (filled) ctx.fill();
   else ctx.stroke();
   ctx.strokeStyle = tickColor ?? color;

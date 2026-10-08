@@ -12,7 +12,7 @@ import { SHORT } from "./short";
  * several looks and palettes (see long.ts, short.ts and kit.ts).
  */
 
-export { LOOKS, PALETTES, heroOf, loadFonts, paletteOf } from "./kit";
+export { LOOKS, PALETTES, heroOf, loadFonts, paletteOf, release as releaseCanvas } from "./kit";
 export type { CoverInput, CoverLook, CoverTemplate, CoverText, Palette } from "./kit";
 
 export const COVER_SIZE: Record<VideoFormat, [number, number]> = { long: [1280, 720], short: [1080, 1920] };
