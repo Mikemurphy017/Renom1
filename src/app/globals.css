@@ -223,3 +223,61 @@
     opacity: 1 !important;
   }
 }
+
+/* Landing ROI calculator sliders: brass fill up to the thumb (--fill), same look in Chrome, Safari and Firefox. */
+.roi-range {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 32px; /* touch target; the visible track is drawn below */
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+}
+.roi-range:focus { outline: none; }
+.roi-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: linear-gradient(to right, #B08D57 0%, #B08D57 var(--fill, 0%), #E9E0D0 var(--fill, 0%), #E9E0D0 100%);
+}
+.roi-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  margin-top: -9px;
+  border-radius: 9999px;
+  background: #FFFFFF;
+  border: 2px solid #B08D57;
+  box-shadow: 0 1px 3px rgba(20, 33, 58, 0.25);
+  transition: box-shadow 150ms ease, transform 150ms ease;
+}
+.roi-range:active::-webkit-slider-thumb { transform: scale(1.08); }
+.roi-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(176, 141, 87, 0.35), 0 1px 3px rgba(20, 33, 58, 0.25); }
+.roi-range::-moz-range-track {
+  height: 6px;
+  border: 0;
+  border-radius: 9999px;
+  background: #E9E0D0;
+}
+.roi-range::-moz-range-progress {
+  height: 6px;
+  border-radius: 9999px;
+  background: #B08D57;
+}
+.roi-range::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: #FFFFFF;
+  border: 2px solid #B08D57;
+  box-shadow: 0 1px 3px rgba(20, 33, 58, 0.25);
+  transition: box-shadow 150ms ease;
+}
+.roi-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(176, 141, 87, 0.35), 0 1px 3px rgba(20, 33, 58, 0.25); }
+.roi-range::-moz-focus-outer { border: 0; }

@@ -243,20 +243,47 @@ function Field({ label, hint, prefix, suffix, value, onChange, inputMode = "deci
   );
 }
 
+function Slider({ label, value, min, max, step, onChange, format, minLabel, maxLabel }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; format: (v: number) => string; minLabel: string; maxLabel: string }) {
+  const id = React.useId();
+  const fill = ((value - min) / (max - min)) * 100;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <label htmlFor={id} className="text-[13px] font-medium">{label}</label>
+        <span className="rounded-full bg-[#F4ECDF] px-2.5 py-0.5 text-[14px] font-semibold text-[#14213A] tnum">{format(value)}</span>
+      </div>
+      <input
+        id={id}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        aria-valuetext={format(value)}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="roi-range mt-1"
+        style={{ "--fill": `${fill}%` } as React.CSSProperties}
+      />
+      <div className="flex justify-between text-[12px] text-[#6B675E] tnum" aria-hidden>
+        <span>{minLabel}</span>
+        <span>{maxLabel}</span>
+      </div>
+    </div>
+  );
+}
+
 /** Renom ROI calculator: first-year fees from new clients against the yearly plan price. The visitor's numbers, not ours. */
 export function RoiCalculator({ price }: { price: number }) {
   const yearly = price * 12;
   const [kind, setKind] = React.useState<"aum" | "flat">("aum");
-  const [clients, setClients] = React.useState("1");
+  const [clients, setClients] = React.useState(1);
   const [assets, setAssets] = React.useState("750,000");
-  const [fee, setFee] = React.useState("1");
+  const [fee, setFee] = React.useState(1);
   const [flatFee, setFlatFee] = React.useState("5,000");
-  const [plan, setPlan] = React.useState<"renom" | "custom">("renom");
-  const [custom, setCustom] = React.useState("");
 
-  const perClient = kind === "aum" ? (parseNum(assets) * parseNum(fee)) / 100 : parseNum(flatFee);
-  const revenue = parseNum(clients) * perClient;
-  const investment = plan === "renom" ? yearly : parseNum(custom);
+  const perClient = kind === "aum" ? (parseNum(assets) * fee) / 100 : parseNum(flatFee);
+  const revenue = clients * perClient;
+  const investment = yearly;
   const roi = investment > 0 ? revenue / investment : null;
   const cents = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -274,11 +301,11 @@ export function RoiCalculator({ price }: { price: number }) {
       </div>
 
       <div className="mt-5 space-y-4">
-        <Field label="New clients added" hint="An example. Enter your own." inputMode="numeric" value={clients} onChange={(v) => setClients(v.replace(/[^0-9]/g, "").slice(0, 4))} />
+        <Slider label="New clients added" value={clients} min={1} max={25} step={1} onChange={setClients} format={(n) => `${n} ${n === 1 ? "client" : "clients"}`} minLabel="1" maxLabel="25" />
         {kind === "aum" ? (
           <>
             <Field label="Assets per client" prefix="$" value={assets} onChange={(v) => setAssets(grouped(parseNum(v)))} />
-            <Field label="AUM fee" suffix="%" value={fee} onChange={(v) => setFee(v.replace(/[^0-9.]/g, "").slice(0, 5))} />
+            <Slider label="AUM fee" value={fee} min={0.25} max={2} step={0.05} onChange={(n) => setFee(Math.round(n * 100) / 100)} format={(n) => `${n.toFixed(2)}%`} minLabel="0.25%" maxLabel="2.00%" />
           </>
         ) : (
           <Field label="Annual fee per client" prefix="$" value={flatFee} onChange={(v) => setFlatFee(grouped(parseNum(v)))} />
@@ -286,21 +313,10 @@ export function RoiCalculator({ price }: { price: number }) {
       </div>
 
       <div className="mt-5 text-[13px] font-medium">Annual marketing investment</div>
-      <div className="mt-1.5 grid grid-cols-2 gap-3">
-        <Choice on={plan === "renom"} onClick={() => setPlan("renom")}>
-          <span className="font-medium text-[#14213A]">Your {BRAND.name} plan</span>
-          <span className="text-[13px] tnum">{money(yearly)}</span>
-        </Choice>
-        <Choice on={plan === "custom"} onClick={() => setPlan("custom")}>
-          <span className="font-medium text-[#14213A]">Custom</span>
-          <span className="text-[13px]">Enter your amount</span>
-        </Choice>
+      <div className="mt-1.5 flex items-center justify-between rounded-xl border border-[#B08D57] bg-[#F4ECDF] px-4 py-3 ring-1 ring-[#B08D57]">
+        <span className="text-[14px] font-medium">Your {BRAND.name} plan</span>
+        <span className="text-[14px] tnum">{money(yearly)} a year</span>
       </div>
-      {plan === "custom" && (
-        <div className="mt-3">
-          <Field label="Your annual marketing spend" prefix="$" value={custom} onChange={(v) => setCustom(grouped(parseNum(v)))} />
-        </div>
-      )}
 
       <div className="mt-6 rounded-2xl border border-[#B08D57]/30 bg-[#F4ECDF]/60 px-5 py-5 text-center" aria-live="polite">
         <div className="text-[14px] text-[#6B675E]">Your ROI</div>
