@@ -32,12 +32,12 @@ const SUB = ["Cover", "Caption", "Post"] as const;
 type Version = { copies: PlatformCopy[]; taglines: string[]; note: string };
 type Versions = Partial<Record<WriterId | "current", Version>>;
 
-function VersionCard({ label, description, selected, onClick, preview, run }: { label: string; description: string; selected: boolean; onClick: () => void; preview?: string; run?: { status: string; error?: string } }) {
+function VersionCard({ label, description, selected, onClick, preview, run, className }: { label: string; description: string; selected: boolean; onClick: () => void; preview?: string; run?: { status: string; error?: string }; className?: string }) {
   return (
     <button
       onClick={onClick}
       disabled={!preview}
-      className={cn("flex min-h-[132px] flex-col rounded-2xl border bg-card p-3.5 text-left transition-colors sm:p-4", selected ? "border-primary ring-1 ring-primary" : "border-border", preview ? "cursor-pointer hover:border-primary/50" : "cursor-default")}
+      className={cn("flex min-h-[132px] flex-col rounded-2xl border bg-card p-3.5 text-left transition-colors sm:p-4", selected ? "border-primary ring-1 ring-primary" : "border-border", preview ? "cursor-pointer hover:border-primary/50" : "cursor-default", className)}
     >
       <span className="text-[14px] font-medium">{label}</span>
       <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">{description}</span>
@@ -147,6 +147,9 @@ export function PostStep({ video }: StepProps) {
   };
   const missing = platforms.filter((p) => !copies.some((c) => c.platform === p));
 
+  // Copy saved before the writers ran shows as its own card next to theirs.
+  const showCurrent = !!versions.current && !WRITERS.some((w) => versions[w.id]);
+
   // ── Post ──
   const needsApproval = requireApproval && video.compliance !== "approved";
   const router = useRouter();
@@ -159,7 +162,7 @@ export function PostStep({ video }: StepProps) {
   return (
     <div className="mx-auto max-w-[1000px] space-y-8 pb-28">
       <div className="text-center">
-        <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">{["Pick a cover.", "Say it once, everywhere.", requireApproval ? "Approve it, then post it." : "We post it, or you do."][sub]}</h1>
+        <h1 className="font-serif text-[34px] leading-tight tracking-tight text-balance sm:text-[40px]">{["Pick a cover.", "Say it once, everywhere.", requireApproval ? "Approve it, then post it." : "We post it, or you do."][sub]}</h1>
         <div className="mt-5 flex justify-center">
           <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card p-1">
             {SUB.map((s, i) => (
@@ -201,16 +204,16 @@ export function PostStep({ video }: StepProps) {
             })}
           </div>
 
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-            {versions.current && !WRITERS.some((w) => versions[w.id]) && (
-              <VersionCard label="Current" description="The copy saved with this video." selected={writer === "current"} onClick={() => choose("current")} preview={versions.current.copies[0]?.description} />
+          <div className={cn("grid grid-cols-2 gap-2", showCurrent ? "sm:grid-cols-3 lg:grid-cols-5" : "lg:grid-cols-4")}>
+            {showCurrent && (
+              <VersionCard className="col-span-2 sm:col-span-1" label="Current" description="The copy saved with this video." selected={writer === "current"} onClick={() => choose("current")} preview={versions.current?.copies[0]?.description} />
             )}
             {WRITERS.map((w) => (
               <VersionCard key={w.id} label={w.label} description={w.description} selected={writer === w.id} onClick={() => choose(w.id)} preview={(versions[w.id]?.copies.find((c) => c.platform === "linkedin") ?? versions[w.id]?.copies[0])?.description} run={runs[w.id]} />
             ))}
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3">
-            {copies.length > 0 && <RequestLine items={[`${platforms.length} platforms`, "From your script", "Your voice profile", `Disclosure ${activeDisclosure(profile)?.version ?? "not set"} (auto)`]} source={busy ? null : "claude"} />}
+            {copies.length > 0 && <RequestLine items={[`${platforms.length} ${platforms.length === 1 ? "platform" : "platforms"}`, "From your script", "Your voice profile", `Disclosure ${activeDisclosure(profile)?.version ?? "not set"} (auto)`]} source={busy ? null : "claude"} />}
             <Button size="sm" variant="ghost" className="rounded-full" onClick={writeAll} disabled={busy}><RefreshCw className={cn(busy && "animate-spin")} /> Write four new versions</Button>
           </div>
 
@@ -374,7 +377,7 @@ function ApprovalGate({ status, onSubmit, onSaveDraft }: { status: string; onSub
         )}
       </div>
       <div className="mt-5 flex flex-wrap justify-center gap-x-4 gap-y-1 border-t border-border pt-4 text-[13px]">
-        <button onClick={onSaveDraft} className="cursor-pointer text-muted-foreground hover:text-foreground">Save as draft here</button>
+        <button onClick={onSaveDraft} className="cursor-pointer text-muted-foreground hover:text-foreground">Not ready? Save it as a draft</button>
       </div>
     </div>
   );

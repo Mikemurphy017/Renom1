@@ -301,6 +301,8 @@ export function useCapture() {
         audioCtxRef.current?.close().catch(() => {});
         const ctx = new AudioContext();
         audioCtxRef.current = ctx;
+        // Safari starts audio contexts paused unless resumed; the meter would sit at zero.
+        if (ctx.state === "suspended") void ctx.resume().catch(() => {});
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 1024;
         ctx.createMediaStreamSource(s).connect(analyser);

@@ -26,7 +26,8 @@ export default function AnalyzePage() {
         <p className="mt-2 text-[14px] text-muted-foreground">What you’ve put out, and what’s on its way. Views and engagement for each video are coming soon.</p>
       </div>
 
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {/* A new studio skips the row of zeros; the empty state below says it better. */}
+      {posted.length + scheduled.length + withTeam.length > 0 && <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[
           ["Posted", posted.length],
           ["Last 30 days", month],
@@ -38,7 +39,7 @@ export default function AnalyzePage() {
             <div className="mt-1 font-serif text-[34px] leading-tight tnum">{v}</div>
           </div>
         ))}
-      </section>
+      </section>}
 
       <section>
         <h2 className="mb-4 font-serif text-2xl">Posted videos</h2>

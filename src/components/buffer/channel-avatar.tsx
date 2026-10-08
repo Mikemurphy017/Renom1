@@ -7,7 +7,13 @@ export function ChannelAvatar({ channel, className }: { channel: BufferChannel; 
   const platform = platformForService(channel.service, "long");
   return (
     <span className={cn("relative inline-flex size-9 shrink-0", className)}>
-      <img src={channel.avatar} alt="" className="size-full rounded-full border border-border object-cover" referrerPolicy="no-referrer" />
+      {channel.avatar ? (
+        <img src={channel.avatar} alt="" className="size-full rounded-full border border-border object-cover" referrerPolicy="no-referrer" />
+      ) : (
+        <span className="flex size-full items-center justify-center rounded-full border border-border bg-muted font-serif text-[13px] text-muted-foreground" aria-hidden>
+          {channelLabel(channel).charAt(0).toUpperCase()}
+        </span>
+      )}
       {platform && (
         <span className="absolute -right-1 -bottom-1 flex size-4 items-center justify-center rounded-full border border-card bg-card text-foreground" style={{ ["--pi-bg" as string]: "var(--card)" }}>
           <PlatformIcon id={platform} className="size-3" />

@@ -101,7 +101,7 @@ export function RequestLine({ items, source }: { items: string[]; source?: "clau
       ))}
       {source && (
         <span className={cn("ml-1 rounded-full px-2 py-0.5 text-[11px]", source === "claude" ? "bg-brass-soft text-[#7d6238] dark:text-primary" : "bg-muted")}>
-          {source === "claude" ? "Written by Claude" : "Sample writing"}
+          {source === "claude" ? "Written by Claude" : "Examples while writing is off"}
         </span>
       )}
     </div>

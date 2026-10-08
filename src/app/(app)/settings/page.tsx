@@ -108,7 +108,7 @@ export default function SettingsPage() {
               <div>
                 <div className="font-medium">{claude === null ? "Checking the writer…" : claude ? "Claude writes your content" : "Writing is being switched on"}</div>
                 <div className="mt-0.5 text-muted-foreground">
-                  House style: Eugene Schwartz&rsquo;s market awareness, Joseph Sugarman&rsquo;s slippery slide, Oren Klaff&rsquo;s frame control and David Ogilvy&rsquo;s specifics, kept inside FINRA 2210 and SEC Marketing Rule guardrails.
+                  House style: four proven approaches to persuasive writing (a story, an insight, a plain case and a reframe), kept inside FINRA 2210 and SEC Marketing Rule guardrails.
                   {claude === false && <> Included with every studio; your administrator turns it on once for everyone.</>}
                 </div>
               </div>
@@ -203,32 +203,34 @@ export default function SettingsPage() {
             </div>
           </Section>
 
-          <Section id="team" title="Team" desc="Invites are saved here; sign-in for teammates comes with accounts.">
+          <Section id="team" title="Team" desc="The people who help with your videos. Teammate sign-in is on its way; for now their details are saved here.">
             <div className="divide-y divide-border rounded-xl border border-border bg-card">
               <div className="flex items-center gap-3 px-4 py-3">
-                <span className="flex size-8 items-center justify-center rounded-full bg-navy text-[11px] font-semibold text-navy-foreground dark:bg-secondary">{initials(p.name)}</span>
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-navy text-[11px] font-semibold text-navy-foreground dark:bg-secondary">{initials(p.name)}</span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[14px] font-medium">{p.name || "You"}</div>
+                  <div className="truncate text-[14px] font-medium">{p.name || "You"}</div>
                   <div className="text-[12px] text-muted-foreground">Owner</div>
                 </div>
                 <span className="text-[13px] text-muted-foreground">Advisor</span>
               </div>
               {team.map((m) => (
                 <div key={m.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <span className="flex size-8 items-center justify-center rounded-full bg-muted text-[11px] font-semibold">{initials(m.name)}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[14px] font-medium">{m.name}</div>
-                    <div className="flex items-center gap-1 text-[12px] text-muted-foreground"><Mail className="size-3" /> {m.email} · invited</div>
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold">{initials(m.name)}</span>
+                  <div className="min-w-40 flex-1">
+                    <div className="truncate text-[14px] font-medium">{m.name}</div>
+                    <div className="flex min-w-0 items-center gap-1 text-[12px] text-muted-foreground"><Mail className="size-3 shrink-0" /> <span className="truncate">{m.email}</span> <span className="shrink-0">· invited</span></div>
                   </div>
+                  <div className="ml-11 flex items-center gap-3 sm:ml-0">
                   <Select value={m.role} onValueChange={(v) => setTeam(team.map((x) => (x.id === m.id ? { ...x, role: v as typeof m.role } : x)))}>
                     <SelectTrigger size="sm" className="w-44"><SelectValue /></SelectTrigger>
                     <SelectContent>{["Advisor", "Assistant", "Compliance Reviewer"].map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
                   </Select>
                   <button type="button" className="cursor-pointer text-muted-foreground hover:text-foreground" onClick={() => setTeam(team.filter((x) => x.id !== m.id))} aria-label={`Remove ${m.name}`}><X className="size-4" /></button>
+                  </div>
                 </div>
               ))}
               <div className="flex gap-2 px-4 py-3">
-                <Input placeholder="name@firm.com" value={invite} onChange={(e) => setInvite(e.target.value)} className="h-8" />
+                <Input type="email" aria-label="Teammate's email" placeholder="name@firm.com" value={invite} onChange={(e) => setInvite(e.target.value)} className="h-8" />
                 <Button size="sm" variant="outline" onClick={() => {
                   if (!/\S+@\S+\.\S+/.test(invite)) return toast.error("Enter a valid email");
                   setTeam([...team, { id: invite, name: invite.split("@")[0], email: invite, role: "Assistant" }]);

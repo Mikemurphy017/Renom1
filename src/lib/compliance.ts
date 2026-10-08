@@ -42,6 +42,6 @@ export interface ArchiveRow {
 export const COMPLIANCE_STATUS_META: Record<ComplianceStatus, { label: string; variant: "default" | "brass" | "danger" | "success" }> = {
   draft: { label: "Draft", variant: "default" },
   submitted: { label: "Submitted", variant: "brass" },
-  changes_requested: { label: "Changes Requested", variant: "danger" },
+  changes_requested: { label: "Changes requested", variant: "danger" },
   approved: { label: "Approved", variant: "success" },
 };

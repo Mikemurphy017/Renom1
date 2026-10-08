@@ -18,7 +18,8 @@ import { TODAY, relativeTime } from "@/lib/utils";
 import { BRAND } from "@/lib/brand";
 
 function greeting() {
-  const h = TODAY.getHours();
+  // Now, not TODAY (set when the app loaded): a tab left open overnight still greets correctly.
+  const h = new Date().getHours();
   return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
 }
 
@@ -50,7 +51,7 @@ export default function HomePage() {
   return (
     <PageContainer className="max-w-[960px] space-y-14 pt-12 sm:pt-16">
       <section>
-        <div className="eyebrow mb-3">{TODAY.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</div>
+        <div className="eyebrow mb-3">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</div>
         <h1 className="font-serif text-[40px] leading-[1.1] tracking-tight sm:text-[48px]">
           {greeting()}{profile.name ? `, ${profile.name.split(" ")[0]}` : ""}.
         </h1>
@@ -75,7 +76,7 @@ export default function HomePage() {
               <ToggleGroupItem value="short" className="rounded-full"><Smartphone /> Short</ToggleGroupItem>
               <ToggleGroupItem value="long" className="rounded-full"><Monitor /> Long</ToggleGroupItem>
             </ToggleGroup>
-            <div className="flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-2">
               <Button variant="ghost" className="rounded-full text-muted-foreground" onClick={() => start("", format)}>
                 <Sparkles /> Suggest ideas
               </Button>
@@ -130,7 +131,8 @@ export default function HomePage() {
         </section>
       )}
 
-      <section className="grid gap-4 sm:grid-cols-3">
+      {/* A brand-new studio gets the three steps above instead of a row of zeros. */}
+      {videos.length > 0 && <section className="grid gap-4 sm:grid-cols-3">
         {[
           { label: "With your team", value: String(withTeam), sub: withTeam ? "waiting to be scheduled" : "nothing waiting to post", href: "/videos" },
           { label: "Published or scheduled", value: String(published), sub: published ? "videos from this studio" : "your first one is a few steps away", href: "/videos" },
@@ -146,7 +148,7 @@ export default function HomePage() {
             <div className="text-[12px] text-muted-foreground tnum">{s.sub}</div>
           </Link>
         ))}
-      </section>
+      </section>}
 
       {upcoming.length > 0 && (
         <section>

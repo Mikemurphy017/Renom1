@@ -17,6 +17,7 @@ import { COMPLIANCE_STATUS_META, type ArchiveRow } from "@/lib/compliance";
 import { getPlatform } from "@/lib/mock/platforms";
 import type { ComplianceStatus } from "@/lib/types";
 import { cn, fmtDate, fmtDateTime, relativeTime } from "@/lib/utils";
+import { BRAND } from "@/lib/brand";
 
 const ORDER: ComplianceStatus[] = ["submitted", "changes_requested", "draft", "approved"];
 
@@ -56,7 +57,7 @@ export default function CompliancePage() {
     const body = archive.map((r) => [r.id, `"${r.title}"`, getPlatform(r.platform).label, r.publishedAt, `"${r.caption.replace(/"/g, '""')}"`, r.disclosure, r.approver, r.approvedAt].join(","));
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([[head, ...body].join("\n")], { type: "text/csv" }));
-    a.download = "renom-books-and-records.csv";
+    a.download = `${BRAND.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-books-and-records.csv`;
     a.click();
     toast.success("Archive exported", { description: `${archive.length} posts · CSV` });
   };
@@ -68,10 +69,13 @@ export default function CompliancePage() {
         <p className="mt-2 text-[15px] text-muted-foreground">{requireApproval ? "Nothing goes out until it’s reviewed. Everything that goes out is archived." : "Everything that goes out is archived: the exact caption and disclosure, for your records."}</p>
       </div>
       <Tabs defaultValue={showQueue ? "queue" : "archive"}>
-        <TabsList variant="line">
-          {showQueue && <TabsTrigger value="queue">To review</TabsTrigger>}
-          <TabsTrigger value="archive">Archive</TabsTrigger>
-        </TabsList>
+        {/* With approval off there is only the archive: no tabs needed. */}
+        {showQueue && (
+          <TabsList variant="line">
+            <TabsTrigger value="queue">To review</TabsTrigger>
+            <TabsTrigger value="archive">Archive</TabsTrigger>
+          </TabsList>
+        )}
 
         <TabsContent value="queue" className="space-y-5 pt-3">
           <div className="flex flex-wrap gap-2">
@@ -121,13 +125,16 @@ export default function CompliancePage() {
             <CardHeader>
               <div>
                 <div className="eyebrow">Books & records</div>
-                <p className="mt-1 text-[13px] text-muted-foreground"><span className="tnum">{archive.length}</span> posts archived · retained 7 years · immutable</p>
+                <p className="mt-1 text-[13px] text-muted-foreground"><span className="tnum">{archive.length}</span> {archive.length === 1 ? "post" : "posts"} archived · retained 7 years · immutable</p>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={exportCsv}><Download /> Export CSV</Button>
+                <Button variant="outline" size="sm" onClick={exportCsv} disabled={archive.length === 0}><Download /> Export CSV</Button>
               </div>
             </CardHeader>
             <CardContent className="px-0 pb-0">
+              {archive.length === 0 ? (
+                <EmptyState icon={ShieldCheck} title="Nothing archived yet" description="Each time a video goes out, the exact caption and disclosure are saved here for your records." />
+              ) : (
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
@@ -155,6 +162,7 @@ export default function CompliancePage() {
                   ))}
                 </TableBody>
               </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

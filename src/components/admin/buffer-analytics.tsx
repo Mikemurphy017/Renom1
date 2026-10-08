@@ -44,8 +44,10 @@ export function BufferAnalytics() {
   const sent = useSentPosts(days, buffer.connected);
   const status = buffer.status && "channels" in buffer.status ? buffer.status : null;
 
-  const tiles = metrics.data ? HEADLINE.map((t) => pick(metrics.data!.metrics, t)).filter((m): m is BufferMetric => !!m).slice(0, 4) : [];
-  const rest = metrics.data ? metrics.data.metrics.filter((m) => !tiles.includes(m) && m.unit === "count" && m.value > 0) : [];
+  // An unexpected reply from Buffer reads as "no numbers yet", not a crash.
+  const all = Array.isArray(metrics.data?.metrics) ? metrics.data.metrics : [];
+  const tiles = HEADLINE.map((t) => pick(all, t)).filter((m): m is BufferMetric => !!m).slice(0, 4);
+  const rest = all.filter((m) => !tiles.includes(m) && m.unit === "count" && m.value > 0);
   const score = (p: BufferPost) => pick(p.metrics, "views")?.value ?? pick(p.metrics, "impressions")?.value ?? 0;
   const ranked = [...(sent.posts ?? [])].sort((a, b) => score(b) - score(a));
 

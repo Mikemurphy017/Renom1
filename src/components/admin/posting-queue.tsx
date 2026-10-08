@@ -115,9 +115,9 @@ function RequestCard({ r, assigned, defaultOpen, onChanged }: { r: PostRequest; 
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-soft">
-      <button onClick={() => setOpen((o) => !o)} className="flex w-full cursor-pointer items-center gap-4 p-4 text-left hover:bg-muted/40 sm:p-5">
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full cursor-pointer items-center gap-4 p-4 text-left hover:bg-muted/40 sm:p-5">
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] text-muted-foreground">{r.advisorName} · {r.advisorEmail}</div>
+          <div className="truncate text-[12px] text-muted-foreground">{r.advisorName} · {r.advisorEmail}</div>
           <div className="mt-0.5 truncate text-[16px] font-medium">{r.title}</div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
             <span>Sent {relativeTime(r.submittedAt)}</span>

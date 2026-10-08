@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Bookmark, Clapperboard, Clock, Eye, Plus, Search } from "lucide-react";
+import { Bookmark, CircleCheck, Clapperboard, Clock, Eye, Plus, Search, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -28,8 +28,17 @@ const matches: Record<Filter, (v: Video) => boolean> = {
 };
 
 function statusLine(v: Video) {
-  if (v.status === "published") return <span className="inline-flex items-center gap-1 tnum"><Eye className="size-3.5" /> {fmtCompact(videoTotals(v).views)} · {fmtDate(v.publishedAt!)}</span>;
-  if (v.status === "scheduled" && v.scheduledFor) return <span className="inline-flex items-center gap-1 tnum"><Clock className="size-3.5" /> {fmtDateTime(v.scheduledFor)}</span>;
+  if (v.status === "published") {
+    // Views only once there are numbers to show; "0" reads as a flop.
+    const views = v.metrics?.length ? videoTotals(v).views : null;
+    const when = v.publishedAt ? fmtDate(v.publishedAt) : "";
+    return views !== null ? (
+      <span className="inline-flex items-center gap-1 tnum"><Eye className="size-3.5" /> {fmtCompact(views)}{when && ` · ${when}`}</span>
+    ) : (
+      <span className="inline-flex items-center gap-1 tnum"><CircleCheck className="size-3.5" /> Posted{when && ` ${when}`}</span>
+    );
+  }
+  if (v.status === "scheduled" && v.scheduledFor) return <span className="inline-flex items-center gap-1 tnum"><Clock className="size-3.5" /> Scheduled {fmtDateTime(v.scheduledFor)}</span>;
   if (v.teamPost?.status === "returned") return <span className="text-destructive">Sent back by your team</span>;
   if (v.teamPost && ["submitted", "in_buffer"].includes(v.teamPost.status)) return <span className="inline-flex items-center gap-1"><Clock className="size-3.5" /> With your team</span>;
   if (v.status === "draft") return <span className="inline-flex items-center gap-1"><Bookmark className="size-3.5" /> Draft · not posted</span>;
@@ -58,13 +67,15 @@ export default function VideosPage() {
     <PageContainer className="max-w-[1200px] space-y-8 pt-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <h1 className="font-serif text-[40px] leading-tight tracking-tight">Videos</h1>
-        <div className="relative w-full max-w-60">
+        {videos.length > 0 && <div className="relative w-full sm:max-w-60">
           <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" className="h-9 rounded-full pl-9" />
-        </div>
+          <Input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search videos" aria-label="Search videos" className="h-9 rounded-full pl-9" />
+        </div>}
       </div>
 
-      <ToggleGroup type="single" value={filter} onValueChange={(v) => v && setFilter(v as Filter)} className="h-9 flex-wrap rounded-full">
+      {/* Phones: the filters scroll sideways instead of wrapping out of their pill. */}
+      {videos.length > 0 && <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0">
+      <ToggleGroup type="single" value={filter} onValueChange={(v) => v && setFilter(v as Filter)} className="h-9 w-max rounded-full">
         {([
           ["all", "All"],
           ["progress", "In progress"],
@@ -78,14 +89,22 @@ export default function VideosPage() {
           </ToggleGroupItem>
         ))}
       </ToggleGroup>
+      </div>}
 
-      {list.length === 0 ? (
+      {list.length === 0 && videos.length > 0 ? (
+        <EmptyState
+          icon={SearchX}
+          title={q ? "No videos match your search" : "No videos here yet"}
+          description={q ? `Nothing titled “${q}”${filter !== "all" ? " in this list" : ""}.` : "Videos show up here as they reach this stage."}
+          action={<Button variant="outline" className="rounded-full" onClick={() => { setQ(""); setFilter("all"); }}>Show all videos</Button>}
+        />
+      ) : list.length === 0 ? (
         <EmptyState icon={Clapperboard} title="Nothing here yet" description="When you start a video it shows up here." action={<Button className="rounded-full" onClick={openNewVideo}><Plus /> New video</Button>} />
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {list.map((v) => (
             <Link key={v.id} href={`/studio/${v.id}/${v.stage}`} className="group rounded-2xl border border-border bg-card p-3 shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-lg">
-              <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-xl bg-muted/70">
+              <div className="flex aspect-video items-center justify-center overflow-hidden rounded-xl bg-muted/70 sm:aspect-[4/3]">
                 <VideoThumb spec={v.thumbnail} image={v.covers?.[v.format]?.url} format={v.format} size="sm" className={v.format === "short" ? "h-[86%] w-auto" : "w-[90%]"} />
               </div>
               <div className="px-1 pt-3 pb-1">

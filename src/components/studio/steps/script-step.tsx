@@ -110,12 +110,15 @@ export function ScriptStep({ video, complete }: StepProps) {
   const runtime = script ? estimateRuntime(script) : 0;
   const target = format === "short" ? 90 : 600;
   const contextCount = context.trim() ? 1 : 0;
-  const anyDraft = WRITERS.some((w) => drafts[w.id]) || !!drafts.current;
+  const anyWriter = WRITERS.some((w) => drafts[w.id]);
+  const anyDraft = anyWriter || !!drafts.current;
+  // A script saved before the writers ran shows as its own card next to theirs.
+  const showCurrent = !!drafts.current && !anyWriter;
   const failed = (Object.values(runs) as Run[]).find((r) => r?.error);
 
   return (
     <div className="space-y-8 pb-28">
-      <StepIntro title={video.title} subtitle={anyDraft ? "Four writers, four takes on the same idea. Pick the one that sounds like you, then make it yours." : `${BRAND.name} writes four versions in your voice, each with its own approach.`} />
+      <StepIntro title={video.title} subtitle={anyWriter ? "Four writers, four takes on the same idea. Pick the one that sounds like you, then make it yours." : `${BRAND.name} writes four versions in your voice, each with its own approach.`} />
 
       <div className="flex flex-wrap items-center gap-2">
         <ToggleGroup type="single" value={format} onValueChange={(v) => v && setFormat(v as VideoFormat)} className="rounded-full">
@@ -151,9 +154,9 @@ export function ScriptStep({ video, complete }: StepProps) {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-            {drafts.current && !WRITERS.some((w) => drafts[w.id]) && (
-              <VersionCard label="Current" description="The script saved with this video." selected={chosen === "current"} onClick={() => setChosen("current")} script={drafts.current} />
+          <div className={cn("grid grid-cols-2 gap-2", showCurrent ? "sm:grid-cols-3 lg:grid-cols-5" : "lg:grid-cols-4")}>
+            {showCurrent && (
+              <VersionCard className="col-span-2 sm:col-span-1" label="Current" description="The script saved with this video." selected={chosen === "current"} onClick={() => setChosen("current")} script={drafts.current} />
             )}
             {WRITERS.map((w) => (
               <VersionCard key={w.id} label={w.label} description={w.description} selected={chosen === w.id} onClick={() => drafts[w.id] && setChosen(w.id)} script={drafts[w.id]} run={runs[w.id]} />
@@ -200,7 +203,7 @@ export function ScriptStep({ video, complete }: StepProps) {
   );
 }
 
-function VersionCard({ label, description, selected, onClick, script, run }: { label: string; description: string; selected: boolean; onClick: () => void; script?: Script; run?: Run }) {
+function VersionCard({ label, description, selected, onClick, script, run, className }: { label: string; description: string; selected: boolean; onClick: () => void; script?: Script; run?: Run; className?: string }) {
   const ready = !!script && !run;
   return (
     <button
@@ -209,7 +212,8 @@ function VersionCard({ label, description, selected, onClick, script, run }: { l
       className={cn(
         "flex min-h-[112px] flex-col rounded-2xl border p-3.5 text-left transition-colors sm:p-4",
         selected && script ? "border-primary bg-brass-soft/60 shadow-soft" : "border-border bg-card",
-        script ? "cursor-pointer hover:border-primary/50" : "cursor-default"
+        script ? "cursor-pointer hover:border-primary/50" : "cursor-default",
+        className
       )}
     >
       <span className="flex items-center justify-between gap-2">

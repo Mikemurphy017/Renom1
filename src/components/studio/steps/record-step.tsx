@@ -408,7 +408,7 @@ export function RecordStep({ video, complete }: StepProps) {
           title="Recording session"
           action={
             <span className="text-[12px] text-muted-foreground">
-              <span className="tnum">{queuedVideos.length}</span> scripts · total est. <span className="font-medium text-foreground tnum">{fmtDuration(totalRuntime)}</span>
+              <span className="tnum">{queuedVideos.length}</span> {queuedVideos.length === 1 ? "script" : "scripts"} · total est. <span className="font-medium text-foreground tnum">{fmtDuration(totalRuntime)}</span>
             </span>
           }
         >
@@ -416,11 +416,11 @@ export function RecordStep({ video, complete }: StepProps) {
             {queueCandidates.map((v, i) => (
               <li key={v.id} className={cn("flex items-center gap-3 py-2.5", v.id === activeId && "")}>
                 <Checkbox checked={queued.includes(v.id)} onCheckedChange={(c) => setQueued((q) => (c ? [...q, v.id] : q.filter((x) => x !== v.id)))} aria-label={`Queue ${v.title}`} />
-                <span className="w-4 text-[12px] text-muted-foreground tnum">{i + 1}</span>
-                <ListVideo className="size-4 text-muted-foreground" />
+                <span className="hidden w-4 text-[12px] text-muted-foreground tnum sm:inline">{i + 1}</span>
+                <ListVideo className="hidden size-4 shrink-0 text-muted-foreground sm:block" />
                 <span className="min-w-0 flex-1 truncate text-[13px]">{v.title}</span>
-                <span className="text-[12px] text-muted-foreground">{v.format === "short" ? "9:16" : "16:9"}</span>
-                <span className="w-12 text-right text-[12px] tnum">{fmtDuration(v.runtimeSec)}</span>
+                <span className="hidden text-[12px] text-muted-foreground sm:inline">{v.format === "short" ? "9:16" : "16:9"}</span>
+                <span className="w-10 shrink-0 sm:w-12 text-right text-[12px] tnum">{fmtDuration(v.runtimeSec)}</span>
                 {v.id === activeId ? (
                   <span className="inline-flex w-20 items-center justify-end gap-1 text-[12px] font-medium text-primary"><VideoIcon className="size-3.5" /> On deck</span>
                 ) : (
@@ -446,7 +446,6 @@ export function RecordStep({ video, complete }: StepProps) {
               <div className="min-w-0 flex-1 space-y-1 text-[12px] text-muted-foreground">
                 <div className="text-[13px] font-medium text-foreground">Take {takes}</div>
                 <div className="tnum">{lastTake.width}×{lastTake.height} · {fmtDuration(lastTake.durationSec)} · {(lastTake.blob.size / 1_000_000).toFixed(1)} MB</div>
-                <div>{lastTake.mimeType}</div>
                 <div className="flex gap-2 pt-2">
                   <Button size="xs" variant="outline" asChild>
                     <a href={lastTake.url} download={`${active.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-take-${takes}.${takeExtension(lastTake.mimeType)}`}>
