@@ -68,6 +68,18 @@ async function call(method: "GET" | "POST" | "PUT" | "DELETE", path: string, bod
   return j ?? {};
 }
 
+/** What's still missing for advisors to connect accounts (env names), for the admin dashboard. */
+export function socialMissing() {
+  return ["AYRSHARE_API_KEY", "AYRSHARE_DOMAIN", "AYRSHARE_PRIVATE_KEY"].filter((n) => !(n === "AYRSHARE_PRIVATE_KEY" ? privateKey() : env(n)));
+}
+
+/** Checks the studio's Ayrshare key against the account itself. */
+export async function checkAccount() {
+  const j = await call("GET", "user");
+  const who = [j.title, j.email].find((v) => typeof v === "string" && v.trim()) as string | undefined;
+  return who ? `Key works (${who})` : "Key works";
+}
+
 // ── one Ayrshare profile per advisor ──
 
 interface Profile {

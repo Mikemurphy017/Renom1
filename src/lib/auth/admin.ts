@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { claudeConfigured } from "@/lib/ai/claude";
 import { bufferConfigured } from "@/lib/buffer/server";
 import { emailProvider } from "@/lib/email";
+import { socialConfigured, socialMissing } from "@/lib/social/ayrshare";
 import { objects } from "@/lib/storage/objects";
 import { stockFootageEnabled } from "@/lib/video/local/broll";
 import { currentUser, isAdmin, type User } from "./server";
@@ -25,6 +26,7 @@ export function serviceStatus() {
     { id: "buffer", label: "Buffer", ok: bufferConfigured(), detail: bufferConfigured() ? "Connected" : "BUFFER_API_KEY not set" },
     { id: "email", label: "Email (password resets)", ok: !!provider, detail: provider === "resend" ? "Resend" : provider === "smtp" ? "SMTP" : "Not set: resets need a link from here" },
     { id: "asr", label: "Speech recognition", ok: existsSync(asrDir), detail: existsSync(asrDir) ? "Model installed" : "Model missing: captions follow the script" },
+    { id: "ayrshare", label: "Advisors’ own accounts (Ayrshare)", ok: socialConfigured(), detail: socialConfigured() ? "Connected" : `Missing ${socialMissing().join(", ")}` },
     { id: "pexels", label: "Stock b-roll", ok: stockFootageEnabled(), detail: stockFootageEnabled() ? "Pexels" : "Advisor library only" },
   ];
 }
