@@ -82,7 +82,7 @@ export function processBody(req: ProcessRequest, remoteSourceId: string): Record
       ? { style: req.overlays.captions.style, position: req.overlays.captions.position, highlight_color: req.overlays.captions.color }
       : null,
     overlays: {
-      lower_third: req.overlays.lowerThird.enabled ? { name: req.overlays.lowerThird.name, title: req.overlays.lowerThird.credentials, firm: req.overlays.lowerThird.firm } : null,
+      lower_third: req.overlays.lowerThird.enabled ? { name: req.overlays.lowerThird.name, title: req.overlays.lowerThird.credentials, firm: req.overlays.lowerThird.firm, position: "bottom_left" } : null,
       key_phrase_emphasis: req.overlays.keyPhrases,
       end_card: req.overlays.endCard.enabled ? { headline: req.overlays.endCard.headline, cta: req.overlays.endCard.cta } : null,
     },

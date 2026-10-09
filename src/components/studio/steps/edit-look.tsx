@@ -283,7 +283,8 @@ export function PreviewOverlays({
   const c = look.captions;
   const st = getStyle(c.style);
   const keys = React.useMemo(() => new Set(look.keyPhrases ? keyPhrases.flatMap((p) => p.split(/\s+/)).map(clean) : []), [keyPhrases, look.keyPhrases]);
-  const top = c.position === "top" ? "20%" : c.position === "middle" ? (vertical ? "56%" : "50%") : vertical ? "74%" : "85%";
+  // Bottom captions on long form sit above the name & credentials, which always take the bottom-left corner.
+  const top = c.position === "top" ? "20%" : c.position === "middle" ? (vertical ? "56%" : "50%") : vertical ? "74%" : look.lowerThird.enabled ? "76%" : "85%";
 
   return (
     <>
@@ -293,7 +294,7 @@ export function PreviewOverlays({
         </div>
       )}
       {look.lowerThird.enabled && showLowerThird && !showEndCard && (
-        <div className={cn("absolute left-3 flex max-w-[85%] overflow-hidden rounded-md shadow-lg", c.enabled && c.position === "bottom" ? "bottom-[26%]" : "bottom-[7%]")}>
+        <div className="absolute bottom-[6%] left-[5%] flex max-w-[85%] overflow-hidden rounded-md shadow-lg">
           <span className="w-1 shrink-0" style={{ background: c.color }} />
           <div className="bg-[#0B1F3A]/90 px-2.5 py-1.5 text-white">
             <div className="truncate text-[13px] leading-tight font-semibold">

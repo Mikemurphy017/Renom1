@@ -56,7 +56,8 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
   const l: Look = { st, W, H, vertical, base: Math.round((vertical ? 88 : 66) * st.font.size), accent };
   const out = assColor(st.outline.color);
   const capAlign = ov.captions.position === "top" ? 8 : ov.captions.position === "middle" ? 5 : 2;
-  const capMarginV = ov.captions.position === "middle" ? 0 : Math.round(H * (vertical ? (ov.captions.position === "bottom" ? 0.2 : 0.12) : 0.08));
+  // Bottom captions on long form sit above the name & credentials, which always take the bottom-left corner.
+  const capMarginV = ov.captions.position === "middle" ? 0 : Math.round(H * (vertical ? (ov.captions.position === "bottom" ? 0.2 : 0.12) : ov.captions.position === "bottom" && ov.lowerThird.enabled ? 0.19 : 0.08));
 
   const lines: string[] = [
     "[Script Info]",
@@ -74,7 +75,7 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
     `Style: CapBox,${st.font.family},${l.base},&H00FFFFFF,&H00FFFFFF,&H00FFFFFF,&H00FFFFFF,0,0,0,0,100,100,0,0,3,${Math.round(l.base * 0.16)},0,5,80,80,0,1`,
     // Karaoke fills Secondary → Primary as each word is said.
     `Style: Kara,${st.font.family},${l.base},${assColor(accent)},${assColor(st.text)},${out},&H80000000,0,0,0,0,100,100,0,0,1,${st.outline.width},2,5,80,80,0,1`,
-    `Style: LT,Montserrat ExtraBold,${vertical ? 44 : 38},&H00FFFFFF,&H00FFFFFF,${assColor(NAVY)},${assColor(NAVY)},0,0,0,0,100,100,0,0,3,18,0,1,${Math.round(W * 0.06)},80,${Math.round(H * (vertical ? 0.3 : 0.12))},1`,
+    `Style: LT,Montserrat ExtraBold,${vertical ? 44 : 38},&H00FFFFFF,&H00FFFFFF,${assColor(NAVY)},${assColor(NAVY)},0,0,0,0,100,100,0,0,3,18,0,1,${Math.round(W * 0.05)},80,${Math.round(H * 0.06)},1`,
     `Style: Card,Montserrat Black,${vertical ? 76 : 70},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,90,90,0,1`,
     `Style: Big,Anton,${l.base * 2},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,6,0,5,40,40,0,1`,
     `Style: Chip,Montserrat ExtraBold,${Math.round(l.base * 0.55)},${assColor(NAVY)},${assColor(NAVY)},${assColor(accent)},${assColor(accent)},0,0,0,0,100,100,0,0,3,14,0,8,60,60,${Math.round(H * 0.09)},1`,
@@ -157,7 +158,7 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
     }
   }
 
-  // ── name title ──
+  // ── name title: always the bottom-left corner ──
   const lt = ov.lowerThird;
   if (lt.enabled && lt.name.trim() && o.outDur > 3) {
     const who = [lt.name.trim(), lt.credentials.trim()].filter(Boolean).join(", ");
