@@ -123,7 +123,7 @@ export interface PostRecord {
   caption: string;
   disclosureVersion: string;
   at: string;
-  how: "buffer-now" | "buffer-scheduled" | "buffer-queue" | "buffer-draft" | "manual" | "team";
+  how: "buffer-now" | "buffer-scheduled" | "buffer-queue" | "buffer-draft" | "manual" | "team" | "direct";
 }
 
 export interface Platform {

@@ -25,6 +25,7 @@ import { CopyButton } from "./share-kit";
 import { CoverStudio } from "./cover-studio";
 import { ShareKit } from "./share-kit";
 import { TeamPost } from "./team-post";
+import { DirectPost } from "./direct-post";
 import type { StepProps } from "../studio-view";
 
 const SUB = ["Cover", "Caption", "Post"] as const;
@@ -293,8 +294,9 @@ export function PostStep({ video }: StepProps) {
               <div className="space-y-4 border-t border-border pt-8">
                 <div>
                   <h2 className="font-serif text-2xl">Or post it yourself.</h2>
-                  <p className="mt-1 text-[14px] text-muted-foreground">Download the MP4, copy each caption, and upload it to your accounts.</p>
+                  <p className="mt-1 text-[14px] text-muted-foreground">From your connected accounts, now or on a schedule. Or download the MP4, copy each caption, and upload it by hand.</p>
                 </div>
+                <DirectPost video={video} platforms={platforms} copies={copies} />
                 <ShareKit video={video} platforms={platforms} copies={copies} tagline={tagline} />
               </div>
               <div className="flex">

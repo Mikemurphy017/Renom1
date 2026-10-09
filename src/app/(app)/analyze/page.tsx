@@ -60,7 +60,7 @@ export default function AnalyzePage() {
                     <div className="truncate text-[14px] font-medium">{v.title}</div>
                     <div className="mt-0.5 text-[12px] text-muted-foreground">
                       {v.publishedAt ? fmtDateTime(v.publishedAt) : ""}
-                      {v.posts?.some((p) => p.how === "team") ? " · posted by your team" : v.posts?.some((p) => p.how === "manual") ? " · posted by you" : ""}
+                      {v.posts?.some((p) => p.how === "team") ? " · posted by your team" : v.posts?.some((p) => p.how === "manual" || p.how === "direct") ? " · posted by you" : ""}
                     </div>
                   </div>
                   <div className="flex gap-1.5 text-muted-foreground" style={{ ["--pi-bg" as string]: "var(--card)" }}>
