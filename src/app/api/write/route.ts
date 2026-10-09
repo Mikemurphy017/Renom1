@@ -60,7 +60,14 @@ export async function POST(request: Request) {
         }
         else if (e instanceof Anthropic.RateLimitError) message = "Claude is busy right now. Try again in a moment.";
         else if (e instanceof Anthropic.APIConnectionError) message = "Couldn’t reach Claude. Check the network connection.";
-        else if (e instanceof Anthropic.APIError) message = `Claude returned an error (${e.status}).`;
+        else if (e instanceof Anthropic.APIError) {
+          // Keep the real reason in the server log; advisors get a plain sentence.
+          const detail = (e.error as { error?: { message?: string } } | undefined)?.error?.message ?? e.message;
+          console.error(`[write] Claude returned ${e.status}: ${detail}`);
+          message = /credit balance|billing|usage limit/i.test(detail)
+            ? "Writing is paused: the studio’s Claude account needs more credit. Your administrator can top it up, then try again."
+            : `Claude couldn’t complete this request (${e.status}). Please try again.`;
+        }
         send({ type: "error", message });
       } finally {
         clearInterval(timer);
