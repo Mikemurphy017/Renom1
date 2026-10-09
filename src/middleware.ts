@@ -40,5 +40,5 @@ export const config = {
   // Skip Next's own files and static assets. The two upload routes check the
   // session themselves: running middleware on them would buffer the body and
   // cut it off at 10 MB.
-  matcher: ["/((?!_next/|fonts/|favicon|icon|apple-icon|robots.txt|sitemap.xml|api/video/upload$|api/media$).*)"],
+  matcher: ["/((?!_next/|fonts/|favicon|icon|apple-icon|brand/|manifest.webmanifest|robots.txt|sitemap.xml|api/video/upload$|api/media$).*)"],
 };
