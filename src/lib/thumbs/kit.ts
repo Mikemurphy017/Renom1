@@ -26,8 +26,8 @@ export interface CoverInput extends CoverText {
   points?: string[];
 }
 
-export type CoverLook = "Bold" | "Editorial" | "Minimal" | "Number" | "Quote";
-export const LOOKS: CoverLook[] = ["Bold", "Editorial", "Minimal", "Number", "Quote"];
+export type CoverLook = "Framed" | "Bold" | "Editorial" | "Minimal" | "Number" | "Quote";
+export const LOOKS: CoverLook[] = ["Framed", "Bold", "Editorial", "Minimal", "Number", "Quote"];
 
 export interface CoverTemplate {
   id: string;
@@ -476,23 +476,182 @@ export function headroom(s: Still, W: number, H: number, top: number, o: PhotoOp
 }
 
 /**
- * Tall covers: a soft, darkened copy of the frame fills the canvas and the sharp
- * frame sits from `top` down, so the face lands below the words whatever shape
- * the take was recorded in. With `clear`, the photo starts lower (within
- * reason) until the head is below that line.
+ * Tall covers: a graphic ground in the palette fills the canvas and the frame
+ * sits from `top` down, fading into it, so the face lands below the words
+ * whatever shape the take was recorded in. The photo appears once. With
+ * `clear`, the photo starts lower (within reason) until the head is below that line.
  */
-export function bleed(ctx: CanvasRenderingContext2D, s: Still, W: number, H: number, top: number, o: PhotoOpts & { clear?: number } = {}): Shot {
-  const { clear, ...rest } = o;
-  photo(ctx, s, -40, -40, W + 80, H + 80, { bias: { x: 0.5, y: 0.3 }, blur: 48, tone: rest.tone });
-  ctx.fillStyle = "rgba(0,0,0,.35)";
-  ctx.fillRect(0, 0, W, H);
+export function bleed(ctx: CanvasRenderingContext2D, s: Still, W: number, H: number, top: number, p: Palette, o: PhotoOpts & { clear?: number; pattern?: Pattern } = {}): Shot {
+  const { clear, pattern, ...rest } = o;
   const opts: PhotoOpts = { ...BLEED, ...rest };
   let y = top;
   if (clear !== undefined) {
     const starts = bleedStarts(s, W, H, top, opts);
     y = (starts.find((b) => b.headTop >= clear) ?? starts.reduce((a, b) => (b.headTop > a.headTop ? b : a))).y;
   }
+  ground(ctx, W, H, p, pattern ?? "rings", { cx: W / 2, cy: y + 120 });
   return photo(ctx, s, 0, y, W, H - y, { ...opts, fadeTop: Math.min(320, y) });
+}
+
+// ── graphics ──────────────────────────────────────────────────────────────────
+
+export type Pattern = "rings" | "rays" | "grid" | "stripes" | "dots" | "ruled" | "plain";
+
+/**
+ * A graphic backdrop: the palette's deep color (or `base`) in a soft gradient,
+ * a quiet pattern in the accent (or `ink`) and a glow at cx/cy, where the
+ * photo usually sits.
+ */
+export function ground(ctx: CanvasRenderingContext2D, W: number, H: number, p: Palette, pattern: Pattern = "plain", o: { cx?: number; cy?: number; base?: string; ink?: string; strength?: number } = {}) {
+  const base = o.base ?? p.bg;
+  const light = lum(base) > 0.35;
+  const ink = o.ink ?? (light ? p.ink : p.accent);
+  const a = (light ? 0.07 : 0.11) * (o.strength ?? 1);
+  const cx = o.cx ?? W / 2;
+  const cy = o.cy ?? H * 0.6;
+  const u = Math.min(W, H) / 60;
+  ctx.save();
+  ctx.fillStyle = linear(ctx, 0, 0, 0, H, light ? [[0, base], [1, mix(base, "#000000", 0.05)]] : [[0, darken(base, 0.4)], [1, mix(base, "#FFFFFF", 0.03)]]);
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = rgba(ink, a);
+  ctx.fillStyle = rgba(ink, a);
+  ctx.lineWidth = Math.max(2, u * 0.18);
+  const far = Math.hypot(W, H);
+  if (pattern === "rings") {
+    for (let r = u * 9; r < far; r += u * 5.5) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else if (pattern === "rays") {
+    const n = 36;
+    ctx.fillStyle = rgba(ink, a * 1.3);
+    for (let k = 0; k < n; k += 2) {
+      const a0 = (k / n) * Math.PI * 2;
+      const a1 = ((k + 1) / n) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a0) * far, cy + Math.sin(a0) * far);
+      ctx.lineTo(cx + Math.cos(a1) * far, cy + Math.sin(a1) * far);
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else if (pattern === "grid") {
+    const step = u * 6;
+    ctx.beginPath();
+    for (let x = (cx % step) - step; x < W + step; x += step) {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+    }
+    for (let y = (cy % step) - step; y < H + step; y += step) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+    }
+    ctx.stroke();
+  } else if (pattern === "stripes") {
+    ctx.translate(cx, cy);
+    ctx.rotate(-Math.PI / 4);
+    const step = u * 4;
+    for (let x = -far; x < far; x += step * 2) ctx.fillRect(x, -far, step * 0.55, far * 2);
+  } else if (pattern === "dots") {
+    const step = u * 3.2;
+    ctx.fillStyle = rgba(ink, a * 1.7);
+    for (let y = step / 2; y < H; y += step) for (let x = step / 2; x < W; x += step) {
+      ctx.beginPath();
+      ctx.arc(x, y, u * 0.32, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (pattern === "ruled") {
+    const step = u * 3.6;
+    ctx.beginPath();
+    for (let y = step * 2; y < H; y += step) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+  // The glow: lighter on dark grounds, a touch of the accent on light ones.
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.55);
+  g.addColorStop(0, light ? rgba(p.accent, 0.1) : rgba(mix(base, "#FFFFFF", 0.22), 0.55));
+  g.addColorStop(1, rgba(base, 0));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+}
+
+/** An arch (a window with a round top), x/y its top-left, running down to y + h. */
+export function arch(x: number, y: number, w: number, h: number) {
+  const p = new Path2D();
+  const r = w / 2;
+  p.moveTo(x, y + h);
+  p.lineTo(x, y + r);
+  p.arc(x + r, y + r, r, Math.PI, 0);
+  p.lineTo(x + w, y + h);
+  p.closePath();
+  return p;
+}
+
+/** A star or burst: `n` points between radii r0 and r1. */
+export function star(cx: number, cy: number, r0: number, r1: number, n: number, turn = 0) {
+  const p = new Path2D();
+  for (let k = 0; k < n * 2; k++) {
+    const r = k % 2 ? r0 : r1;
+    const a = turn - Math.PI / 2 + (k * Math.PI) / n;
+    if (k) p.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    else p.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+  }
+  p.closePath();
+  return p;
+}
+
+/** A dashed ring with a few dots riding on it, like an orbit. */
+export function orbit(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string, width: number, dots: number[] = []) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.setLineDash([width * 0.4, width * 2.6]);
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  for (const d of dots) {
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(d) * r, cy + Math.sin(d) * r, width * 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** A strip of tape, centred at x/y. */
+export function tape(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, angle: number, color: string) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.fillStyle = color;
+  ctx.fillRect(-w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+
+/** A small round badge (a rosette with points) holding a word or two. */
+export function badge(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number, r: number, bg: string, fg: string, f: Fonts, turn = -0.14) {
+  if (!text.trim()) return;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(turn);
+  ctx.shadowColor = "rgba(0,0,0,.28)";
+  ctx.shadowBlur = r * 0.25;
+  ctx.shadowOffsetY = r * 0.06;
+  ctx.fillStyle = bg;
+  ctx.fill(star(0, 0, r * 0.9, r, 18));
+  ctx.restore();
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(turn);
+  const ks: TextStyle = { font: (s) => `900 ${s}px ${f.mont}`, upper: true, lineHeight: 1.0 };
+  const kf = fit(ctx, text, ks, { w: r * 1.35, h: r * 1.1, lines: 3, max: r * 0.4, min: r * 0.2 });
+  drawLines(ctx, kf, ks, { x: 0, y: 0, anchor: "middle", align: "center", color: fg, accent: fg, hits: new Set() });
+  ctx.restore();
 }
 
 export function linear(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, stops: [number, string][]) {
@@ -705,6 +864,28 @@ export function drawLines(ctx: CanvasRenderingContext2D, fitted: Fitted, st: Tex
     });
   });
   return { top, bottom: top + blockH, width: widest };
+}
+
+/**
+ * Kicker, headline and byline as one block, centred between `top` and `bottom`
+ * (pass `kick` / `by` colors to draw those). Returns the block's extent.
+ */
+export function stack(
+  ctx: CanvasRenderingContext2D,
+  i: CoverInput,
+  f: Fonts,
+  o: Omit<DrawOpts, "y" | "hits" | "anchor"> & { st: TextStyle; w: number; top: number; bottom: number; max: number; min: number; lines?: number; kick?: string; by?: string; kSize: number; bSize: number }
+) {
+  const align = o.align ?? "left";
+  const by = o.by && i.byline.trim() ? o.bSize * 2.6 : 0;
+  const kick = o.kick && i.kicker.trim() ? o.kSize * 2.2 : 0;
+  const room = o.bottom - o.top;
+  const fitted = fit(ctx, i.headline, o.st, { w: o.w, h: room - by - kick, lines: o.lines ?? 4, max: o.max, min: o.min }, hitsOf(i));
+  const y = o.top + kick + Math.max(0, (room - kick - by - blockHeight(fitted, o.st)) / 2);
+  if (kick) kicker(ctx, i.kicker, o.x, y - kick, o.kSize, o.kick!, f, align, o.w);
+  const b = drawLines(ctx, fitted, o.st, { ...o, y, align, hits: hitsOf(i) });
+  if (by) byline(ctx, i.byline, o.x, b.bottom + o.bSize * 2.2, o.bSize, o.by!, f, align, false);
+  return b;
 }
 
 /** Fit and draw in one go. */

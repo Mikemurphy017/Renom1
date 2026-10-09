@@ -124,7 +124,8 @@ function buildOptions(shape: VideoFormat, lines: Lines, o: { seed: number; count
   const templates = TEMPLATES[shape].filter((t) => !o.look || t.look === o.look);
   const byLook = new Map<CoverLook, CoverTemplate[]>();
   for (const t of [...templates].sort(() => rand() - 0.5)) byLook.set(t.look, [...(byLook.get(t.look) ?? []), t]);
-  const looks = [...byLook.keys()].sort(() => rand() - 0.5);
+  // Framed layouts (one photo, graphics around it) lead each round.
+  const looks = [...byLook.keys()].sort(() => rand() - 0.5).sort((a, b) => Number(b === "Framed") - Number(a === "Framed"));
   const order: CoverTemplate[] = [];
   for (let r = 0; order.length < templates.length; r++) for (const l of looks) if (byLook.get(l)![r]) order.push(byLook.get(l)![r]);
 

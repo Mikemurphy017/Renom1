@@ -9,6 +9,8 @@ import {
   MONT_ITALIC,
   PLAYFAIR,
   SERIF,
+  arch,
+  badge,
   blockHeight,
   byline,
   checkbox,
@@ -18,6 +20,7 @@ import {
   faceSide,
   fillRound,
   fit,
+  ground,
   heroOf,
   hitsOf,
   inkOn,
@@ -26,20 +29,35 @@ import {
   linear,
   mix,
   monogram,
+  orbit,
   photo,
   pill,
   poly,
   readable,
   rgba,
   rounded,
+  setTracking,
   shortPoint,
   splitByline,
+  stack,
+  star,
+  tape,
   type CoverInput,
   type CoverTemplate,
   type PhotoOpts,
   type Shot,
   type TextStyle,
 } from "./kit";
+
+/** Width of the "Watch" label on the offset frame's tab. */
+function watchW(ctx: CanvasRenderingContext2D, f: { mont: string }, size: number) {
+  ctx.save();
+  ctx.font = `900 ${size}px ${f.mont}`;
+  setTracking(ctx, 0.08 * size);
+  const w = ctx.measureText("WATCH").width;
+  ctx.restore();
+  return w;
+}
 
 /** Outer margin shared by every long layout. */
 const M = 64;
@@ -71,6 +89,137 @@ function scrim(ctx: CanvasRenderingContext2D, W: number, H: number, faceRight: b
 
 /** 1280×720: YouTube and LinkedIn. Read small, next to a face, in a grid of other thumbnails. */
 export const LONG: CoverTemplate[] = [
+  // ── Framed: the frame once, with graphics around it ──
+  {
+    id: "arch",
+    label: "Arch",
+    shape: "long",
+    look: "Framed",
+    palettes: ["classic", "forest", "plum", "coral"],
+    draw(ctx, W, H, i, f, p) {
+      const mark = readable(p.mark, p.paper, 4.5);
+      const aw = 400;
+      const ax = W - M - aw - 20;
+      const ay = 70;
+      ground(ctx, W, H, p, "plain", { base: p.paper, cx: ax + aw / 2, cy: H * 0.55 });
+      ctx.fillStyle = p.accent;
+      ctx.fill(circle(ax + aw - 6, ay + 64, 108));
+      ctx.strokeStyle = rgba(p.ink, 0.85);
+      ctx.lineWidth = 3.5;
+      ctx.stroke(arch(ax - 22, ay - 22, aw + 44, H));
+      photo(ctx, i.still, ax, ay, aw, H - ay, { bias: { x: 0.5, y: 0.42 }, face: 0.36, safe: { top: aw * 0.2, left: 36, right: 36 }, clip: arch(ax, ay, aw, H - ay) });
+      ctx.fillStyle = mark;
+      ctx.fill(star(ax - 46, ay + 230, 6, 26, 4));
+      ctx.fill(star(ax - 20, ay + 300, 4, 15, 4));
+      stack(ctx, i, f, { st: SERIF(f), x: 72, w: ax - 72 - 90, top: 56, bottom: H - 56, lines: 4, max: 100, min: 40, color: p.ink, accent: mark, kick: mark, by: rgba(p.ink, 0.7), kSize: 18, bSize: 21 });
+    },
+  },
+  {
+    id: "orbit",
+    label: "Orbit",
+    shape: "long",
+    look: "Framed",
+    palettes: ["classic", "teal", "cobalt", "plum"],
+    draw(ctx, W, H, i, f, p) {
+      const acc = readable(p.accent, p.bg, 4);
+      const r = H * 0.36;
+      const cx = W * 0.74;
+      const cy = H * 0.5;
+      ground(ctx, W, H, p, "rings", { cx, cy });
+      ctx.fillStyle = p.accent;
+      ctx.fill(circle(cx + 26, cy + 22, r));
+      photo(ctx, i.still, cx - r, cy - r, r * 2, r * 2, { bias: { x: 0.5, y: 0.5 }, face: 0.46, safe: { left: r * 0.3, right: r * 0.3, top: r * 0.22, bottom: r * 0.22 }, clip: circle(cx, cy, r) });
+      ctx.strokeStyle = p.paper;
+      ctx.lineWidth = 8;
+      ctx.stroke(circle(cx, cy, r));
+      orbit(ctx, cx, cy, r + 46, acc, 4, [-0.8, 2.4]);
+      stack(ctx, i, f, { st: HEAVY(f), x: M, w: cx - r - 70 - M, top: 56, bottom: H - 56, lines: 3, max: 112, min: 46, color: "#FFFFFF", accent: acc, accentMode: "box", boxText: inkOn(acc, p.ink), kick: acc, by: rgba(p.paper, 0.8), kSize: 20, bSize: 22 });
+    },
+  },
+  {
+    id: "offset",
+    label: "Offset frame",
+    shape: "long",
+    look: "Framed",
+    palettes: ["coral", "signal", "cobalt", "teal"],
+    draw(ctx, W, H, i, f, p) {
+      const ink = p.ink;
+      const px = W * 0.56;
+      const py = 96;
+      const pw = W - px - 86;
+      const ph = H - py - 92;
+      ground(ctx, W, H, p, "dots", { base: p.paper, cx: px + pw / 2, cy: py + ph / 2 });
+      ctx.fillStyle = p.accent;
+      ctx.fillRect(px + 22, py + 22, pw, ph);
+      photo(ctx, i.still, px, py, pw, ph, { bias: { x: 0.5, y: 0.42 }, face: 0.4, safe: { top: 20, left: 20, right: 20, bottom: 20 } });
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 5;
+      ctx.strokeRect(px, py, pw, ph);
+      const th = 46;
+      ctx.fillStyle = ink;
+      ctx.fillRect(px - 2.5, py - th, watchW(ctx, f, 21) + 58 + 18, th);
+      ctx.fillStyle = p.accent;
+      ctx.fill(poly([[px + 20, py - th + 12], [px + 20, py - 12], [px + 44, py - th / 2]]));
+      label(ctx, "Watch", px + 58, py - th / 2 + 1, { size: 21, font: (s) => `900 ${s}px ${f.mont}`, color: p.paper, baseline: "middle", upper: true, tracking: 0.08 });
+      stack(ctx, i, f, { st: MONT(f), x: M, w: px - M - 70, top: 56, bottom: H - 56, lines: 4, max: 100, min: 40, color: ink, accent: p.accent, accentMode: "box", boxText: inkOn(p.accent, ink), kick: rgba(ink, 0.72), by: rgba(ink, 0.72), kSize: 18, bSize: 21 });
+    },
+  },
+  {
+    id: "burst",
+    label: "Starburst",
+    shape: "long",
+    look: "Framed",
+    palettes: ["signal", "coral", "cobalt", "plum"],
+    draw(ctx, W, H, i, f, p) {
+      const acc = readable(p.accent, p.bg, 4);
+      const r = H * 0.33;
+      const cx = W * 0.74;
+      const cy = H * 0.53;
+      ground(ctx, W, H, p, "rays", { cx, cy, strength: 1.3 });
+      ctx.fillStyle = p.accent;
+      ctx.fill(star(cx, cy, r + 28, r + 76, 24, 0.05));
+      ctx.fillStyle = p.paper;
+      ctx.fill(circle(cx, cy, r + 10));
+      photo(ctx, i.still, cx - r, cy - r, r * 2, r * 2, { bias: { x: 0.5, y: 0.5 }, face: 0.46, safe: { left: r * 0.3, right: r * 0.3, top: r * 0.22, bottom: r * 0.22 }, clip: circle(cx, cy, r) });
+      badge(ctx, i.kicker, cx - r * 0.86, cy - r * 0.78, 74, p.paper, p.ink, f);
+      stack(ctx, i, f, { st: ANTON(f), x: M, w: cx - r - 130 - M, top: 48, bottom: H - 48, lines: 3, max: 150, min: 56, color: "#FFFFFF", accent: acc, outline: { width: 0.04, color: "#000000" }, shadow: "hard", by: "rgba(255,255,255,.88)", kSize: 20, bSize: 22 });
+    },
+  },
+  {
+    id: "polaroid",
+    label: "Snapshot",
+    shape: "long",
+    look: "Framed",
+    palettes: ["classic", "forest", "coral", "plum"],
+    draw(ctx, W, H, i, f, p) {
+      const mark = readable(p.mark, p.paper, 4.5);
+      const cw = 400;
+      const pad = 22;
+      const ph = 380;
+      const ch = ph + pad + 86;
+      const cx = W * 0.75;
+      const cy = H * 0.52;
+      ground(ctx, W, H, p, "ruled", { base: p.paper, cx, cy });
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(-0.04);
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,.28)";
+      ctx.shadowBlur = 30;
+      ctx.shadowOffsetY = 10;
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(-cw / 2, -ch / 2, cw, ch);
+      ctx.restore();
+      photo(ctx, i.still, -cw / 2 + pad, -ch / 2 + pad, cw - pad * 2, ph, { bias: { x: 0.5, y: 0.42 }, face: 0.4, safe: { top: 14, left: 14, right: 14, bottom: 14 } });
+      const name = splitByline(i.byline).name;
+      label(ctx, name || i.kicker, 0, ch / 2 - 34, { size: 30, font: (s) => `italic 900 ${s}px ${f.playfair}`, color: p.ink, align: "center", maxW: cw - 60 });
+      ctx.restore();
+      tape(ctx, cx - cw / 2 + 26, cy - ch / 2 + 6, 120, 34, -0.62, rgba(p.accent, 0.72));
+      tape(ctx, cx + cw / 2 - 14, cy - ch / 2 + 22, 120, 34, 0.58, rgba(p.accent, 0.72));
+      stack(ctx, i, f, { st: MONT_ITALIC(f), x: M, w: cx - cw / 2 - 70 - M, top: 56, bottom: H - 56, lines: 4, max: 104, min: 40, color: p.ink, accent: p.accent, accentMode: "box", boxText: inkOn(p.accent, p.ink), kick: name ? mark : undefined, kSize: 18, bSize: 21 });
+    },
+  },
+  // ── the rest ──
   {
     id: "spotlight",
     label: "Spotlight",
