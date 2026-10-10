@@ -46,6 +46,7 @@ export async function editImage(o: { image: Uint8Array; mimeType: string; prompt
   if (!res.ok) {
     console.error(`[gemini] ${res.status}: ${JSON.stringify(j)?.slice(0, 500)}`);
     if (res.status === 401 || res.status === 403) throw new GeminiError("The studio’s Gemini key was refused. Your administrator can check it.");
+    if (res.status === 429 && /free_tier|limit: 0|billing/i.test(j?.error?.message ?? "")) throw new GeminiError("AI scenes need billing turned on for the studio’s Gemini key (Google AI Studio → Billing). Your administrator can set it up.", 429);
     if (res.status === 429) throw new GeminiError("The image service is busy (or the studio hit its Gemini limit). Try again in a minute.", 429);
     throw new GeminiError(j?.error?.message?.slice(0, 200) || `The image service returned an error (${res.status}).`);
   }
