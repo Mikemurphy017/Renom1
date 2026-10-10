@@ -406,13 +406,17 @@ export function Landing() {
               <li><Link href="/signup" className="hover:text-foreground">Start free</Link></li>
               <li><Link href="/signin" className="hover:text-foreground">Sign in</Link></li>
               <li><Link href="/privacy" className="hover:text-foreground">Privacy policy</Link></li>
+              <li><Link href="/terms" className="hover:text-foreground">Terms of service</Link></li>
             </ul>
           </div>
         </div>
         <div className="border-t border-border">
           <div className="mx-auto max-w-6xl px-4 py-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] flex flex-wrap items-center justify-between gap-3 text-[12px] text-muted-foreground sm:px-6">
             <span>© {year} {NAME}. All rights reserved.</span>
-            <Link href="/privacy" className="hover:text-foreground">Privacy policy</Link>
+            <span className="flex gap-4">
+              <Link href="/privacy" className="hover:text-foreground">Privacy policy</Link>
+              <Link href="/terms" className="hover:text-foreground">Terms of service</Link>
+            </span>
           </div>
         </div>
       </footer>

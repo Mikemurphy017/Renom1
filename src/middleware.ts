@@ -6,7 +6,7 @@ import { isAdmin, SESSION_COOKIE, userForToken } from "@/lib/auth/server";
  * reset pages, and the auth API. Signed-out visitors to "/" see the sales page.
  * Runs on the Node.js runtime so it can check the session against the store.
  */
-const PUBLIC = [/^\/signin$/, /^\/signup$/, /^\/forgot$/, /^\/reset$/, /^\/landing$/, /^\/privacy$/, /^\/api\/auth\//];
+const PUBLIC = [/^\/signin$/, /^\/signup$/, /^\/forgot$/, /^\/reset$/, /^\/landing$/, /^\/privacy$/, /^\/terms$/, /^\/api\/auth\//];
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;

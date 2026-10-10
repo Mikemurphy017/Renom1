@@ -130,6 +130,11 @@ export function AuthForm({ mode }: { mode: "signin" | "signup" }) {
               {busy ? <LoaderCircle className="animate-spin" /> : null}
               {signup ? "Create account" : "Sign in"} {!busy && <ArrowRight />}
             </Button>
+            {signup && (
+              <p className="text-center text-[12px] leading-relaxed text-muted-foreground">
+                By creating an account you agree to the <Link href="/terms" target="_blank" className="text-primary hover:underline">Terms of Service</Link> and <Link href="/privacy" target="_blank" className="text-primary hover:underline">Privacy Policy</Link>.
+              </p>
+            )}
           </form>
         )}
 

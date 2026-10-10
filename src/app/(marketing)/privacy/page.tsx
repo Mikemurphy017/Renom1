@@ -1,12 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { Logo } from "@/components/layout/logo";
+import { LegalPage, type LegalSection } from "@/components/marketing/legal-page";
 import { BRAND } from "@/lib/brand";
+import { LEGAL } from "@/lib/legal";
 
-/** Who runs the service and where privacy questions go. Change here. */
-const OPERATOR = "Bluestone Partners LLC";
-const CONTACT = "privacy@renom.video";
+const { operator: OPERATOR, contact: CONTACT } = LEGAL;
 const EFFECTIVE = "October 10, 2026";
 const NAME = BRAND.name;
 
@@ -15,7 +12,7 @@ export const metadata: Metadata = {
   description: `How ${NAME} collects, uses and protects your information.`,
 };
 
-const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
+const SECTIONS: LegalSection[] = [
   {
     id: "who",
     title: "Who we are",
@@ -181,54 +178,12 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
     title: "Contact us",
     body: (
       <p>
-        Questions or requests about privacy: <a href={`mailto:${CONTACT}`}>{CONTACT}</a>. {OPERATOR}, operator of {NAME}.
+        Questions or requests about privacy: <a href={`mailto:${CONTACT}`}>{CONTACT}</a>. {OPERATOR}, operator of {NAME}. See also our <a href="/terms">Terms of Service</a>.
       </p>
     ),
   },
 ];
 
 export default function PrivacyPage() {
-  return (
-    <div className="min-h-dvh bg-background text-foreground">
-      <header className="sticky top-0 z-40 border-b border-border/60 bg-background/85 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-3xl items-center gap-3 px-4 sm:px-6">
-          <Link href="/" aria-label={`${NAME} home`}><Logo /></Link>
-          <Link href="/" className="ml-auto inline-flex items-center gap-1.5 text-[14px] text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Home</Link>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-3xl px-4 pt-14 pb-24 sm:px-6">
-        <div className="eyebrow mb-3 text-primary">Legal</div>
-        <h1 className="font-serif text-[40px] leading-tight tracking-tight sm:text-[52px]">Privacy policy</h1>
-        <p className="mt-3 text-[14px] text-muted-foreground">Effective {EFFECTIVE}</p>
-
-        <nav aria-label="On this page" className="mt-10 rounded-2xl border border-border bg-card p-5 shadow-soft">
-          <div className="eyebrow mb-3">On this page</div>
-          <ol className="grid gap-x-6 gap-y-1.5 text-[14px] sm:grid-cols-2">
-            {SECTIONS.map((s, i) => (
-              <li key={s.id}><a href={`#${s.id}`} className="text-muted-foreground hover:text-foreground"><span className="tnum mr-1.5 text-primary">{i + 1}.</span>{s.title}</a></li>
-            ))}
-          </ol>
-        </nav>
-
-        <div className="mt-12 space-y-12">
-          {SECTIONS.map((s, i) => (
-            <section key={s.id} id={s.id} className="scroll-mt-24">
-              <h2 className="font-serif text-[26px] leading-tight"><span className="tnum mr-2 text-primary">{i + 1}.</span>{s.title}</h2>
-              <div className="mt-4 space-y-4 text-[15px] leading-relaxed text-foreground/85 [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 [&_li]:pl-1 [&_strong]:font-medium [&_strong]:text-foreground [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5">
-                {s.body}
-              </div>
-            </section>
-          ))}
-        </div>
-      </main>
-
-      <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 px-4 py-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] text-[12px] text-muted-foreground sm:px-6">
-          <span>© {new Date().getFullYear()} {NAME}. All rights reserved.</span>
-          <Link href="/" className="hover:text-foreground">Back to {NAME}</Link>
-        </div>
-      </footer>
-    </div>
-  );
+  return <LegalPage title="Privacy policy" effective={EFFECTIVE} sections={SECTIONS} />;
 }
