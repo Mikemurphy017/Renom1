@@ -282,13 +282,14 @@ export async function framesFromVideo(src: string, durationSec: number, want = 4
   }
 }
 
-export async function stillFromImage(url: string, id: string): Promise<Still> {
+/** A still from a photo; `known` is a face box found elsewhere (more reliable than the guess). */
+export async function stillFromImage(url: string, id: string, known?: Face | null): Promise<Still> {
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.decoding = "async";
   img.src = url;
   await img.decode();
   const canvas = toCanvas(img, img.naturalWidth, img.naturalHeight);
-  const face = (await findFace(canvas))?.face ?? { ...defaultFace(canvas), y: 0.32 };
+  const face = known ?? (await findFace(canvas))?.face ?? { ...defaultFace(canvas), y: 0.32 };
   return { id, source: "headshot", canvas, focus: { x: face.x, y: face.y }, face, score: 1 };
 }

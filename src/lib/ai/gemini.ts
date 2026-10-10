@@ -60,6 +60,51 @@ export async function editImage(o: { image: Uint8Array; mimeType: string; prompt
   throw new GeminiError(why && /SAFETY|PROHIBITED|BLOCK/i.test(why) ? "The image service declined this one. Try another setting or photo." : "The image service didn’t return a picture. Try again.");
 }
 
+/** Where the main person's face is in a photo (brow to chin; centre and size, 0–1), by Gemini. Null when it can't tell. */
+export async function locateFace(image: Uint8Array, mimeType: string): Promise<{ x: number; y: number; w: number; h: number } | null> {
+  if (!key()) return null;
+  const model = process.env.GEMINI_VISION_MODEL?.trim() || "gemini-2.5-flash";
+  try {
+    const res = await fetch(`${BASE()}/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key() },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { inline_data: { mime_type: mimeType, data: Buffer.from(image).toString("base64") } },
+              { text: 'Find the face of the main person in this photo (from the eyebrows to the chin, ear to ear). Reply with JSON only: {"box_2d": [ymin, xmin, ymax, xmax]} with coordinates from 0 to 1000. If there is no face, reply {"box_2d": null}.' },
+            ],
+          },
+        ],
+        generationConfig: { responseMimeType: "application/json", temperature: 0 },
+      }),
+      signal: AbortSignal.timeout(30_000),
+      cache: "no-store",
+    });
+    const j = (await res.json().catch(() => null)) as { candidates?: { content?: { parts?: { text?: string }[] } }[] } | null;
+    if (!res.ok) {
+      console.error(`[gemini] face ${res.status}: ${JSON.stringify(j)?.slice(0, 300)}`);
+      return null;
+    }
+    const text = j?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+    const parsed = JSON.parse(text.replace(/^```(?:json)?|```$/g, "").trim()) as { box_2d?: number[] | null } | { box_2d?: number[] }[];
+    const box = Array.isArray(parsed) ? parsed[0]?.box_2d : parsed.box_2d;
+    if (!Array.isArray(box) || box.length !== 4 || box.some((v) => typeof v !== "number")) return null;
+    const [y0, x0, y1, x1] = box.map((v) => Math.min(1000, Math.max(0, v)) / 1000);
+    if (x1 - x0 < 0.02 || y1 - y0 < 0.02) return null;
+    return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0 };
+  } catch (e) {
+    console.error("[gemini] face:", (e as Error).message);
+    return null;
+  }
+}
+
+/** Where we asked the image model to put the person, for when the face can't be found. */
+export const placedFace = (shape: "long" | "short", side: "left" | "right") =>
+  shape === "short" ? { x: 0.5, y: 0.62, w: 0.22, h: 0.13 } : { x: side === "left" ? 0.72 : 0.28, y: 0.42, w: 0.14, h: 0.25 };
+
 /** Settings advisors can pick for a scene. */
 export const SETTINGS: Record<string, string> = {
   home: "a warm home office with full bookshelves behind them and a window with soft daylight",

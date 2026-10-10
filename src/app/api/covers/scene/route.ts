@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth/server";
-import { GeminiError, SETTINGS, editImage, geminiConfigured, scenePrompt } from "@/lib/ai/gemini";
+import { GeminiError, SETTINGS, editImage, geminiConfigured, locateFace, placedFace, scenePrompt } from "@/lib/ai/gemini";
 import { objects } from "@/lib/storage/objects";
 import { mediaKey, mediaUrl, newMediaId } from "@/lib/storage/media";
 
@@ -48,8 +48,10 @@ export async function POST(request: Request) {
       prompt: scenePrompt({ title: str(b.title, 200) || "Financial planning", topic: str(b.topic, 600) || undefined, extra: str(b.extra, 200) || undefined, setting, shape, side: b.side === "left" ? "left" : "right" }),
     });
     const id = newMediaId();
-    await objects().put(mediaKey(id), out.bytes, out.mimeType);
-    return NextResponse.json({ ok: true, id, url: mediaUrl(id), setting });
+    const side = b.side === "left" ? "left" : "right";
+    // Where the face is: browsers guess from skin tones, which wood and brass fool, so ask.
+    const [face] = await Promise.all([locateFace(out.bytes, out.mimeType), objects().put(mediaKey(id), out.bytes, out.mimeType)]);
+    return NextResponse.json({ ok: true, id, url: mediaUrl(id), setting, face: face ?? placedFace(shape, side) });
   } catch (e) {
     // A failed attempt doesn't count against the hour.
     recent.set(user.id, (recent.get(user.id) ?? []).filter((t) => t !== now));

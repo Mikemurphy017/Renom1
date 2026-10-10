@@ -38,6 +38,8 @@ interface Scene {
   url: string;
   shape: VideoFormat;
   setting?: string;
+  /** Where the face is (found by Gemini when the scene was made); the browser's guess is easily fooled. */
+  face?: { x: number; y: number; w: number; h: number } | null;
   createdAt: string;
 }
 
@@ -272,13 +274,24 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
           /* skip unreadable photo */
         }
       }
+      const found: Record<string, Scene["face"]> = {};
       for (const sc of scenesRef.current.slice(-8)) {
         try {
-          out.push({ ...(await stillFromImage(sc.url, `a-${sc.id}`)), source: "ai" });
+          let face = sc.face;
+          // Scenes made before they came with a face box: ask once, and keep the answer.
+          if (face === undefined) {
+            face = await fetch("/api/covers/face", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: sc.id }) })
+              .then((r) => r.json())
+              .then((j) => (j.ok ? (j.face ?? null) : undefined))
+              .catch(() => undefined);
+            if (face !== undefined) found[sc.id] = face;
+          }
+          out.push({ ...(await stillFromImage(sc.url, `a-${sc.id}`, face)), source: "ai" });
         } catch {
           /* skip a scene that's gone */
         }
       }
+      if (live && Object.keys(found).length) setScenes((prev) => prev.map((sc) => (sc.id in found ? { ...sc, face: found[sc.id] } : sc)));
       if (live) setStills(out);
     })();
     return () => {
@@ -697,8 +710,8 @@ function AiScene({ video, shape, from, onScene }: { video: Video; shape: VideoFo
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j.ok) throw new Error(j.error || "Couldn’t make the scene.");
-      const still: Still = { ...(await stillFromImage(j.url, `a-${j.id}`)), source: "ai" };
-      onScene(still, { id: j.id, url: j.url, shape, setting: j.setting, createdAt: new Date().toISOString() });
+      const still: Still = { ...(await stillFromImage(j.url, `a-${j.id}`, j.face)), source: "ai" };
+      onScene(still, { id: j.id, url: j.url, shape, setting: j.setting, face: j.face ?? null, createdAt: new Date().toISOString() });
       toast.success("New scene ready", { description: "Check that it looks like you before you use it." });
     } catch (e) {
       toast.error((e as Error).message);
