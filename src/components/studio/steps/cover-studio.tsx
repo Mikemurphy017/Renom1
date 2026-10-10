@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, Check, ImagePlus, LoaderCircle, Plus, RefreshCw, Shuffle, Video as VideoIcon } from "lucide-react";
+import { ArrowRight, Check, ImagePlus, LoaderCircle, Plus, RefreshCw, Shuffle, Sparkles, Video as VideoIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,14 @@ interface Option {
   own?: boolean;
 }
 type Options = Record<VideoFormat, Option[]>;
+/** A photo of the advisor in a new setting, made by the image AI (kept so a reload doesn't lose it). */
+interface Scene {
+  id: string;
+  url: string;
+  shape: VideoFormat;
+  setting?: string;
+  createdAt: string;
+}
 
 const SHAPES: { id: VideoFormat; label: string; where: string }[] = [
   { id: "long", label: "Long form", where: "16:9 · YouTube, LinkedIn" },
@@ -238,8 +246,10 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
   }, []);
   const { write, busy, status } = useWriter();
 
-  // ── stills: best frames from the take, then uploaded headshots ──
+  // ── stills: best frames from the take, then uploaded headshots, then AI scenes ──
   const [stills, setStills] = React.useState<Still[] | null>(null);
+  const [scenes, setScenes] = useDraft<Scene[]>(video.id, "cover.scenes", []);
+  const scenesRef = React.useRef(scenes);
   const headshotKey = headshots.map((h) => h.id).join(",");
   React.useEffect(() => {
     let live = true;
@@ -260,6 +270,13 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
           out.push(await stillFromImage(h.url!, `h-${h.id}`));
         } catch {
           /* skip unreadable photo */
+        }
+      }
+      for (const sc of scenesRef.current.slice(-8)) {
+        try {
+          out.push({ ...(await stillFromImage(sc.url, `a-${sc.id}`)), source: "ai" });
+        } catch {
+          /* skip a scene that's gone */
         }
       }
       if (live) setStills(out);
@@ -519,12 +536,12 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
                   <button
                     key={s.id}
                     onClick={() => editSelected({ stillId: s.id })}
-                    title={s.source === "frame" ? `Frame at ${s.time?.toFixed(1)}s` : "Headshot"}
+                    title={s.source === "frame" ? `Frame at ${s.time?.toFixed(1)}s` : s.source === "ai" ? "AI scene" : "Headshot"}
                     className={cn("relative h-16 cursor-pointer overflow-hidden rounded-md border-2 transition", on ? "border-primary" : "border-transparent opacity-80 hover:opacity-100")}
                     style={{ aspectRatio: `${s.canvas.width}/${s.canvas.height}` }}
                   >
                     <StillImg still={s} />
-                    {s.source === "headshot" && <span className="absolute inset-x-0 bottom-0 bg-black/55 text-center text-[9px] text-white">Photo</span>}
+                    {s.source !== "frame" && <span className={cn("absolute inset-x-0 bottom-0 text-center text-[9px] text-white", s.source === "ai" ? "bg-primary/85" : "bg-black/55")}>{s.source === "ai" ? "AI scene" : "Photo"}</span>}
                     <span className="sr-only">Use still {k + 1}</span>
                   </button>
                 );
@@ -533,6 +550,23 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
             <p className="mt-2 text-[12px] text-muted-foreground">
               Frames are picked for sharpness and light. <Link href="/settings#voice" className="underline underline-offset-2">Add headshots</Link> for more choice.
             </p>
+            <AiScene
+              video={video}
+              shape={shape}
+              from={(() => {
+                const cur = stillFor(selected, sel) ?? stills[0];
+                return cur.source !== "ai" ? cur : (stills.find((x) => x.source === "headshot") ?? stills.find((x) => x.source === "frame") ?? cur);
+              })()}
+              onScene={(still, scene) => {
+                setStills((prev) => [...(prev ?? []), still]);
+                setScenes((prev) => [...prev, scene].slice(-12));
+                // Show it straight away in the two layouts made for it, with the words they have now.
+                const text = selected.text;
+                setOptions((prev) => ({ ...prev, [shape]: [{ template: "stack", palette: "signal", text, stillId: still.id }, { template: "pill", palette: "signal", text, stillId: still.id }, ...prev[shape]] }));
+                setPicks((prev) => ({ ...prev, [shape]: 0 }));
+                if (look && look !== "Bold") setLook(null);
+              }}
+            />
           </div>
           <div className="space-y-3">
             <div className="eyebrow">Words</div>
@@ -613,6 +647,83 @@ function Swatch({ id, brand, large }: { id?: string; brand?: string; large?: boo
       <span className={cn("absolute top-0 left-0 rounded-full border border-black/10", large ? "size-6" : "size-3.5")} style={{ background: p.bg }} />
       <span className={cn("absolute rounded-full border border-white/60", large ? "right-0 bottom-0 size-3" : "top-0 right-0 size-3.5")} style={{ background: accent }} />
     </span>
+  );
+}
+
+const SCENE_SETTINGS: [string | null, string][] = [
+  [null, "Surprise me"],
+  ["home", "Home office"],
+  ["office", "Modern office"],
+  ["study", "Study"],
+  ["kitchen", "Kitchen table"],
+  ["outdoors", "Outdoors"],
+  ["boardroom", "Boardroom"],
+];
+
+/** The advisor's photo as a JPEG data URL, at most `max` px on the long side. */
+function photoData(c: HTMLCanvasElement, max = 1280) {
+  const k = Math.min(1, max / Math.max(c.width, c.height));
+  const s = document.createElement("canvas");
+  s.width = Math.round(c.width * k);
+  s.height = Math.round(c.height * k);
+  s.getContext("2d")!.drawImage(c, 0, 0, s.width, s.height);
+  const url = s.toDataURL("image/jpeg", 0.9);
+  s.width = s.height = 0;
+  return url;
+}
+
+/** "Create an AI scene": a new photo of the advisor in a setting that fits the video, with room for the words. */
+function AiScene({ video, shape, from, onScene }: { video: Video; shape: VideoFormat; from: Still; onScene: (still: Still, scene: Scene) => void }) {
+  const [on, setOn] = React.useState<boolean | null>(null);
+  const [setting, setSetting] = React.useState<string | null>(null);
+  const [extra, setExtra] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => {
+    fetch("/api/covers/scene", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => setOn(!!j.configured))
+      .catch(() => setOn(false));
+  }, []);
+  if (!on) return null;
+
+  const create = async () => {
+    setBusy(true);
+    try {
+      const topic = (video.outline?.length ? video.outline : [video.script?.hook, ...(video.script?.body ?? [])]).filter(Boolean).slice(0, 4).join("; ");
+      const res = await fetch("/api/covers/scene", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: photoData(from.canvas), shape, side: "right", setting, title: video.title, topic, extra: extra.trim() || undefined }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok) throw new Error(j.error || "Couldn’t make the scene.");
+      const still: Still = { ...(await stillFromImage(j.url, `a-${j.id}`)), source: "ai" };
+      onScene(still, { id: j.id, url: j.url, shape, setting: j.setting, createdAt: new Date().toISOString() });
+      toast.success("New scene ready", { description: "Check that it looks like you before you use it." });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 rounded-xl border border-dashed border-primary/50 bg-brass-soft/30 p-3.5">
+      <div className="flex items-center gap-2 text-[13px] font-medium"><Sparkles className="size-4 text-primary" /> AI scene</div>
+      <p className="mt-0.5 text-[12px] text-muted-foreground">A new photo of you in a setting that fits this video, with room for the words. Made from the photo selected above.</p>
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {SCENE_SETTINGS.map(([id, l]) => (
+          <button key={l} type="button" onClick={() => setSetting(id)} className={cn("cursor-pointer rounded-full border px-2.5 py-0.5 text-[12px]", setting === id ? "border-primary bg-brass-soft text-foreground" : "border-border text-muted-foreground hover:text-foreground")}>{l}</button>
+        ))}
+      </div>
+      <Input value={extra} onChange={(e) => setExtra(e.target.value)} maxLength={200} placeholder="Anything to include? E.g. holding a tablet with a chart" className="mt-2.5 h-9 text-[13px]" aria-label="Anything to include" />
+      <div className="mt-2.5 flex flex-wrap items-center gap-3">
+        <Button size="sm" className="rounded-full" disabled={busy} onClick={() => void create()}>
+          {busy ? <LoaderCircle className="animate-spin" /> : <Sparkles />} {busy ? "Creating… (about 15 seconds)" : `Create a ${shape === "short" ? "tall" : "wide"} scene`}
+        </Button>
+        <span className="text-[11px] text-muted-foreground">AI-made: check the face, hands and any chart before posting.</span>
+      </div>
+    </div>
   );
 }
 

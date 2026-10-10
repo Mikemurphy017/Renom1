@@ -11,6 +11,8 @@ import {
   SERIF,
   arch,
   badge,
+  bigLines,
+  bigPill,
   blockHeight,
   byline,
   checkbox,
@@ -32,6 +34,7 @@ import {
   orbit,
   photo,
   pill,
+  pillSplit,
   poly,
   readable,
   rgba,
@@ -217,6 +220,42 @@ export const LONG: CoverTemplate[] = [
       tape(ctx, cx - cw / 2 + 26, cy - ch / 2 + 6, 120, 34, -0.62, rgba(p.accent, 0.72));
       tape(ctx, cx + cw / 2 - 14, cy - ch / 2 + 22, 120, 34, 0.58, rgba(p.accent, 0.72));
       stack(ctx, i, f, { st: MONT_ITALIC(f), x: M, w: cx - cw / 2 - 70 - M, top: 56, bottom: H - 56, lines: 4, max: 104, min: 40, color: p.ink, accent: p.accent, accentMode: "box", boxText: inkOn(p.accent, p.ink), kick: name ? mark : undefined, kSize: 18, bSize: 21 });
+    },
+  },
+  // ── Big words over the photo (made for AI scenes, fine on frames) ──
+  {
+    id: "stack",
+    label: "Stack",
+    shape: "long",
+    look: "Bold",
+    palettes: ["signal", "coral", "classic", "cobalt"],
+    draw(ctx, W, H, i, f, p) {
+      const acc = readable(p.accent, "#000000", 7);
+      const { faceRight, colW, x } = sided(ctx, i, W, H, { bias: { x: 0.7, y: 0.45 }, zoom: 1.4, face: 0.42, safe: { top: 16 } }, "left");
+      scrim(ctx, W, H, faceRight, [[0, "rgba(0,0,0,.55)"], [0.55, "rgba(0,0,0,.25)"], [1, "rgba(0,0,0,0)"]], 0.75);
+      const st: TextStyle = { font: (s) => `900 ${s}px ${f.sans}`, upper: true, lineHeight: 0.98, tracking: -0.03 };
+      const b = bigLines(ctx, i.headline, st, { x, y: H / 2 - 6, anchor: "middle", w: colW, h: H * 0.78, max: 190, color: "#FFFFFF", accent: acc, hits: hitsOf(i), outline: "rgba(0,0,0,.35)" });
+      kicker(ctx, i.kicker, x, Math.max(24, b.top - 34), 17, "rgba(255,255,255,.9)", f, "left", colW);
+      byline(ctx, i.byline, x, Math.min(H - 26, b.bottom + 38), 20, "rgba(255,255,255,.88)", f);
+    },
+  },
+  {
+    id: "pill",
+    label: "Pill",
+    shape: "long",
+    look: "Bold",
+    palettes: ["signal", "coral", "teal", "cobalt"],
+    draw(ctx, W, H, i, f, p) {
+      const acc = readable(p.accent, "#000000", 7);
+      const { faceRight, colW, x } = sided(ctx, i, W, H, { bias: { x: 0.7, y: 0.45 }, zoom: 1.4, face: 0.42, safe: { top: 16 } }, "left");
+      scrim(ctx, W, H, faceRight, [[0, "rgba(0,0,0,.5)"], [0.55, "rgba(0,0,0,.2)"], [1, "rgba(0,0,0,0)"]], 0.75);
+      const { lead, pill: word } = pillSplit(i.headline, hitsOf(i));
+      const st: TextStyle = { ...BEBAS(f), lineHeight: 0.9, tracking: 0.01 };
+      const pillH = 112;
+      const b = lead ? bigLines(ctx, lead, st, { x, y: H / 2 - pillH / 2 - 10, anchor: "middle", w: colW, h: H * 0.56, lines: 2, max: 210, color: "#FFFFFF", accent: "#FFFFFF", hits: new Set() }) : { top: H / 2 - pillH / 2, bottom: H / 2 - pillH / 2, size: 120 };
+      const pb = bigPill(ctx, word, x - 4, b.bottom + 10, Math.min(92, Math.max(56, b.size * 0.62)), colW, acc, inkOn(acc), f);
+      kicker(ctx, i.kicker, x, Math.max(24, b.top - 34), 17, "rgba(255,255,255,.9)", f, "left", colW);
+      byline(ctx, i.byline, x, Math.min(H - 26, pb.y + pb.h + 40), 20, "rgba(255,255,255,.88)", f);
     },
   },
   // ── the rest ──

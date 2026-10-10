@@ -6,7 +6,7 @@
  */
 export interface Still {
   id: string;
-  source: "frame" | "headshot";
+  source: "frame" | "headshot" | "ai";
   canvas: HTMLCanvasElement;
   /** Seconds into the take, for frames. */
   time?: number;

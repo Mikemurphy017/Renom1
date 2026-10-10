@@ -888,6 +888,86 @@ export function stack(
   return b;
 }
 
+/**
+ * YouTube-style words: every line set as wide as the column, so short lines get
+ * huge ("THE / $200K / PRISON"); a very short word ("THE") stays smaller. The
+ * accent words take the accent color. Returns the block's extent.
+ */
+export function bigLines(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  st: TextStyle,
+  o: { x: number; y: number; w: number; h: number; lines?: number; max: number; align?: "left" | "center"; color: string; accent: string; hits: Set<string>; anchor?: "top" | "middle" | "bottom"; outline?: string }
+) {
+  const lines = fit(ctx, text, st, { w: o.w, h: o.h, lines: o.lines ?? 3, max: o.max, min: 24 }, o.hits).lines;
+  const lh = st.lineHeight ?? 1;
+  const widthAt = (line: string[], size: number) => {
+    ctx.font = st.font(size);
+    setTracking(ctx, (st.tracking ?? 0) * size);
+    return ctx.measureText(line.join(" ")).width;
+  };
+  let sizes = lines.map((l) => Math.min(o.max, (o.w * 100) / Math.max(1, widthAt(l, 100))));
+  const big = Math.max(...sizes);
+  sizes = sizes.map((z, i) => (lines.length > 1 && lines[i].join("").length <= 3 ? Math.min(z, big * 0.5) : z));
+  const total = sizes.reduce((a, z) => a + z * lh, 0);
+  const k = total > o.h ? o.h / total : 1;
+  sizes = sizes.map((z) => z * k);
+  const blockH = total * k;
+  let y = o.anchor === "bottom" ? o.y - blockH : o.anchor === "middle" ? o.y - blockH / 2 : o.y;
+  const top = y;
+  let widest = 0;
+  lines.forEach((line, i) => {
+    const size = sizes[i];
+    drawLines(ctx, { size, lines: [line] }, st, { x: o.x, y, align: o.align ?? "left", color: o.color, accent: o.accent, hits: o.hits, shadow: "soft", outline: o.outline ? { width: 0.025, color: o.outline } : undefined });
+    widest = Math.max(widest, widthAt(line, size));
+    y += size * lh;
+  });
+  return { top, bottom: y, width: widest, size: Math.max(...sizes) };
+}
+
+/** "FIX THIS / NOW": the headline split into the words above and the accent word(s) for the pill (else the last word). */
+export function pillSplit(text: string, hits: Set<string>) {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return { lead: "", pill: words.join(" ") };
+  let a = words.findIndex((w) => hits.has(norm(w)));
+  let b = a;
+  while (b + 1 < words.length && hits.has(norm(words[b + 1]))) b++;
+  // Accent words in the middle of the line read badly on a pill: use the tail instead.
+  if (a < 0 || (b < words.length - 1 && a > 0)) a = b = words.length - 1;
+  return { lead: [...words.slice(0, a), ...words.slice(b + 1)].join(" "), pill: words.slice(a, b + 1).join(" ") };
+}
+
+/** A rounded pill with heavy dark text, sized to the words. Returns its box. */
+export function bigPill(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, maxW: number, bg: string, fg: string, f: Fonts, align: "left" | "center" = "left") {
+  const t = text.trim().toUpperCase();
+  const font = (s: number) => `900 ${s}px ${f.mont}`;
+  ctx.save();
+  let s = size;
+  ctx.font = font(s);
+  setTracking(ctx, -0.01 * s);
+  while (ctx.measureText(t).width + s * 0.9 > maxW && s > 20) {
+    s -= 2;
+    ctx.font = font(s);
+    setTracking(ctx, -0.01 * s);
+  }
+  const tw = ctx.measureText(t).width;
+  const w = tw + s * 0.9;
+  const h = s * 1.32;
+  const left = align === "center" ? x - w / 2 : x;
+  ctx.shadowColor = "rgba(0,0,0,.35)";
+  ctx.shadowBlur = s * 0.25;
+  ctx.shadowOffsetY = s * 0.06;
+  ctx.fillStyle = bg;
+  fillRound(ctx, left, y, w, h, h / 2);
+  ctx.shadowColor = "transparent";
+  ctx.fillStyle = fg;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  ctx.fillText(t, left + s * 0.45, y + h / 2 + s * 0.04);
+  ctx.restore();
+  return { x: left, y, w, h };
+}
+
 /** Fit and draw in one go. */
 export function headline(ctx: CanvasRenderingContext2D, text: string, st: TextStyle, box: FitBox, o: DrawOpts) {
   const fitted = fit(ctx, text, st, box, o.hits);
