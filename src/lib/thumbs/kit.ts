@@ -287,6 +287,8 @@ interface Crop extends Shot {
   sy: number;
   sw: number;
   sh: number;
+  /** Px the picture must move down in its box so the top of the head isn't cut (the source has no room above it). */
+  lift: number;
 }
 
 /**
@@ -303,7 +305,8 @@ export function crop(s: Still, w: number, h: number, o: PhotoOpts = {}): Crop {
   const fw = F.w * cw;
   const fh = F.h * ch;
   // A detector's box runs brow to chin; hair and ears sit outside it.
-  const head = { x0: fx - fw * 0.7, x1: fx + fw * 0.7, y0: fy - fh * 0.9, y1: fy + fh * 0.62 };
+  // (Generous on top: hair, and detectors that put the brow low, are what get cut.)
+  const head = { x0: fx - fw * 0.7, x1: fx + fw * 0.7, y0: fy - fh * 1.2, y1: fy + fh * 0.62 };
   const core = { x0: fx - fw * 0.42, x1: fx + fw * 0.42, y0: fy - fh * 0.42, y1: fy + fh * 0.5 };
   const bias = o.bias ?? { x: 0.5, y: 0.42 };
   const safe = { l: o.safe?.left ?? 0, r: w - (o.safe?.right ?? 0), t: o.safe?.top ?? 0, b: h - (o.safe?.bottom ?? 0) };
@@ -354,9 +357,23 @@ export function crop(s: Still, w: number, h: number, o: PhotoOpts = {}): Crop {
     const p = place(z);
     if (p.level > best.level || (p.level === best.level && Math.abs(z - zPref) < Math.abs(best.z - zPref))) best = p;
   }
+  // No zoom keeps the whole head in: zoom in no further than we must (less zoom, more room above the head).
+  if (best.level < 2) {
+    for (let z = 1; z < best.z - 1e-6; z += 0.05) {
+      const p = place(z);
+      if (p.level >= best.level) {
+        best = p;
+        break;
+      }
+    }
+  }
   const { k, sx, sy, sw, sh } = best;
   const box = (x0: number, y0: number, x1: number, y1: number): Box => ({ x: (x0 - sx) * k, y: (y0 - sy) * k, w: (x1 - x0) * k, h: (y1 - y0) * k });
-  return { sx, sy, sw, sh, face: box(fx - fw / 2, fy - fh / 2, fx + fw / 2, fy + fh / 2), head: box(head.x0, head.y0, head.x1, head.y1) };
+  const headBox = box(head.x0, head.y0, head.x1, head.y1);
+  // The photo itself has no room above the head: say how far to move it down (at most a quarter of the box).
+  const want = safe.t + h * 0.03;
+  const lift = sy < 1 && headBox.y < want ? Math.min(h * 0.25, want - headBox.y) : 0;
+  return { sx, sy, sw, sh, lift, face: box(fx - fw / 2, fy - fh / 2, fx + fw / 2, fy + fh / 2), head: headBox };
 }
 
 const shift = (b: Box, x: number, y: number): Box => ({ x: b.x + x, y: b.y + y, w: b.w, h: b.h });
@@ -370,7 +387,9 @@ export function photo(ctx: CanvasRenderingContext2D, s: Still, x: number, y: num
   const off = scratch(w * sc, h * sc);
   const octx = off.getContext("2d", { willReadFrequently: true })!;
   octx.imageSmoothingQuality = "high";
-  octx.drawImage(s.canvas, p.sx, p.sy, p.sw, p.sh, 0, 0, off.width, off.height);
+  const dy = Math.round(p.lift * sc);
+  octx.drawImage(s.canvas, p.sx, p.sy, p.sw, p.sh, 0, dy, off.width, off.height);
+  if (dy > 0) extendTop(octx, off.width, dy);
   if (o.blur) {
     // Shrink and grow back: a cheap blur that works everywhere.
     const d = Math.max(2, Math.round((o.blur * sc) / 4));
@@ -399,7 +418,36 @@ export function photo(ctx: CanvasRenderingContext2D, s: Still, x: number, y: num
   ctx.drawImage(off, x, y, w, h);
   ctx.restore();
   release(off);
-  return { face: shift(p.face, x, y), head: shift(p.head, x, y) };
+  return { face: shift(p.face, x, y + p.lift), head: shift(p.head, x, y + p.lift) };
+}
+
+/**
+ * Fill the band above a picture that was moved down (so a head isn't cut):
+ * the wall color from the picture's top edge, blending into it.
+ */
+function extendTop(ctx: CanvasRenderingContext2D, w: number, dy: number) {
+  let color = "#2a2a2a";
+  try {
+    const d = ctx.getImageData(0, dy, w, Math.max(1, Math.min(6, ctx.canvas.height - dy))).data;
+    let r = 0, g = 0, b = 0;
+    const n = d.length / 4;
+    for (let i = 0; i < d.length; i += 4) {
+      r += d[i];
+      g += d[i + 1];
+      b += d[i + 2];
+    }
+    color = `rgb(${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)})`;
+  } catch {
+    // a cross-origin photo: keep the neutral fill
+  }
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, w, dy);
+  const blend = Math.min(dy * 1.5, ctx.canvas.height * 0.2);
+  const g = ctx.createLinearGradient(0, dy - 1, 0, dy + blend);
+  g.addColorStop(0, color);
+  g.addColorStop(1, color.replace("rgb(", "rgba(").replace(")", ",0)"));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, dy - 1, w, blend + 1);
 }
 
 /** A gentle lift (a touch more contrast, color and light), a two-color tint, or black and white. */
@@ -897,7 +945,7 @@ export function bigLines(
   ctx: CanvasRenderingContext2D,
   text: string,
   st: TextStyle,
-  o: { x: number; y: number; w: number; h: number; lines?: number; max: number; align?: "left" | "center"; color: string; accent: string; hits: Set<string>; anchor?: "top" | "middle" | "bottom"; outline?: string }
+  o: { x: number; y: number; w: number; h: number; lines?: number; max: number; align?: "left" | "center"; color: string; accent: string; hits: Set<string>; anchor?: "top" | "middle" | "bottom"; outline?: string; /** Measure only. */ dry?: boolean }
 ) {
   const lines = fit(ctx, text, st, { w: o.w, h: o.h, lines: o.lines ?? 3, max: o.max, min: 24 }, o.hits).lines;
   const lh = st.lineHeight ?? 1;
@@ -918,7 +966,7 @@ export function bigLines(
   let widest = 0;
   lines.forEach((line, i) => {
     const size = sizes[i];
-    drawLines(ctx, { size, lines: [line] }, st, { x: o.x, y, align: o.align ?? "left", color: o.color, accent: o.accent, hits: o.hits, shadow: "soft", outline: o.outline ? { width: 0.025, color: o.outline } : undefined });
+    if (!o.dry) drawLines(ctx, { size, lines: [line] }, st, { x: o.x, y, align: o.align ?? "left", color: o.color, accent: o.accent, hits: o.hits, shadow: "soft", outline: o.outline ? { width: 0.025, color: o.outline } : undefined });
     widest = Math.max(widest, widthAt(line, size));
     y += size * lh;
   });

@@ -223,6 +223,7 @@ export const SHORT: CoverTemplate[] = [
     },
   },
   // ── Big words over the photo (made for AI scenes, fine on frames) ──
+  // Words up top; the photo starts below them (over a dark ground) so they never sit on the face.
   {
     id: "stack",
     label: "Stack",
@@ -231,10 +232,14 @@ export const SHORT: CoverTemplate[] = [
     palettes: ["signal", "coral", "classic", "cobalt"],
     draw(ctx, W, H, i, f, p) {
       const acc = readable(p.accent, "#000000", 7);
-      photo(ctx, i.still, 0, 0, W, H, { bias: { x: 0.5, y: 0.6 }, face: 0.26, safe: { top: H * 0.44, left: 24, right: 24, bottom: 300 } });
-      topScrim(ctx, W, 820, "#000000", 0.7, 0.35);
       const st: TextStyle = { font: (s) => `900 ${s}px ${f.sans}`, upper: true, lineHeight: 0.98, tracking: -0.03 };
-      const b = bigLines(ctx, i.headline, st, { x: W / 2, y: 250, align: "center", w: W - M * 2, h: 600, max: 300, color: "#FFFFFF", accent: acc, hits: hitsOf(i), outline: "rgba(0,0,0,.35)" });
+      const top = 250;
+      const by = i.byline.trim() ? 90 : 0;
+      const box = { x: W / 2, y: top, align: "center" as const, w: W - M * 2, h: wordRoom(i, W, H, top, by, 640, 300), max: 300, color: "#FFFFFF", accent: acc, hits: hitsOf(i), outline: "rgba(0,0,0,.35)" };
+      const m = bigLines(ctx, i.headline, st, { ...box, dry: true });
+      bleed(ctx, i.still, W, H, H * BLEED_TOP, { ...p, bg: "#111111", accent: acc }, { clear: m.bottom + by + 48, pattern: "plain" });
+      topScrim(ctx, W, m.bottom + by, "#000000", 0.75, 0.45);
+      const b = bigLines(ctx, i.headline, st, box);
       kicker(ctx, i.kicker, W / 2, 180, 32, "rgba(255,255,255,.9)", f, "center", W - M * 2);
       byline(ctx, i.byline, W / 2, b.bottom + 70, 32, "rgba(255,255,255,.9)", f, "center");
     },
@@ -247,12 +252,20 @@ export const SHORT: CoverTemplate[] = [
     palettes: ["signal", "coral", "teal", "cobalt"],
     draw(ctx, W, H, i, f, p) {
       const acc = readable(p.accent, "#000000", 7);
-      photo(ctx, i.still, 0, 0, W, H, { bias: { x: 0.5, y: 0.6 }, face: 0.26, safe: { top: H * 0.44, left: 24, right: 24, bottom: 300 } });
-      topScrim(ctx, W, 820, "#000000", 0.7, 0.35);
       const { lead, pill: word } = pillSplit(i.headline, hitsOf(i));
       const st: TextStyle = { ...BEBAS(f), lineHeight: 0.9, tracking: 0.01 };
-      const b = lead ? bigLines(ctx, lead, st, { x: W / 2, y: 250, align: "center", w: W - M * 2, h: 440, lines: 3, max: 300, color: "#FFFFFF", accent: "#FFFFFF", hits: new Set() }) : { bottom: 300, size: 200 };
-      const pb = bigPill(ctx, word, W / 2, b.bottom + 18, Math.min(150, Math.max(90, b.size * 0.6)), W - M * 2, acc, inkOn(acc), f, "center");
+      const top = 250;
+      const by = i.byline.trim() ? 90 : 0;
+      const room = wordRoom(i, W, H, top, by, 640, 320);
+      const pillOf = (size: number) => Math.min(150, Math.max(90, size * 0.6));
+      // The pill is about a third of the room; the words get the rest.
+      const box = { x: W / 2, y: top, align: "center" as const, w: W - M * 2, h: room * 0.68, lines: 3, max: 300, color: "#FFFFFF", accent: "#FFFFFF", hits: new Set<string>() };
+      const m = lead ? bigLines(ctx, lead, st, { ...box, dry: true }) : { bottom: top, size: 200 };
+      const pillH = pillOf(m.size) * 1.32;
+      bleed(ctx, i.still, W, H, H * BLEED_TOP, { ...p, bg: "#111111", accent: acc }, { clear: m.bottom + 18 + pillH + by + 48, pattern: "plain" });
+      topScrim(ctx, W, m.bottom + pillH + by, "#000000", 0.75, 0.45);
+      const b = lead ? bigLines(ctx, lead, st, box) : m;
+      const pb = bigPill(ctx, word, W / 2, b.bottom + 18, pillOf(b.size), W - M * 2, acc, inkOn(acc), f, "center");
       kicker(ctx, i.kicker, W / 2, 180, 32, "rgba(255,255,255,.9)", f, "center", W - M * 2);
       byline(ctx, i.byline, W / 2, pb.y + pb.h + 70, 32, "rgba(255,255,255,.9)", f, "center");
     },

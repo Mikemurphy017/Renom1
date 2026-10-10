@@ -79,6 +79,7 @@ export function scenePrompt(o: { title: string; topic?: string; setting: string;
     "Create a photorealistic YouTube thumbnail photo of the person in the reference photo.",
     "Keep their identity exactly: same face, facial features, age, skin tone, hair and facial hair. Do not beautify, slim, de-age or change them. Similar clothing is fine.",
     `Setting: ${where}.`,
+    "Framing: the whole head must be in frame with clear space above the top of the hair (at least 12% of the image height). Never crop the top of the head or the chin.",
     `Place the person ${place}, looking into the camera with an expression that fits the topic (thoughtful, concerned or confident; never cartoonish).`,
     `Video topic: "${o.title.slice(0, 160)}".${o.topic ? ` What it covers: ${o.topic.slice(0, 500)}` : ""}`,
     "Include one simple prop that illustrates the topic, for example a tablet or computer monitor showing a clean line or bar chart (at most two short labels on the chart), or a relevant everyday object.",

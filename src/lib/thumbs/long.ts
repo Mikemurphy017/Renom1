@@ -231,7 +231,7 @@ export const LONG: CoverTemplate[] = [
     palettes: ["signal", "coral", "classic", "cobalt"],
     draw(ctx, W, H, i, f, p) {
       const acc = readable(p.accent, "#000000", 7);
-      const { faceRight, colW, x } = sided(ctx, i, W, H, { bias: { x: 0.7, y: 0.45 }, zoom: 1.4, face: 0.42, safe: { top: 16 } }, "left");
+      const { faceRight, colW, x } = sided(ctx, i, W, H, { bias: { x: 0.7, y: 0.48 }, zoom: 1.2, face: 0.36, safe: { top: 28 } }, "left");
       scrim(ctx, W, H, faceRight, [[0, "rgba(0,0,0,.55)"], [0.55, "rgba(0,0,0,.25)"], [1, "rgba(0,0,0,0)"]], 0.75);
       const st: TextStyle = { font: (s) => `900 ${s}px ${f.sans}`, upper: true, lineHeight: 0.98, tracking: -0.03 };
       const b = bigLines(ctx, i.headline, st, { x, y: H / 2 - 6, anchor: "middle", w: colW, h: H * 0.78, max: 190, color: "#FFFFFF", accent: acc, hits: hitsOf(i), outline: "rgba(0,0,0,.35)" });
@@ -247,7 +247,7 @@ export const LONG: CoverTemplate[] = [
     palettes: ["signal", "coral", "teal", "cobalt"],
     draw(ctx, W, H, i, f, p) {
       const acc = readable(p.accent, "#000000", 7);
-      const { faceRight, colW, x } = sided(ctx, i, W, H, { bias: { x: 0.7, y: 0.45 }, zoom: 1.4, face: 0.42, safe: { top: 16 } }, "left");
+      const { faceRight, colW, x } = sided(ctx, i, W, H, { bias: { x: 0.7, y: 0.48 }, zoom: 1.2, face: 0.36, safe: { top: 28 } }, "left");
       scrim(ctx, W, H, faceRight, [[0, "rgba(0,0,0,.5)"], [0.55, "rgba(0,0,0,.2)"], [1, "rgba(0,0,0,0)"]], 0.75);
       const { lead, pill: word } = pillSplit(i.headline, hitsOf(i));
       const st: TextStyle = { ...BEBAS(f), lineHeight: 0.9, tracking: 0.01 };
