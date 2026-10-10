@@ -56,9 +56,9 @@ const FLOW = [
     id: "post",
     label: "Post",
     icon: Send,
-    title: "We post it for you. Or you do.",
-    body: "A cover thumbnail, the post copy and hashtags, written and designed. Hand it to our team and we post it to your accounts, or download the MP4 and copy the post with one tap.",
-    points: ["LinkedIn, Instagram, Facebook, YouTube, TikTok, X", "Our team schedules it for you", "MP4 download if you'd rather post it yourself"],
+    title: "Post it now, schedule it, or hand it to us.",
+    body: "A cover, the post copy and hashtags for each network, written and designed. See it on a phone first, then send it to your own channels right away or on a schedule, or hand it to our team.",
+    points: ["LinkedIn, Instagram, Facebook, YouTube, TikTok, X", "Post now or schedule, from your own accounts", "Our team posts it for you, or download the MP4"],
   },
 ] as const;
 
@@ -161,8 +161,8 @@ function FlowVisual({ id }: { id: (typeof FLOW)[number]["id"] }) {
         ))}
       </div>
       <div className="flex gap-2">
-        <span className="flex-1 rounded-full bg-[#D2B07A] py-2 text-center text-[12px] font-medium text-[#0B1F3A]">Send to our team</span>
-        <span className="flex-1 rounded-full border border-white/20 py-2 text-center text-[12px] text-white">Download MP4</span>
+        <span className="flex-1 rounded-full bg-[#D2B07A] py-2 text-center text-[12px] font-medium text-[#0B1F3A]">Schedule for Tue 8:30</span>
+        <span className="flex-1 rounded-full border border-white/20 py-2 text-center text-[12px] text-white">Send to our team</span>
       </div>
     </div>
   );
@@ -272,7 +272,7 @@ function Slider({ label, value, min, max, step, onChange, format, minLabel, maxL
   );
 }
 
-/** Renom ROI calculator: first-year fees from new clients against the yearly plan price. The visitor's numbers, not ours. */
+/** Renom ROI calculator: first-year fees from new clients against a sample yearly price (pricing is TBD). The visitor's numbers, not ours. */
 export function RoiCalculator({ price }: { price: number }) {
   const yearly = price * 12;
   const [kind, setKind] = React.useState<"aum" | "flat">("aum");
@@ -314,7 +314,7 @@ export function RoiCalculator({ price }: { price: number }) {
 
       <div className="mt-5 text-[13px] font-medium">Annual marketing investment</div>
       <div className="mt-1.5 flex items-center justify-between rounded-xl border border-[#B08D57] bg-[#F4ECDF] px-4 py-3 ring-1 ring-[#B08D57]">
-        <span className="text-[14px] font-medium">Your {BRAND.name} plan</span>
+        <span className="text-[14px] font-medium">Sample {BRAND.name} plan <span className="font-normal text-[#6B675E]">({money(price)}/mo)</span></span>
         <span className="text-[14px] tnum">{money(yearly)} a year</span>
       </div>
 
@@ -324,11 +324,14 @@ export function RoiCalculator({ price }: { price: number }) {
         <div className="mt-2 text-[14px] text-[#6B675E] tnum">Return: {cents(revenue)}</div>
       </div>
       <p className="mt-3 text-center text-[11px] leading-relaxed text-[#6B675E]">
-        Illustration only, using the numbers you enter: one year of fees from new clients divided by the annual cost. Not a prediction of results. {BRAND.name} is free during early access; {money(yearly)} a year is the planned price.
+        Illustration only, using the numbers you enter: one year of fees from new clients divided by the annual cost. Not a prediction of results.
       </p>
       <Link href="/signup" className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#0B1F3A] text-[14px] font-medium text-white hover:bg-[#16304f]">
         Start free <ArrowRight className="size-4" />
       </Link>
+      <p className="mt-4 rounded-xl bg-[#F4ECDF]/70 px-4 py-3 text-center text-[12px] leading-relaxed text-[#6B675E]">
+        This is a sample ROI if the price were {money(price)} per month. The current price of {BRAND.name} is TBD, and it’s free during early access.
+      </p>
     </div>
   );
 }

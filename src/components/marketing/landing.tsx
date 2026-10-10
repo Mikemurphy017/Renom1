@@ -3,9 +3,9 @@ import {
   ArrowRight,
   Captions,
   Check,
-  Clapperboard,
   FileText,
   Image as ImageIcon,
+  CalendarClock,
   Mic,
   ShieldCheck,
   Smartphone,
@@ -18,11 +18,12 @@ import { FlowTabs, RoiCalculator } from "./landing-interactive";
 
 /**
  * The public sales page (signed-out visitors to "/"). Every call to action
- * leads to /signup. Free during early access; the planned price is shown so
- * nobody is surprised later.
+ * leads to /signup. Free during early access; pricing after that is still to
+ * be decided, and the ROI calculator says it uses a sample price.
  */
 
-const PLANNED_PRICE = 200;
+/** The price the ROI calculator illustrates with (pricing itself is TBD). */
+const SAMPLE_PRICE = 500;
 const NAME = BRAND.name;
 
 const FEATURES = [
@@ -30,17 +31,18 @@ const FEATURES = [
   { icon: Mic, title: "A teleprompter that keeps up", body: "Adjustable speed and size, mirror mode, a countdown, and it works on your phone in portrait." },
   { icon: Captions, title: "Captions that follow your voice", body: "Speech recognition times each word as you said it, so captions land on the beat, never ahead of you." },
   { icon: Sparkles, title: "Edit styles", body: "Impact, Ignite, Focus and more. One pick sets the captions, punch-in zooms, keyword cards, b-roll and music." },
-  { icon: ImageIcon, title: "Covers that get the click", body: "Thumbnails made for short and long videos, with your headshot and a headline that earns the view." },
+  { icon: ImageIcon, title: "Covers that get the click", body: "Dozens of thumbnail styles built around you, plus AI scenes: you in an office, a study or outdoors, with a prop that fits the topic." },
+  { icon: Smartphone, title: "See it on a phone first", body: "Preview every video the way it will look in the feed on TikTok, Reels or Shorts, with your caption, before it goes anywhere." },
+  { icon: CalendarClock, title: "Post now or schedule it", body: "Connect your own Buffer once and send each video to your channels right away or at the time you choose. Or our team posts it for you." },
   { icon: ShieldCheck, title: "Built for a regulated business", body: "Your disclosure on every post, an optional approval step for your reviewer, and an archive of everything that went out." },
-  { icon: Clapperboard, title: "Download the MP4", body: "Every finished video is stored in your studio and ready to download. Copy the post with one tap and upload it wherever you like." },
-  { icon: Smartphone, title: "Works from your phone", body: "Write, record, review and post from your phone, or start on your laptop and finish on the go." },
 ];
 
 const REPLACES = [
   ["Staring at a blank page every week", "Four finished scripts, written for you"],
   ["Booking a videographer or a studio day", "Record at your desk, in your browser"],
   ["Waiting days on an editor", "Edited video in minutes"],
-  ["Writing captions, hashtags and covers", "All written and designed for you"],
+  ["Writing captions, hashtags and covers", "Written and designed for you, AI cover scenes included"],
+  ["Logging in to every network to post", "Post or schedule everywhere at once"],
   ["Remembering the disclosure", "Added to every post automatically"],
 ];
 
@@ -49,10 +51,13 @@ const INCLUDED = [
   "In-browser teleprompter and recording",
   "Automatic editing with captions, b-roll and music",
   "All edit styles, including Impact and Ignite",
-  "Cover thumbnails for short and long videos",
+  "Cover thumbnails and AI cover scenes",
+  "Phone preview of every post",
   "Post copy, hashtags and disclosures",
+  "Post or schedule from your own accounts",
   "Our team posts it for you, or download the MP4",
   "Approval step and archive",
+  "Works on your laptop and your phone",
 ];
 
 const FAQ = [
@@ -74,11 +79,11 @@ const FAQ = [
   },
   {
     q: "Where can I post?",
-    a: "LinkedIn, Instagram, Facebook, YouTube, TikTok and X. Our team posts each video to your accounts for you, or you can download the finished MP4 and upload it anywhere you like.",
+    a: "LinkedIn, Instagram, Facebook, YouTube, TikTok and X. Connect your own Buffer account once (Buffer’s free plan covers three channels) and post or schedule each video from your studio. Or have our team post it for you, or download the finished MP4 and upload it anywhere you like.",
   },
   {
     q: "What happens when early access ends?",
-    a: `${NAME} is free while we're in early access. The planned price is $${PLANNED_PRICE} a month. We'll tell you well before anything changes, and nothing is ever charged without you choosing a plan.`,
+    a: `${NAME} is free while we're in early access. Pricing after early access is still being decided. We'll tell you well before anything changes, and nothing is ever charged without you choosing a plan.`,
   },
   {
     q: "Do I own my videos?",
@@ -204,7 +209,7 @@ export function Landing() {
             <CTA>Start free</CTA>
             <a href="#how" className="inline-flex h-12 items-center justify-center rounded-full border border-border bg-card px-7 text-[15px] font-medium hover:bg-accent">See how it works</a>
           </div>
-          <p className="mt-4 text-[13px] text-muted-foreground">No credit card. Planned price ${PLANNED_PRICE}/month after early access.</p>
+          <p className="mt-4 text-[13px] text-muted-foreground">No credit card. Pricing after early access: TBD.</p>
         </section>
 
         {/* You record. We do the rest. */}
@@ -232,7 +237,7 @@ export function Landing() {
             <div className="mb-10 max-w-2xl">
               <Eyebrow className="text-[#D2B07A]">How it works</Eyebrow>
               <H2 light accent="Idea to posted.">One flow.</H2>
-              <p className="mt-4 text-[16px] leading-relaxed text-[#AAB4C4]">No juggling a writer, a videographer, an editor and a scheduling tool. Every step lives in one studio, and each one feeds the next.</p>
+              <p className="mt-4 text-[16px] leading-relaxed text-[#AAB4C4]">No juggling a writer, a videographer, an editor, a designer and a scheduling tool. Every step lives in one studio, and each one feeds the next.</p>
             </div>
             <FlowTabs />
             <div className="mt-10 text-center"><CTA>Start free</CTA></div>
@@ -301,10 +306,9 @@ export function Landing() {
                 </div>
                 <div className="mt-6 flex items-end gap-3">
                   <span className="font-serif text-[60px] leading-none">$0</span>
-                  <span className="pb-2 text-[15px] text-muted-foreground">/ month</span>
-                  <span className="pb-2 text-[15px] text-muted-foreground line-through decoration-1">${PLANNED_PRICE}</span>
+                  <span className="pb-2 text-[15px] text-muted-foreground">/ month during early access</span>
                 </div>
-                <p className="mt-2 text-[13px] text-muted-foreground">Then ${PLANNED_PRICE}/month when early access ends. Nothing is charged unless you choose a plan.</p>
+                <p className="mt-2 text-[13px] text-muted-foreground">Pricing after early access: TBD. Nothing is charged unless you choose a plan.</p>
                 <ul className="mt-7 grid gap-2.5 sm:grid-cols-1">
                   {INCLUDED.map((i) => (
                     <li key={i} className="flex gap-2.5 text-[14px]"><Check className="mt-0.5 size-4 shrink-0 text-primary" /> {i}</li>
@@ -347,7 +351,7 @@ export function Landing() {
                 Video is how people decide whether they want to meet you. If being seen every week brings in even one new relationship, the studio pays for itself many times over. Put in your own numbers.
               </p>
             </div>
-            <RoiCalculator price={PLANNED_PRICE} />
+            <RoiCalculator price={SAMPLE_PRICE} />
           </div>
         </section>
 
