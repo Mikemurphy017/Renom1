@@ -16,7 +16,7 @@ import { useDraft } from "@/lib/drafts";
 import { isAbort, streamWrite } from "@/lib/ai/writer";
 import { WRITERS, getWriter, type WriterId } from "@/lib/ai/writers";
 import type { PlatformCopy } from "@/lib/ai/content";
-import { activeDisclosure, disclosureFor } from "@/lib/compose";
+import { activeDisclosure, composeCaption, disclosureFor } from "@/lib/compose";
 import { PLATFORMS, getPlatform } from "@/lib/mock/platforms";
 import type { PlatformId } from "@/lib/types";
 import { cn, fmtNumber } from "@/lib/utils";
@@ -25,6 +25,7 @@ import { CopyButton } from "./share-kit";
 import { CoverStudio } from "./cover-studio";
 import { ShareKit } from "./share-kit";
 import { TeamPost } from "./team-post";
+import { PhonePreview } from "../phone-preview";
 import { DirectPost } from "./direct-post";
 import type { StepProps } from "../studio-view";
 
@@ -226,6 +227,7 @@ export function PostStep({ video }: StepProps) {
               {Object.values(runs).some((r) => r?.error) && <p className="text-[13px] text-destructive">{Object.values(runs).find((r) => r?.error)?.error}</p>}
             </div>
           ) : (
+            <div className={cn("grid items-start gap-6", video.output && "lg:grid-cols-[minmax(0,1fr)_auto]")}>
             <div className={cn("overflow-hidden rounded-2xl border border-border bg-card shadow-soft", runs[writer as WriterId] && !runs[writer as WriterId]!.error && "opacity-60")}>
               <div className="flex items-center justify-between gap-3 px-5 pt-4 sm:px-6">
                 <span className="font-serif text-[18px]">{writer === "current" ? "Current" : getWriter(writer).label}</span>
@@ -244,6 +246,22 @@ export function PostStep({ video }: StepProps) {
                 ))}
               </div>
               {activeTab && <CaptionEditor platform={activeTab} copy={copies.find((c) => c.platform === activeTab)} update={(patch) => updateCopy(activeTab, patch)} />}
+            </div>
+            {video.output && (
+              <div className="flex justify-center lg:sticky lg:top-28">
+                <PhonePreview
+                  src={video.output.url}
+                  aspect={video.output.aspect}
+                  seed={video.id}
+                  name={profile.name}
+                  avatar={profile.headshots.find((x) => x.url)?.url}
+                  caption={(() => {
+                    const c = copies.find((x) => x.platform === activeTab);
+                    return c && activeTab ? composeCaption(c, activeTab, profile) : video.title;
+                  })()}
+                />
+              </div>
+            )}
             </div>
           )}
 
