@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth/server";
 import { appUrl } from "@/lib/email";
-import { SocialError, cancelPost, fileLink, postsFor, publish, socialStatus } from "@/lib/social/ayrshare";
-import { NETWORK } from "@/lib/social/types";
-import { isMediaId } from "@/lib/storage/media";
+import { SocialError, cancelPost, postsFor, publish } from "@/lib/social/server";
+import { SERVICE_OF } from "@/lib/social/types";
+import { fileLink } from "@/lib/storage/file-links";
 import { getUpload, isStorageId } from "@/lib/video/storage";
 import type { PlatformId } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-const PLATFORM_IDS = Object.keys(NETWORK) as PlatformId[];
+const PLATFORM_IDS = Object.keys(SERVICE_OF) as PlatformId[];
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 /** How far ahead a post can be scheduled. */
 const MAX_AHEAD_DAYS = 90;
@@ -28,7 +28,10 @@ export async function GET(request: Request) {
   }
 }
 
-/** Post a finished video to the advisor's connected accounts, now or at a set time. */
+/**
+ * Post a finished video to the advisor's own Buffer channels, now or at a set time.
+ * Body: { videoId, title, outputId, posts: [{ channelId, platform, text, title? }], disclosureVersion, scheduleAt? }
+ */
 export async function POST(request: Request) {
   const user = await currentUser(request);
   if (!user) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
@@ -37,51 +40,34 @@ export async function POST(request: Request) {
 
   const outputId = str(b.outputId, 64);
   const rec = isStorageId(outputId) ? await getUpload(outputId) : null;
-  const captions = (Array.isArray(b.captions) ? b.captions : [])
-    .slice(0, 10)
-    .map((c: Record<string, unknown>) => ({ platform: c?.platform as PlatformId, text: str(c?.text, 10000), title: str(c?.title, 300) || undefined }))
-    .filter((c) => PLATFORM_IDS.includes(c.platform) && c.text);
+  const posts = (Array.isArray(b.posts) ? b.posts : [])
+    .slice(0, 12)
+    .map((p: Record<string, unknown>) => ({ channelId: str(p?.channelId, 64), platform: p?.platform as PlatformId, text: str(p?.text, 10000), title: str(p?.title, 300) || undefined }))
+    .filter((p) => p.channelId && PLATFORM_IDS.includes(p.platform) && p.text);
   const at = typeof b.scheduleAt === "string" ? Date.parse(b.scheduleAt) : NaN;
   const schedule = !Number.isNaN(at);
 
   const errors: string[] = [];
   if (!str(b.videoId, 80)) errors.push("videoId is required.");
   if (!rec) errors.push("Finish the edit first: there's no video to post.");
-  if (!captions.length) errors.push("Write the captions first.");
+  if (!posts.length) errors.push("Pick at least one of your channels.");
   if (schedule && at < Date.now() + 5 * 60_000) errors.push("Pick a time at least 5 minutes from now.");
   if (schedule && at > Date.now() + MAX_AHEAD_DAYS * 86400_000) errors.push(`Pick a time within the next ${MAX_AHEAD_DAYS} days.`);
   if (errors.length) return NextResponse.json({ ok: false, error: errors.join(" ") }, { status: 400 });
 
   try {
-    // Only post where the advisor has an account connected.
-    const status = await socialStatus(user);
-    if (!status.configured) throw new SocialError("Posting to your accounts isn't set up for this studio yet.", 503);
-    const have = new Set(status.accounts.map((a) => a.network));
-    const missing = captions.filter((c) => !have.has(NETWORK[c.platform]));
-    if (missing.length === captions.length) throw new SocialError("Connect the accounts you want to post to first.", 400);
-
-    const origin = appUrl(request);
-    // Links stay valid a few days past the post time, in case a network fetches late.
+    // Buffer fetches the video from here; the link lasts a few days past the post time.
     const until = (schedule ? at : Date.now()) + 3 * 86400_000;
-    const covers: Partial<Record<"short" | "long", string>> = {};
-    const raw = (b.covers ?? {}) as Record<string, unknown>;
-    for (const shape of ["short", "long"] as const) if (isMediaId(raw[shape])) covers[shape] = fileLink(origin, "c", raw[shape] as string, until, "jpg");
-
+    const ext = rec!.mimeType.includes("mp4") ? "mp4" : rec!.mimeType.includes("quicktime") ? "mov" : "webm";
     const result = await publish(user, {
       videoId: str(b.videoId, 80),
       title: str(b.title, 200) || "New video",
-      format: b.format === "long" ? "long" : "short",
-      videoUrl: fileLink(origin, "v", rec!.id, until, rec!.mimeType.includes("mp4") ? "mp4" : rec!.mimeType.includes("quicktime") ? "mov" : "webm"),
-      covers,
-      captions: captions.filter((c) => have.has(NETWORK[c.platform])),
+      videoUrl: fileLink(appUrl(request), "v", rec!.id, until, ext),
+      posts,
       disclosureVersion: str(b.disclosureVersion, 40) || "none",
       scheduleAt: schedule ? new Date(at).toISOString() : undefined,
     });
-    return NextResponse.json({
-      ok: true,
-      posts: result.posts,
-      errors: [...result.errors, ...missing.map((m) => ({ platform: m.platform, error: "Not connected." }))],
-    });
+    return NextResponse.json({ ok: true, ...result });
   } catch (e) {
     return fail(e);
   }

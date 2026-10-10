@@ -10,8 +10,8 @@ import { useStore } from "@/lib/store";
 import { activeDisclosure, composeCaption } from "@/lib/compose";
 import type { PlatformCopy } from "@/lib/ai/content";
 import { getPlatform } from "@/lib/mock/platforms";
-import { NETWORK, type SocialPost } from "@/lib/social/types";
-import { cancelScheduled, openConnect, publishVideo, useSocialPosts, useSocialStatus } from "@/lib/social/use-social";
+import { SERVICE_OF, type SocialPost } from "@/lib/social/types";
+import { BUFFER_CHANNELS_URL, cancelScheduled, connectBuffer, publishVideo, useSocialPosts, useSocialStatus } from "@/lib/social/use-social";
 import type { PlatformId, PostRecord, Video } from "@/lib/types";
 import { cn, fmtDateTime } from "@/lib/utils";
 
@@ -25,7 +25,7 @@ function videoPatch(v: Video, posts: SocialPost[]): Partial<Video> | null {
   const patch: Partial<Video> = {};
   const recorded = new Set((v.posts ?? []).filter((r) => r.how === "direct").map((r) => `${r.platform}|${r.at}`));
   const fresh: PostRecord[] = posted
-    .map((p) => ({ platform: p.platform, channel: "Posted from your account", caption: p.caption, disclosureVersion: p.disclosureVersion, at: p.postedAt ?? p.scheduledFor ?? p.createdAt, how: "direct" as const }))
+    .map((p) => ({ platform: p.platform, channel: p.channelName, caption: p.caption, disclosureVersion: p.disclosureVersion, at: p.postedAt ?? p.scheduledFor ?? p.createdAt, how: "direct" as const }))
     .filter((r) => !recorded.has(`${r.platform}|${r.at}`));
   if (fresh.length) {
     patch.posts = [...(v.posts ?? []), ...fresh];
@@ -48,7 +48,7 @@ function videoPatch(v: Video, posts: SocialPost[]): Partial<Video> | null {
   return Object.keys(patch).length ? patch : null;
 }
 
-/** Post the finished video from the advisor's own connected accounts, now or at a set time. */
+/** Post the finished video to the advisor's own Buffer channels, now or at a set time. */
 export function DirectPost({ video, platforms, copies }: { video: Video; platforms: PlatformId[]; copies: PlatformCopy[] }) {
   const { profile, updateVideo } = useStore();
   const { status } = useSocialStatus();
@@ -57,7 +57,7 @@ export function DirectPost({ video, platforms, copies }: { video: Video; platfor
   const later = localParts(new Date(Date.now() + 3600_000));
   const [date, setDate] = React.useState(later.date);
   const [time, setTime] = React.useState(later.time);
-  const [off, setOff] = React.useState<PlatformId[]>([]);
+  const [off, setOff] = React.useState<string[]>([]);
   const [busy, setBusy] = React.useState<string | null>(null);
 
   // Keep the video's status and archive in step with what went out.
@@ -69,11 +69,20 @@ export function DirectPost({ video, platforms, copies }: { video: Video; platfor
     if (patch) updateVideo(videoRef.current.id, patch);
   }, [posts, updateVideo]);
 
-  if (!status?.configured) return null;
+  if (!status?.available) return null;
 
-  const connected = new Map(status.accounts.map((a) => [a.network, a]));
+  const back = `/studio/${video.id}/post`;
   const ready = platforms.filter((p) => copies.some((c) => c.platform === p));
-  const chosen = ready.filter((p) => connected.has(NETWORK[p]) && !off.includes(p));
+  // Each of the advisor's channels once, with the caption it takes (Shorts for a short video on YouTube).
+  const targets = (status.channels ?? [])
+    .filter((c) => !c.disconnected)
+    .flatMap((c) => {
+      const fits = ready.filter((p) => SERVICE_OF[p] === c.service);
+      const platform = fits.length > 1 ? (fits.find((p) => (video.format === "short" ? p === "youtube_shorts" : p === "youtube")) ?? fits[0]) : fits[0];
+      return platform ? [{ channel: c, platform }] : [];
+    });
+  const chosen = targets.filter((t) => !off.includes(t.channel.id));
+  const missing = ready.filter((p) => !targets.some((t) => SERVICE_OF[t.platform] === SERVICE_OF[p]));
   const out = video.output;
   const at = when === "at" ? new Date(`${date}T${time}`) : null;
   const blocker = !out
@@ -81,20 +90,10 @@ export function DirectPost({ video, platforms, copies }: { video: Video; platfor
     : !ready.length
       ? "Write the captions first (the Caption step)."
       : !chosen.length
-        ? "Pick at least one connected account."
+        ? "Pick at least one of your channels."
         : at && (Number.isNaN(at.getTime()) || at.getTime() < Date.now() + 5 * 60_000)
           ? "Pick a time at least 5 minutes from now."
           : null;
-
-  const connect = async () => {
-    setBusy("connect");
-    try {
-      await openConnect(`/studio/${video.id}/post`);
-    } catch (e) {
-      toast.error((e as Error).message);
-      setBusy(null);
-    }
-  };
 
   const submit = async () => {
     if (!out) return;
@@ -103,18 +102,16 @@ export function DirectPost({ video, platforms, copies }: { video: Video; platfor
       const r = await publishVideo({
         videoId: video.id,
         title: video.title,
-        format: video.format,
         outputId: out.id,
-        covers: { short: video.covers?.short?.id, long: video.covers?.long?.id },
-        captions: chosen.map((p) => {
-          const c = copies.find((x) => x.platform === p)!;
-          return { platform: p, text: composeCaption(c, p, profile), title: c.title };
+        posts: chosen.map(({ channel, platform }) => {
+          const c = copies.find((x) => x.platform === platform)!;
+          return { channelId: channel.id, platform, text: composeCaption(c, platform, profile), title: c.title };
         }),
         disclosureVersion: activeDisclosure(profile)?.version ?? "none",
         scheduleAt: at ? at.toISOString() : undefined,
       });
       setPosts((cur) => [...r.posts, ...(cur ?? [])]);
-      if (r.posts.length) toast.success(at ? `Scheduled for ${fmtDateTime(at.toISOString())}` : "Posting now", { description: r.posts.map((p) => getPlatform(p.platform).label).join(", ") });
+      if (r.posts.length) toast.success(at ? `Scheduled for ${fmtDateTime(at.toISOString())}` : "Posting now", { description: r.posts.map((p) => p.channelName).join(", ") });
       for (const e of r.errors) toast.error(`${getPlatform(e.platform).label}: ${e.error}`);
     } catch (e) {
       toast.error((e as Error).message);
@@ -144,93 +141,103 @@ export function DirectPost({ video, platforms, copies }: { video: Video; platfor
       <div className="flex items-start gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brass-soft text-primary"><Send className="size-5" /></span>
         <div>
-          <h3 className="font-serif text-xl leading-tight">Post from your accounts</h3>
-          <p className="mt-1 text-[14px] text-muted-foreground">Goes out from your own profiles with the captions and disclosure above, right away or when you choose.</p>
+          <h3 className="font-serif text-xl leading-tight">Post from your Buffer</h3>
+          <p className="mt-1 text-[14px] text-muted-foreground">Goes out on your own channels with the captions and disclosure above, right away or when you choose.</p>
         </div>
       </div>
 
-      {shown.length > 0 && (
-        <ul className="mt-5 divide-y divide-border rounded-xl border border-border">
-          {shown.map((p) => (
-            <li key={p.id} className="flex items-center gap-3 px-4 py-3 text-[13px]" style={{ ["--pi-bg" as string]: "var(--card)" }}>
-              <PlatformIcon id={p.platform} className="size-4 shrink-0" />
-              <div className="min-w-0 flex-1">
-                <div className="font-medium">{getPlatform(p.platform).label}</div>
-                <div className={cn("flex items-center gap-1 text-[12px]", p.status === "failed" ? "text-destructive" : "text-muted-foreground")}>
-                  {p.status === "posted" && <><CircleCheck className="size-3.5 text-success" /> Posted{p.postedAt ? ` ${fmtDateTime(p.postedAt)}` : ""}</>}
-                  {p.status === "scheduled" && <><CalendarClock className="size-3.5" /> Scheduled for {p.scheduledFor ? fmtDateTime(p.scheduledFor) : "later"}</>}
-                  {p.status === "posting" && <><LoaderCircle className="size-3.5 animate-spin" /> Posting…</>}
-                  {p.status === "failed" && <><TriangleAlert className="size-3.5" /> {p.error || "Didn’t go out."}</>}
+      {!status.connected ? (
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <Button className="rounded-full" onClick={() => { setBusy("connect"); connectBuffer(back); }} disabled={!!busy}>
+            {busy === "connect" ? <LoaderCircle className="animate-spin" /> : <Plug />} Connect Buffer
+          </Button>
+          <span className="text-[12px] text-muted-foreground">One time. Only you see your channels.</span>
+        </div>
+      ) : (
+        <>
+          {status.error && <p className="mt-4 flex items-center gap-1.5 text-[13px] text-destructive"><TriangleAlert className="size-4" /> {status.error} <button className="cursor-pointer underline" onClick={() => connectBuffer(back)}>Connect again</button></p>}
+
+          {shown.length > 0 && (
+            <ul className="mt-5 divide-y divide-border rounded-xl border border-border">
+              {shown.map((p) => (
+                <li key={p.id} className="flex items-center gap-3 px-4 py-3 text-[13px]" style={{ ["--pi-bg" as string]: "var(--card)" }}>
+                  <PlatformIcon id={p.platform} className="size-4 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{p.channelName}</div>
+                    <div className={cn("flex items-center gap-1 text-[12px]", p.status === "failed" ? "text-destructive" : "text-muted-foreground")}>
+                      {p.status === "posted" && <><CircleCheck className="size-3.5 text-success" /> Posted{p.postedAt ? ` ${fmtDateTime(p.postedAt)}` : ""}</>}
+                      {p.status === "scheduled" && <><CalendarClock className="size-3.5" /> Scheduled for {p.scheduledFor ? fmtDateTime(p.scheduledFor) : "later"}</>}
+                      {p.status === "posting" && <><LoaderCircle className="size-3.5 animate-spin" /> Posting…</>}
+                      {p.status === "failed" && <><TriangleAlert className="size-3.5" /> {p.error || "Didn’t go out."}</>}
+                    </div>
+                  </div>
+                  {p.postUrl && (
+                    <a href={p.postUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] text-primary hover:underline">View <ExternalLink className="size-3" /></a>
+                  )}
+                  {p.status === "scheduled" && (
+                    <Button size="sm" variant="ghost" className="rounded-full text-muted-foreground" disabled={!!busy} onClick={() => void cancel(p)}>
+                      {busy === p.id ? <LoaderCircle className="animate-spin" /> : null} Cancel
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="mt-5 space-y-5">
+            <div>
+              <div className="mb-2 text-[13px] font-medium">Where</div>
+              {targets.length ? (
+                <div className="flex flex-wrap gap-1.5" style={{ ["--pi-bg" as string]: "var(--card)" }}>
+                  {targets.map(({ channel, platform }) => {
+                    const on = !off.includes(channel.id);
+                    return (
+                      <button
+                        key={channel.id}
+                        type="button"
+                        onClick={() => setOff((o) => (o.includes(channel.id) ? o.filter((x) => x !== channel.id) : [...o, channel.id]))}
+                        aria-pressed={on}
+                        className={cn("inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] transition-colors", on ? "border-primary bg-brass-soft/70" : "border-border text-muted-foreground hover:text-foreground")}
+                      >
+                        <PlatformIcon id={platform} className="size-3.5 shrink-0" /> <span className="truncate">{channel.name}</span>
+                      </button>
+                    );
+                  })}
                 </div>
+              ) : (
+                <p className="text-[13px] text-muted-foreground">{ready.length ? "None of your Buffer channels match these captions yet." : "No captions yet."}</p>
+              )}
+              {missing.length > 0 && (
+                <p className="mt-2 text-[12px] text-muted-foreground">
+                  No {missing.map((m) => getPlatform(m).label).join(", ")} channel in your Buffer.{" "}
+                  <a href={BUFFER_CHANNELS_URL} target="_blank" rel="noreferrer" className="text-primary underline-offset-2 hover:underline">Add it in Buffer</a>, then come back.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <div className="mb-2 text-[13px] font-medium">When</div>
+              <div className="flex flex-wrap gap-2">
+                {([["now", "Right now"], ["at", "Schedule it"]] as const).map(([k, l]) => (
+                  <button key={k} type="button" onClick={() => setWhen(k)} className={cn("cursor-pointer rounded-full border px-3.5 py-1.5 text-[13px]", when === k ? "border-primary bg-brass-soft/70" : "border-border text-muted-foreground hover:text-foreground")}>{l}</button>
+                ))}
               </div>
-              {p.postUrl && (
-                <a href={p.postUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] text-primary hover:underline">View <ExternalLink className="size-3" /></a>
+              {when === "at" && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Input type="date" value={date} min={localParts(new Date()).date} onChange={(e) => setDate(e.target.value)} className="h-10 w-auto tnum" aria-label="Date" />
+                  <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="h-10 w-auto tnum" aria-label="Time" />
+                </div>
               )}
-              {p.status === "scheduled" && (
-                <Button size="sm" variant="ghost" className="rounded-full text-muted-foreground" disabled={!!busy} onClick={() => void cancel(p)}>
-                  {busy === p.id ? <LoaderCircle className="animate-spin" /> : null} Cancel
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <div className="mt-5 space-y-5">
-        <div>
-          <div className="mb-2 text-[13px] font-medium">Where</div>
-          {ready.length ? (
-            <div className="flex flex-wrap gap-1.5" style={{ ["--pi-bg" as string]: "var(--card)" }}>
-              {ready.map((p) => {
-                const acct = connected.get(NETWORK[p]);
-                const on = !!acct && !off.includes(p);
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    disabled={!acct}
-                    onClick={() => setOff((o) => (o.includes(p) ? o.filter((x) => x !== p) : [...o, p]))}
-                    aria-pressed={on}
-                    title={acct ? acct.name : "Not connected"}
-                    className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] transition-colors", on ? "cursor-pointer border-primary bg-brass-soft/70" : acct ? "cursor-pointer border-border text-muted-foreground hover:text-foreground" : "border-dashed border-border text-muted-foreground/70")}
-                  >
-                    <PlatformIcon id={p} className="size-3.5" /> {getPlatform(p).label}
-                    {!acct && <span className="text-[11px]">· not connected</span>}
-                  </button>
-                );
-              })}
             </div>
-          ) : (
-            <p className="text-[13px] text-muted-foreground">No captions yet.</p>
-          )}
-          {ready.some((p) => !connected.has(NETWORK[p])) && (
-            <button onClick={() => void connect()} disabled={!!busy} className="mt-2 inline-flex cursor-pointer items-center gap-1.5 text-[13px] text-primary hover:underline">
-              {busy === "connect" ? <LoaderCircle className="size-3.5 animate-spin" /> : <Plug className="size-3.5" />} Connect {status.accounts.length ? "more accounts" : "your accounts"}
-            </button>
-          )}
-        </div>
 
-        <div>
-          <div className="mb-2 text-[13px] font-medium">When</div>
-          <div className="flex flex-wrap gap-2">
-            {([["now", "Right now"], ["at", "Schedule it"]] as const).map(([k, l]) => (
-              <button key={k} type="button" onClick={() => setWhen(k)} className={cn("cursor-pointer rounded-full border px-3.5 py-1.5 text-[13px]", when === k ? "border-primary bg-brass-soft/70" : "border-border text-muted-foreground hover:text-foreground")}>{l}</button>
-            ))}
+            {blocker && <p className="text-[13px] text-destructive">{blocker}</p>}
+            <Button className="rounded-full px-6" onClick={() => void submit()} disabled={!!blocker || !!busy}>
+              {busy === "post" ? <LoaderCircle className="animate-spin" /> : when === "at" ? <CalendarClock /> : <Send />}
+              {when === "at" ? `Schedule${at && !Number.isNaN(at.getTime()) ? ` for ${fmtDateTime(at.toISOString())}` : ""}` : `Post now${chosen.length ? ` to ${chosen.length} ${chosen.length === 1 ? "channel" : "channels"}` : ""}`}
+            </Button>
           </div>
-          {when === "at" && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Input type="date" value={date} min={localParts(new Date()).date} onChange={(e) => setDate(e.target.value)} className="h-10 w-auto tnum" aria-label="Date" />
-              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="h-10 w-auto tnum" aria-label="Time" />
-            </div>
-          )}
-        </div>
-
-        {blocker && <p className="text-[13px] text-destructive">{blocker}</p>}
-        <Button className="rounded-full px-6" onClick={() => void submit()} disabled={!!blocker || !!busy}>
-          {busy === "post" ? <LoaderCircle className="animate-spin" /> : when === "at" ? <CalendarClock /> : <Send />}
-          {when === "at" ? `Schedule${at && !Number.isNaN(at.getTime()) ? ` for ${fmtDateTime(at.toISOString())}` : ""}` : `Post now${chosen.length ? ` to ${chosen.length} ${chosen.length === 1 ? "account" : "accounts"}` : ""}`}
-        </Button>
-      </div>
+        </>
+      )}
     </div>
   );
 }

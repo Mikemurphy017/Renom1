@@ -4,11 +4,11 @@ import * as React from "react";
 import type { PlatformId } from "@/lib/types";
 import type { SocialPost, SocialStatus } from "./types";
 
-/** Our platform for an Ayrshare network, for its icon (networks we don't post to have none). */
+/** Our platform for a Buffer channel type, for its icon (channel types we don't post videos to have none). */
 export const PLATFORM_OF: Record<string, PlatformId | undefined> = { youtube: "youtube", instagram: "instagram", tiktok: "tiktok", facebook: "facebook", linkedin: "linkedin", twitter: "x" };
-export const NETWORK_LABEL: Record<string, string> = { youtube: "YouTube", instagram: "Instagram", tiktok: "TikTok", facebook: "Facebook", linkedin: "LinkedIn", twitter: "X", threads: "Threads", pinterest: "Pinterest", gmb: "Google Business", reddit: "Reddit", bluesky: "Bluesky", telegram: "Telegram" };
-/** The networks advisors can post videos to from the studio, in the order we show them. */
-export const NETWORKS = ["linkedin", "youtube", "instagram", "facebook", "tiktok", "twitter"];
+export const SERVICE_LABEL: Record<string, string> = { youtube: "YouTube", instagram: "Instagram", tiktok: "TikTok", facebook: "Facebook", linkedin: "LinkedIn", twitter: "X", threads: "Threads", pinterest: "Pinterest", googlebusiness: "Google Business", bluesky: "Bluesky", mastodon: "Mastodon" };
+/** Where advisors add or reconnect channels: in Buffer itself. */
+export const BUFFER_CHANNELS_URL = "https://publish.buffer.com/channels";
 
 async function json<T>(res: Response, fallback: string): Promise<T> {
   const j = await res.json().catch(() => ({}));
@@ -16,37 +16,36 @@ async function json<T>(res: Response, fallback: string): Promise<T> {
   return j as T;
 }
 
-/** The advisor's connected accounts; re-checked when the tab regains focus (they connect in another page). */
+/** The advisor's own Buffer and its channels; re-checked when the tab regains focus (they add channels in Buffer). */
 export function useSocialStatus() {
   const [status, setStatus] = React.useState<SocialStatus | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const refresh = React.useCallback(async () => {
+  const refresh = React.useCallback(async (fresh = false) => {
     try {
-      const j = await json<SocialStatus>(await fetch("/api/social", { cache: "no-store" }), "Couldn’t load your accounts.");
-      setStatus({ configured: j.configured, accounts: j.accounts, unavailable: j.unavailable });
+      const j = await json<SocialStatus>(await fetch(`/api/social${fresh ? "?fresh" : ""}`, { cache: "no-store" }), "Couldn’t load your channels.");
+      setStatus({ available: j.available, connected: j.connected, email: j.email, organization: j.organization, channels: j.channels, error: j.error });
       setError(null);
     } catch (e) {
       setError((e as Error).message);
-      setStatus((s) => s ?? { configured: true, accounts: [], unavailable: [] });
+      setStatus((s) => s ?? { available: true, connected: false, channels: [] });
     }
   }, []);
   React.useEffect(() => {
     void refresh();
-    const onFocus = () => void refresh();
+    const onFocus = () => void refresh(true);
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [refresh]);
   return { status, error, refresh };
 }
 
-/** Opens the page where the advisor connects accounts, coming back to `back` afterwards. */
-export async function openConnect(back: string) {
-  const j = await json<{ url: string }>(await fetch("/api/social/link", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ back }) }), "Couldn’t open the connect page.");
-  window.location.assign(j.url);
+/** Sends the advisor to Buffer to approve Renom, coming back to `back` afterwards. */
+export function connectBuffer(back: string) {
+  window.location.assign(`/api/social/connect?back=${encodeURIComponent(back)}`);
 }
 
-export async function disconnect(network: string) {
-  await json(await fetch(`/api/social?network=${encodeURIComponent(network)}`, { method: "DELETE" }), "Couldn’t disconnect it.");
+export async function disconnectBuffer() {
+  await json(await fetch("/api/social", { method: "DELETE" }), "Couldn’t disconnect Buffer.");
 }
 
 export function useSocialPosts(videoId: string) {
@@ -75,16 +74,14 @@ export function useSocialPosts(videoId: string) {
 export interface PublishBody {
   videoId: string;
   title: string;
-  format: "short" | "long";
   outputId: string;
-  covers: Partial<Record<"short" | "long", string>>;
-  captions: { platform: PlatformId; text: string; title?: string }[];
+  posts: { channelId: string; platform: PlatformId; text: string; title?: string }[];
   disclosureVersion: string;
   scheduleAt?: string;
 }
 
 export async function publishVideo(body: PublishBody) {
-  return json<{ posts: SocialPost[]; errors: { platform: PlatformId; error: string }[] }>(
+  return json<{ posts: SocialPost[]; errors: { platform: PlatformId; channel: string; error: string }[] }>(
     await fetch("/api/social/posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
     "Couldn’t post it."
   );

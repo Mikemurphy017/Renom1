@@ -1,4 +1,4 @@
-import { readFileLink } from "@/lib/social/ayrshare";
+import { readFileLink } from "@/lib/storage/file-links";
 import { serveObject } from "@/lib/storage/objects";
 import { mediaKey } from "@/lib/storage/media";
 import { getUpload, uploadKey } from "@/lib/video/storage";
@@ -6,7 +6,7 @@ import { getUpload, uploadKey } from "@/lib/video/storage";
 export const dynamic = "force-dynamic";
 
 /**
- * A finished video or cover, for Ayrshare and the networks to fetch. Public,
+ * A finished video or cover, for Buffer and the networks to fetch. Public,
  * but only through a signed link that expires (see fileLink).
  */
 export async function GET(request: Request, { params }: { params: Promise<{ file: string }> }) {

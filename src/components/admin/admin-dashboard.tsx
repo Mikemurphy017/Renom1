@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Ban, Check, CircleAlert, KeyRound, LoaderCircle, LogOut, Mail, MoreHorizontal, RefreshCw, Share2, ShieldCheck, Trash2, UserPlus, X } from "lucide-react";
+import { Ban, Check, CircleAlert, KeyRound, LoaderCircle, LogOut, Mail, MoreHorizontal, RefreshCw, ShieldCheck, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -185,7 +185,7 @@ export function AdminDashboard() {
           <Invites data={data} reload={load} onLink={setLink} />
 
           <section>
-            <SectionLabel action={<div className="flex flex-wrap justify-end gap-1"><TestAyrshare disabled={data.services.find((s) => s.id === "ayrshare")?.detail.includes("AYRSHARE_API_KEY") ?? true} /><TestEmail disabled={!data.services.find((s) => s.id === "email")?.ok} /></div>}>Services</SectionLabel>
+            <SectionLabel action={<TestEmail disabled={!data.services.find((s) => s.id === "email")?.ok} />}>Services</SectionLabel>
             <div className="grid gap-2 sm:grid-cols-2">
               {data.services.map((s) => (
                 <div key={s.id} className="flex items-start gap-3 rounded-xl border border-border bg-card p-3.5">
@@ -313,26 +313,6 @@ function Invites({ data, reload, onLink }: { data: Data; reload: () => Promise<v
         </div>
       )}
     </section>
-  );
-}
-
-function TestAyrshare({ disabled }: { disabled: boolean }) {
-  const [busy, setBusy] = React.useState(false);
-  const check = async () => {
-    setBusy(true);
-    try {
-      const r = await call<{ detail: string }>("/api/admin/social-check", { method: "POST" });
-      toast.success("Ayrshare", { description: r.detail });
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <Button variant="ghost" size="sm" className="h-7 rounded-full text-[12px]" onClick={() => void check()} disabled={disabled || busy}>
-      {busy ? <LoaderCircle className="animate-spin" /> : <Share2 />} Test Ayrshare
-    </Button>
   );
 }
 

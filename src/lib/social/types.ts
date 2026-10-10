@@ -1,13 +1,15 @@
+import type { BufferService } from "@/lib/buffer/types";
 import type { PlatformId } from "@/lib/types";
 
 /**
- * Advisors connect their own social accounts (through Ayrshare) and post a
- * finished video now or at a set time. These are the shapes the browser sees;
- * Ayrshare keys and profile keys never leave the server.
+ * Advisors post from their own Buffer: they connect their social accounts in
+ * Buffer, paste their Buffer API key here once, and post a finished video now
+ * or at a set time. Each advisor's key only ever sees their own Buffer, and it
+ * never leaves the server.
  */
 
-/** The Ayrshare network behind each of our platforms (Shorts post to the same YouTube channel). */
-export const NETWORK: Record<PlatformId, string> = {
+/** The Buffer channel type behind each of our platforms (Shorts post to the same YouTube channel). */
+export const SERVICE_OF: Record<PlatformId, BufferService> = {
   youtube: "youtube",
   youtube_shorts: "youtube",
   instagram: "instagram",
@@ -17,29 +19,36 @@ export const NETWORK: Record<PlatformId, string> = {
   x: "twitter",
 };
 
-export interface ConnectedAccount {
-  /** Ayrshare network id (youtube, instagram, twitter…). */
-  network: string;
+export interface OwnChannel {
+  id: string;
+  service: string;
   name: string;
   avatar?: string;
-  url?: string;
+  /** Needs reconnecting in Buffer. */
+  disconnected?: boolean;
 }
 
 export interface SocialStatus {
-  /** The studio has Ayrshare set up (an administrator adds the keys). */
-  configured: boolean;
-  accounts: ConnectedAccount[];
-  /** Networks the studio can't post to yet (X needs the studio's own X app keys). */
-  unavailable: string[];
+  /** The studio can store keys (SECRETS_KEY is set). */
+  available: boolean;
+  connected: boolean;
+  /** The Buffer account and organization the key belongs to. */
+  email?: string;
+  organization?: string;
+  channels: OwnChannel[];
+  /** The key stopped working (revoked, say). */
+  error?: string;
 }
 
 export type SocialPostStatus = "scheduled" | "posting" | "posted" | "failed" | "cancelled";
 
 export interface SocialPost {
-  /** Ayrshare post id. */
+  /** Buffer post id. */
   id: string;
   videoId: string;
   platform: PlatformId;
+  channelId: string;
+  channelName: string;
   caption: string;
   disclosureVersion: string;
   status: SocialPostStatus;

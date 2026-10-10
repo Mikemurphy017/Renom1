@@ -24,7 +24,7 @@ export function PublishingSection() {
           <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brass-soft text-primary"><Share2 className="size-5" /></span>
           <div>
             <div className="text-[15px] font-medium">Your accounts</div>
-            <p className="mt-1 text-[13px] text-muted-foreground">Connect your accounts once, then post a finished video from the Post step, right away or at a time you choose.</p>
+            <p className="mt-1 text-[13px] text-muted-foreground">Connect your Buffer once, then post a finished video to your own channels from the Post step, right away or at a time you choose.</p>
           </div>
         </div>
         <div className="border-t border-border pt-4">

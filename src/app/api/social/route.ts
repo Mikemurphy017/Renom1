@@ -1,30 +1,29 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth/server";
-import { SocialError, socialStatus, unlink } from "@/lib/social/ayrshare";
+import { SocialError, disconnect, socialStatus } from "@/lib/social/server";
 
 export const dynamic = "force-dynamic";
 
 const fail = (e: unknown) => NextResponse.json({ ok: false, error: e instanceof SocialError ? e.message : "Something went wrong." }, { status: e instanceof SocialError ? e.status : 500 });
 
-/** Which of the advisor's social accounts are connected. */
+/** The advisor's own Buffer: connected or not, and their channels (never anyone else's). */
 export async function GET(request: Request) {
   const user = await currentUser(request);
   if (!user) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
   try {
-    return NextResponse.json({ ok: true, ...(await socialStatus(user)) }, { headers: { "Cache-Control": "no-store" } });
+    const fresh = new URL(request.url).searchParams.has("fresh");
+    return NextResponse.json({ ok: true, ...(await socialStatus(user, fresh)) }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return fail(e);
   }
 }
 
-/** Disconnect one network (?network=linkedin). */
+/** Disconnect the advisor's Buffer from Renom. */
 export async function DELETE(request: Request) {
   const user = await currentUser(request);
   if (!user) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
-  const network = new URL(request.url).searchParams.get("network") ?? "";
-  if (!/^[a-z]{2,20}$/.test(network)) return NextResponse.json({ ok: false, error: "Invalid network." }, { status: 400 });
   try {
-    await unlink(user, network);
+    await disconnect(user);
     return NextResponse.json({ ok: true });
   } catch (e) {
     return fail(e);

@@ -30,8 +30,9 @@ export class BufferError extends Error {
   }
 }
 
-async function gql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
-  const key = process.env.BUFFER_API_KEY;
+/** `as` is an advisor's own API key (their own Buffer); without it, the studio's. */
+async function gql<T>(query: string, variables: Record<string, unknown> = {}, as?: string): Promise<T> {
+  const key = as ?? process.env.BUFFER_API_KEY;
   if (!key) throw new BufferError("Buffer is not connected", 503);
   let res: Response;
   try {
@@ -51,13 +52,30 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
   } catch {
     throw new BufferError(`Buffer returned ${res.status}: ${text.slice(0, 200)}`);
   }
-  if (res.status === 401 || res.status === 403) throw new BufferError("Buffer rejected the API key. Check BUFFER_API_KEY.", 502);
+  if (res.status === 401 || res.status === 403) throw new BufferError(as ? "Buffer didn’t accept that API key." : "Buffer rejected the API key. Check BUFFER_API_KEY.", as ? 400 : 502);
   if (body.errors?.length) throw new BufferError(body.errors.map((e) => e.message).join("; "));
   if (!res.ok || !body.data) throw new BufferError(`Buffer request failed (${res.status})`);
   return body.data;
 }
 
 export const bufferConfigured = () => !!process.env.BUFFER_API_KEY;
+
+/** An advisor's own Buffer: the account behind their key, its first organization and that organization's channels. */
+export async function bufferAccountOf(key: string): Promise<{ email: string; organization: { id: string; name: string }; channels: BufferChannel[] }> {
+  const { account } = await gql<{ account: { email: string; organizations: { id: string; name: string }[] } }>(
+    `query RenomOwnAccount { account { email organizations { id name } } }`,
+    {},
+    key
+  );
+  const org = account.organizations[0];
+  if (!org) throw new BufferError("That Buffer account has no organization yet. Open Buffer once to finish setting it up.", 400);
+  const { channels } = await gql<{ channels: BufferChannel[] }>(
+    `query RenomOwnChannels($org: OrganizationId!) { channels(input: { organizationId: $org }) { id name displayName service type avatar timezone isDisconnected isLocked isQueuePaused } }`,
+    { org: org.id },
+    key
+  );
+  return { email: account.email, organization: org, channels };
+}
 
 export async function getBufferStatus(): Promise<BufferStatus> {
   if (!bufferConfigured()) return { configured: false, reason: "BUFFER_API_KEY is not set" };
@@ -122,7 +140,7 @@ function videoMetadataFor(req: CreateBufferPostRequest) {
   return Object.keys(m).length ? m : undefined;
 }
 
-export async function createBufferPost(req: CreateBufferPostRequest): Promise<CreateBufferPostResponse> {
+export async function createBufferPost(req: CreateBufferPostRequest, as?: string): Promise<CreateBufferPostResponse> {
   const input: Record<string, unknown> = {
     channelId: req.channelId,
     text: req.text,
@@ -147,7 +165,8 @@ export async function createBufferPost(req: CreateBufferPostRequest): Promise<Cr
           ... on MutationError { message }
         }
       }`,
-      { input }
+      { input },
+      as
     );
     if (createPost.post) return { ok: true, post: createPost.post };
     return { ok: false, error: createPost.message || createPost.__typename };
@@ -219,10 +238,11 @@ export async function listPosts(params: ListBufferPostsParams = {}): Promise<{ p
   return { posts: (data.posts.edges ?? []).map((e) => e.node), pageInfo: data.posts.pageInfo };
 }
 
-export async function getPost(id: string): Promise<BufferPost> {
+export async function getPost(id: string, as?: string): Promise<BufferPost> {
   const { post } = await gql<{ post: BufferPost }>(
     `query RenomPost($input: PostInput!) { post(input: $input) { ${POST_FIELDS} } }`,
-    { input: { id } }
+    { input: { id } },
+    as
   );
   return post;
 }
@@ -249,7 +269,7 @@ export async function editPost(id: string, req: EditBufferPostRequest): Promise<
   mutationError(editPost);
 }
 
-export async function deletePost(id: string): Promise<{ id: string }> {
+export async function deletePost(id: string, as?: string): Promise<{ id: string }> {
   const { deletePost } = await gql<{ deletePost: MutationResult & { id?: string } }>(
     `mutation RenomDeletePost($input: DeletePostInput!) {
       deletePost(input: $input) {
@@ -258,7 +278,8 @@ export async function deletePost(id: string): Promise<{ id: string }> {
         ... on MutationError { message }
       }
     }`,
-    { input: { id } }
+    { input: { id } },
+    as
   );
   if (deletePost.id) return { id: deletePost.id };
   mutationError(deletePost);
