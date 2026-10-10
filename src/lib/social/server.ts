@@ -56,8 +56,12 @@ async function tokenFor(userId: string): Promise<string | null> {
     const cur = (await links())[userId];
     if (!cur || cur.broken) return null;
     if (cur.expiresAt > Date.now()) return unseal(cur.access);
-    const refresh = unseal(cur.refresh);
-    if (!refresh) return null;
+    const refresh = cur.refresh ? unseal(cur.refresh) : null;
+    // Connected without a refresh token: the advisor reconnects (one click) when the access token runs out.
+    if (!refresh) {
+      await saveLink(userId, { ...cur, broken: true });
+      return null;
+    }
     try {
       const t = await refreshTokens(refresh);
       // Save the new pair before anything uses it.
@@ -93,7 +97,7 @@ export async function saveConnection(user: User, t: Tokens) {
     const studio = await getOrganization().catch(() => null);
     if (studio && studio.id === acct.organization.id) throw new SocialError("That’s the studio’s Buffer. Sign in to Buffer with your own account and connect again.", 403);
   }
-  await saveLink(user.id, { access: seal(t.access), refresh: seal(t.refresh), expiresAt: t.expiresAt, orgId: acct.organization.id, orgName: acct.organization.name, email: acct.email, connectedAt: new Date().toISOString() });
+  await saveLink(user.id, { access: seal(t.access), refresh: t.refresh ? seal(t.refresh) : "", expiresAt: t.expiresAt, orgId: acct.organization.id, orgName: acct.organization.name, email: acct.email, connectedAt: new Date().toISOString() });
   channelsCache.set(user.id, { at: Date.now(), channels: acct.channels.map(toChannel) });
 }
 
@@ -107,7 +111,7 @@ export async function socialStatus(user: User, fresh = false): Promise<SocialSta
   const l = (await links())[user.id];
   if (!l) return { available: true, connected: false, channels: [] };
   const base = { available: true, connected: true, email: l.email, organization: l.orgName };
-  if (l.broken) return { ...base, channels: [], error: "Buffer disconnected Renom. Connect again." };
+  if (l.broken) return { ...base, channels: [], error: l.refresh ? "Buffer disconnected Renom. Connect again." : "Your Buffer connection timed out. Connect again (one click)." };
   const hit = channelsCache.get(user.id);
   if (!fresh && hit && Date.now() - hit.at < 60_000) return { ...base, channels: hit.channels };
   const token = await tokenFor(user.id);

@@ -14,12 +14,14 @@ export async function GET(request: Request) {
   const user = await currentUser(request);
   const origin = originOf(request);
   if (!user) return NextResponse.redirect(`${origin}/signin`);
-  const back = safeBack(new URL(request.url).searchParams.get("back"));
+  const q = new URL(request.url).searchParams;
+  const back = safeBack(q.get("back"));
+  const lite = q.get("lite") === "1";
   if (!socialAvailable()) return NextResponse.redirect(`${origin}${back.split("#")[0]}${back.includes("?") ? "&" : "?"}buffer=unavailable`);
   const { verifier, challenge, state } = pkce();
-  const res = NextResponse.redirect(authorizeUrl({ redirectUri: redirectUri(origin), state, challenge }));
+  const res = NextResponse.redirect(authorizeUrl({ redirectUri: redirectUri(origin), state, challenge, lite }));
   // The verifier and state wait here (encrypted, unreadable to page scripts) for Buffer to send the advisor back.
-  res.cookies.set("renom_buffer_oauth", seal(JSON.stringify({ state, verifier, back, uid: user.id, at: Date.now() })), {
+  res.cookies.set("renom_buffer_oauth", seal(JSON.stringify({ state, verifier, back, uid: user.id, at: Date.now(), lite })), {
     httpOnly: true,
     secure: origin.startsWith("https://"),
     sameSite: "lax",

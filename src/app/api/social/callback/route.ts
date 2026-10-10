@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const origin = originOf(request);
   const url = new URL(request.url);
   const raw = request.headers.get("cookie")?.match(/(?:^|;\s*)renom_buffer_oauth=([^;]+)/)?.[1];
-  const saved = raw ? (JSON.parse(unseal(decodeURIComponent(raw)) ?? "null") as { state: string; verifier: string; back: string; uid: string; at: number } | null) : null;
+  const saved = raw ? (JSON.parse(unseal(decodeURIComponent(raw)) ?? "null") as { state: string; verifier: string; back: string; uid: string; at: number; lite?: boolean } | null) : null;
   const back = saved?.back ?? "/settings#publishing";
   const done = (result: string) => {
     const [path, hash] = back.split("#");
@@ -25,6 +25,8 @@ export async function GET(request: Request) {
 
   const user = await currentUser(request);
   if (!user) return NextResponse.redirect(`${origin}/signin`);
+  // The app client can't grant offline_access: try once more without it.
+  if (url.searchParams.get("error") === "invalid_scope" && saved && !saved.lite) return NextResponse.redirect(`${origin}/api/social/connect?lite=1&back=${encodeURIComponent(saved.back)}`);
   if (url.searchParams.get("error")) return done(url.searchParams.get("error") === "access_denied" ? "denied" : "failed");
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
