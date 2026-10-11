@@ -60,6 +60,15 @@ const INCLUDED = [
   "Works on your laptop and your phone",
 ];
 
+/** The under-10-minutes timeline: minutes, step, what happens. */
+const TEN_MINUTES: [string, string, string][] = [
+  ["1 min", "Pick an idea", "Topics your high-net-worth clients actually ask about: liquidity events, concentrated stock, the business sale, estate questions."],
+  ["1 min", "Choose a script", "Four finished drafts in your voice. Pick the one that sounds like you, tweak a line if you like."],
+  ["3 min", "Record it", "Read from the teleprompter beside your lens. Fluff a line? Just say it again."],
+  ["2 min", "AI edits it", "Pauses and retakes cut, captions timed to your voice, your name and credentials on screen."],
+  ["2 min", "Cover and caption", "A cover that earns the click, post copy with your disclosure, and a phone preview before it goes out."],
+];
+
 const FAQ = [
   {
     q: "Do I need any equipment?",
@@ -67,7 +76,7 @@ const FAQ = [
   },
   {
     q: "How long does a video take?",
-    a: `Most of the time is the recording itself. Choosing a script takes a few minutes, and once you stop recording ${NAME} edits the video for you while you review the post copy.`,
+    a: `Under 10 minutes for a typical short video, from idea to ready to post. Most of that is the recording itself: picking an idea and a script takes a couple of minutes, and once you stop recording ${NAME} edits the video for you while you choose the cover and caption.`,
   },
   {
     q: "Will it sound like me?",
@@ -203,13 +212,47 @@ export function Landing() {
             The advisor people trust most is the one <em className="text-primary italic">they’ve already met.</em>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-[17px] leading-relaxed text-muted-foreground sm:text-[19px]">
-            Video lets prospects meet you before the first meeting. {NAME} writes the script in your voice, puts it on a teleprompter in your browser, edits your take and hands you a video that’s ready to post.
+            Video lets prospects meet you before the first meeting. {NAME} writes the script in your voice, puts it on a teleprompter in your browser, edits your take and hands you a polished video built to attract high-net-worth prospects, <span className="font-medium text-foreground">in under 10 minutes</span>.
           </p>
           <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
             <CTA>Start free</CTA>
             <a href="#how" className="inline-flex h-12 items-center justify-center rounded-full border border-border bg-card px-7 text-[15px] font-medium hover:bg-accent">See how it works</a>
           </div>
           <p className="mt-4 text-[13px] text-muted-foreground">No credit card. Pricing after early access: TBD.</p>
+        </section>
+
+        {/* Under 10 minutes */}
+        <section className="border-y border-border bg-card">
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+            <div className="grid items-end gap-6 md:grid-cols-[1.2fr_1fr]">
+              <div>
+                <Eyebrow>Under 10 minutes</Eyebrow>
+                <H2 accent="in under 10 minutes.">Polished content for high-net-worth prospects,</H2>
+              </div>
+              <p className="text-[15px] leading-relaxed text-muted-foreground">
+                The people you want to reach judge you on polish before they ever take a meeting. {NAME} gets you there between appointments: a finished, captioned, on-brand video with a cover and caption that earn the click.
+              </p>
+            </div>
+            <ol className="mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {TEN_MINUTES.map(([min, title, body], i) => (
+                <li key={title} className="relative rounded-2xl border border-border bg-background p-5">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[12px] font-medium text-muted-foreground tnum">Step {i + 1}</span>
+                    <span className="font-serif text-[22px] text-primary tnum">{min}</span>
+                  </div>
+                  <div className="mt-3 text-[15px] font-medium">{title}</div>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">{body}</p>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-8 flex flex-col items-center justify-between gap-4 rounded-2xl bg-[#0B1F3A] px-6 py-5 text-white sm:flex-row">
+              <div className="flex items-baseline gap-3">
+                <span className="font-serif text-[40px] leading-none text-[#D2B07A] tnum">&lt;10</span>
+                <span className="text-[15px] text-[#C9D1DD]">minutes from idea to a video you’re proud to put in front of a seven-figure prospect.</span>
+              </div>
+              <CTA variant="light" className="h-11 shrink-0">Make your first one</CTA>
+            </div>
+          </div>
         </section>
 
         {/* You record. We do the rest. */}
