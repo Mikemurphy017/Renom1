@@ -258,7 +258,7 @@ export function RecordStep({ video, complete }: StepProps) {
     }
     if (countdown !== null) return;
     if (!stream) {
-      toast("Turn on your camera first", { description: "Click “Enable camera” and allow access when your browser asks." });
+      toast("Turn on your camera first", { description: "Click “Record with camera” and allow access when your browser asks." });
       return;
     }
     if (!capture.supported) {
@@ -428,17 +428,19 @@ export function RecordStep({ video, complete }: StepProps) {
                   <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full border border-white/15 bg-white/5">
                     {capture.error ? <CameraOff className="size-5 text-[#E8CFA4]" /> : <Camera className="size-5 text-[#E8CFA4]" />}
                   </div>
-                  <p className="font-serif text-xl">{capture.error ? "Camera unavailable" : "Ready when you are"}</p>
+                  <p className="font-serif text-xl">{capture.error ? "Camera unavailable" : "Record it here, or upload it"}</p>
                   <p className="mt-1.5 text-[13px] text-white/70">
-                    {capture.error ?? "Turn on your camera and microphone. Nothing is uploaded until you choose to send a take for editing."}
+                    {capture.error ?? "Record with the prompter, or upload a video you’ve already made. Nothing is sent for editing until you choose."}
                   </p>
-                  <Button className="mt-5" onClick={() => enableCamera()} disabled={capture.starting}>
-                    <Camera /> {capture.starting ? "Waiting for permission…" : capture.error ? "Try again" : "Enable camera"}
-                  </Button>
-                  <div className="mt-4 text-[13px] text-white/70">
-                    Already recorded it?{" "}
-                    <button type="button" onClick={() => fileInput.current?.click()} className="cursor-pointer font-medium text-[#E8CFA4] underline-offset-2 hover:underline">Upload a video instead</button>
+                  <div className="mt-5 flex flex-col items-stretch justify-center gap-2.5 sm:flex-row">
+                    <Button className="h-10 px-5" onClick={() => enableCamera()} disabled={capture.starting}>
+                      <Camera /> {capture.starting ? "Waiting for permission…" : capture.error ? "Try again" : "Record with camera"}
+                    </Button>
+                    <Button variant="outline" className="h-10 border-[#E8CFA4]/70 bg-white/5 px-5 text-white hover:bg-white/15 hover:text-white" onClick={() => fileInput.current?.click()}>
+                      <Upload /> Upload a video
+                    </Button>
                   </div>
+                  <p className="mt-3 text-[12px] text-white/55">MP4, MOV or WebM from your phone or computer. You can also drag the file here.</p>
                 </div>
               </div>
             )}
@@ -477,8 +479,8 @@ export function RecordStep({ video, complete }: StepProps) {
               </PopoverTrigger>
               <PopoverContent align="start" side="top" className="w-72"><PrompterShortcuts /></PopoverContent>
             </Popover>
-            <Button size="sm" variant="ghost" className="text-white hover:bg-white/10" onClick={() => fileInput.current?.click()} disabled={recording} aria-label="Upload a video">
-              <Upload /> <span className="hidden md:inline">Upload a video</span>
+            <Button size="sm" variant="outline" className="ml-1 border-[#E8CFA4]/60 bg-white/5 text-white hover:bg-white/15 hover:text-white" onClick={() => fileInput.current?.click()} disabled={recording} aria-label="Upload a video">
+              <Upload /> <span className="hidden sm:inline">Upload a video</span><span className="sm:hidden">Upload</span>
             </Button>
             <input
               ref={fileInput}
