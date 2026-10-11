@@ -9,6 +9,7 @@ import { cn, fmtDuration } from "@/lib/utils";
 import { useStore } from "@/lib/store";
 import { useDraft } from "@/lib/drafts";
 import { composeCaption } from "@/lib/compose";
+import { bookingUrlFor } from "@/lib/booking";
 import type { PlatformCopy } from "@/lib/ai/content";
 import type { PlatformId, Video } from "@/lib/types";
 import { PhonePreview } from "../phone-preview";
@@ -22,10 +23,10 @@ export const downloadUrl = (v: Video) => (v.output ? `${v.output.url}?download=$
 const fmtSize = (b?: number) => (b ? (b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.max(0.1, b / 1e6).toFixed(1)} MB`) : "");
 
 /** The caption a feed would show: the vertical platforms' first, else the title. */
-export function feedCaption(copies: PlatformCopy[], profile: Parameters<typeof composeCaption>[2], title: string) {
+export function feedCaption(copies: PlatformCopy[], profile: Parameters<typeof composeCaption>[2], title: string, bookingUrl?: string) {
   const order: PlatformId[] = ["tiktok", "instagram", "youtube_shorts", "facebook", "linkedin", "youtube", "x"];
   const c = order.map((p) => copies.find((x) => x.platform === p)).find(Boolean);
-  return c ? composeCaption(c, c.platform, profile) : title;
+  return c ? composeCaption(c, c.platform, profile, bookingUrl) : title;
 }
 
 export function ReviewStep({ video, complete }: StepProps) {
@@ -68,7 +69,7 @@ export function ReviewStep({ video, complete }: StepProps) {
           </div>
           {view === "phone" ? (
             <div className="flex justify-center rounded-2xl bg-gradient-to-b from-muted/70 to-muted/20 px-4 py-8">
-              <PhonePreview key={out.id} src={out.url} aspect={out.aspect} seed={video.id} name={profile.name} avatar={profile.headshots.find((x) => x.url)?.url} caption={feedCaption(copies, profile, video.title)} />
+              <PhonePreview key={out.id} src={out.url} aspect={out.aspect} seed={video.id} name={profile.name} avatar={profile.headshots.find((x) => x.url)?.url} caption={feedCaption(copies, profile, video.title, bookingUrlFor(video, profile))} />
             </div>
           ) : (
             <div className="flex justify-center rounded-2xl bg-[#06101F] p-4 sm:p-6">

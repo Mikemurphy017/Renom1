@@ -77,6 +77,8 @@ export interface Video {
   /** Rendered cover images, one per shape. */
   covers?: Partial<Record<VideoFormat, CoverImage>>;
   /** The latest request for the team to post this video (mirrors the server). */
+  /** Put the advisor's calendar link in this video's captions and end card. On unless set to false. */
+  bookingLink?: boolean;
   teamPost?: { id: string; status: "submitted" | "in_buffer" | "scheduled" | "posted" | "returned" | "cancelled"; at?: string; note?: string };
 }
 
@@ -161,6 +163,8 @@ export interface AdvisorProfile {
   /** The advisor's own b-roll (photos, clips) and music, used by edit styles. */
   library?: LibraryItem[];
   disclosures: DisclosureVersion[];
+  /** Booking page (Calendly, Google, Microsoft Bookings…): added to post captions and the end card's call to action. */
+  calendarUrl?: string;
 }
 
 export interface LibraryItem {

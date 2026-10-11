@@ -14,6 +14,7 @@ import { HeadshotPicker } from "@/components/settings/headshot-picker";
 import { MediaLibrary } from "@/components/settings/media-library";
 import { AccountSection } from "@/components/settings/account-section";
 import { PublishingSection } from "@/components/settings/publishing-section";
+import { CalendarLink } from "@/components/settings/calendar-link";
 import { useStore } from "@/lib/store";
 import { disclosureTemplate, firstDisclosure, initials } from "@/lib/profile";
 import { useRouter } from "next/navigation";
@@ -25,6 +26,7 @@ const SECTIONS = [
   ["voice", "Your voice"],
   ["library", "B-roll & music"],
   ["disclosures", "Disclosures"],
+  ["calendar", "Calendar link"],
   ["publishing", "Publishing"],
   ["approval", "Approval"],
   ["team", "Team"],
@@ -184,6 +186,10 @@ export default function SettingsPage() {
                 ))}
               </ul>
             </details>
+          </Section>
+
+          <Section id="calendar" title="Calendar link" desc="Where prospects book time with you. It goes in your post captions and on the end card of your videos; you can switch it off for any video in the Edit step.">
+            <CalendarLink />
           </Section>
 
           <Section id="publishing" title="Publishing" desc="How your videos get posted.">

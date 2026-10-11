@@ -1,6 +1,7 @@
 import type { AdvisorProfile, VideoFormat } from "@/lib/types";
 import type { CutKind, JobResult, OverlayOptions, TimeRange } from "./types";
 import { extrasFor, getStyle, type StyleId } from "./styles";
+import { DEFAULT_CTA, bookingCta } from "@/lib/booking";
 
 /** One clickable phrase in the Edit step's transcript. Segments are contiguous from 0. */
 export interface Segment {
@@ -17,7 +18,7 @@ export function defaultOverlays(profile: AdvisorProfile, format: VideoFormat): O
     captions: { enabled: true, style, position: format === "short" ? "middle" : "bottom", color: getStyle(style).accent },
     lowerThird: { enabled: true, name: profile.name, credentials: profile.credentials, firm: profile.firm },
     keyPhrases: true,
-    endCard: { enabled: true, headline: `${profile.name}, ${profile.credentials}`, cta: "Follow for more like this" },
+    endCard: { enabled: true, headline: `${profile.name}, ${profile.credentials}`, cta: profile.calendarUrl ? bookingCta(profile.calendarUrl) : DEFAULT_CTA },
     extras: extrasFor(style),
   };
 }

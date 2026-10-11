@@ -23,6 +23,7 @@ import { cutsFromSegments, defaultOverlays, segmentsFromResult, type Segment } f
 import { DEFAULT_EDIT, type OverlayOptions } from "@/lib/video/types";
 import type { StepProps } from "../studio-view";
 import { LookPanel, PreviewOverlays, captionAt, type LookPeek } from "./edit-look";
+import { DEFAULT_CTA, bookingCta, bookingOn, isBookingCta } from "@/lib/booking";
 import { getStyle, normalizeOverlays } from "@/lib/video/styles";
 
 const scriptLines = (v: Video) => {
@@ -78,7 +79,7 @@ export function EditStep(props: StepProps) {
 }
 
 function EditStudio({ video, complete, analysis }: StepProps & { analysis?: PipelineState }) {
-  const { profile } = useStore();
+  const { profile, updateVideo } = useStore();
   const result = analysis?.result;
   const [segments, setSegments] = useDraft<Segment[]>(video.id, result ? `edit.segments.${result.jobId}` : "edit.segments.none", () => (result ? segmentsFromResult(result) : []));
   const [rawLook, setLook] = useDraft<OverlayOptions>(video.id, "edit.overlays", () => defaultOverlays(profile, video.format));
@@ -191,6 +192,23 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
     setPeek(p);
   };
 
+  // ── calendar link: in the caption and as the end card's call to action, unless switched off ──
+  const calendarUrl = profile.calendarUrl;
+  const booking = bookingOn(video, profile);
+  const setBooking = (on: boolean) => {
+    updateVideo(video.id, { bookingLink: on });
+    const ec = look.endCard;
+    changeLook({ ...look, endCard: on && calendarUrl ? { ...ec, enabled: true, cta: bookingCta(calendarUrl) } : { ...ec, cta: isBookingCta(ec.cta) ? DEFAULT_CTA : ec.cta } }, "endCard");
+  };
+  // Keep the end card in step with the link (added later in Settings, or changed there).
+  React.useEffect(() => {
+    if (!calendarUrl) return;
+    const ec = look.endCard;
+    const want = bookingCta(calendarUrl);
+    if (booking && ec.cta !== want && (ec.cta === DEFAULT_CTA || isBookingCta(ec.cta))) setLook({ ...look, endCard: { ...ec, cta: want } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking, calendarUrl]);
+
   const processTake = () => {
     if (!take) return;
     analyzeTake(video.id, take, { aspect: take.height > take.width ? "9:16" : "16:9", edit: DEFAULT_EDIT, overlays: look, script: scriptLines(video) }).catch((e) =>
@@ -293,7 +311,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
               </span>
             </div>
           </div>
-          <LookPanel value={look} onChange={changeLook} brandColors={profile.brandColors} frame={frame} stockFootage={stockFootage} />
+          <LookPanel value={look} onChange={changeLook} brandColors={profile.brandColors} frame={frame} stockFootage={stockFootage} booking={{ url: calendarUrl, on: booking, onToggle: setBooking }} />
         </div>
 
         {/* Transcript */}

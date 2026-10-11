@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { PlatformIcon } from "@/components/shared/platform-icon";
 import { useStore } from "@/lib/store";
 import { activeDisclosure, composeCaption } from "@/lib/compose";
+import { bookingUrlFor } from "@/lib/booking";
 import { getPlatform } from "@/lib/mock/platforms";
 import type { PlatformCopy } from "@/lib/ai/content";
 import type { PlatformId, Video } from "@/lib/types";
@@ -54,7 +55,7 @@ export function ShareKit({ video, platforms, copies, tagline }: { video: Video; 
   const slug = fileSlug(video.title);
   const captionFor = (p: PlatformId) => {
     const c = copies.find((x) => x.platform === p);
-    return c ? composeCaption(c, p, profile) : "";
+    return c ? composeCaption(c, p, profile, bookingUrlFor(video, profile)) : "";
   };
 
   const markPosted = () => {

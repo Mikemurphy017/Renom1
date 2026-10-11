@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Bookmark, Check, Hash, Lock, RefreshCw, Send, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bookmark, CalendarDays, Check, Hash, Lock, RefreshCw, Send, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,8 @@ import { useDraft } from "@/lib/drafts";
 import { isAbort, streamWrite } from "@/lib/ai/writer";
 import { WRITERS, getWriter, type WriterId } from "@/lib/ai/writers";
 import type { PlatformCopy } from "@/lib/ai/content";
-import { activeDisclosure, composeCaption, disclosureFor } from "@/lib/compose";
+import { activeDisclosure, BOOKING_LINE, composeCaption, disclosureFor } from "@/lib/compose";
+import { bookingUrlFor } from "@/lib/booking";
 import { PLATFORMS, getPlatform } from "@/lib/mock/platforms";
 import type { PlatformId } from "@/lib/types";
 import { cn, fmtNumber } from "@/lib/utils";
@@ -245,7 +246,7 @@ export function PostStep({ video }: StepProps) {
                   </button>
                 ))}
               </div>
-              {activeTab && <CaptionEditor platform={activeTab} copy={copies.find((c) => c.platform === activeTab)} update={(patch) => updateCopy(activeTab, patch)} />}
+              {activeTab && <CaptionEditor platform={activeTab} bookingUrl={bookingUrlFor(video, profile)} copy={copies.find((c) => c.platform === activeTab)} update={(patch) => updateCopy(activeTab, patch)} />}
             </div>
             {video.output && (
               <div className="flex justify-center lg:sticky lg:top-28">
@@ -257,7 +258,7 @@ export function PostStep({ video }: StepProps) {
                   avatar={profile.headshots.find((x) => x.url)?.url}
                   caption={(() => {
                     const c = copies.find((x) => x.platform === activeTab);
-                    return c && activeTab ? composeCaption(c, activeTab, profile) : video.title;
+                    return c && activeTab ? composeCaption(c, activeTab, profile, bookingUrlFor(video, profile)) : video.title;
                   })()}
                 />
               </div>
@@ -328,13 +329,13 @@ export function PostStep({ video }: StepProps) {
   );
 }
 
-function CaptionEditor({ platform, copy, update }: { platform: PlatformId; copy?: PlatformCopy; update: (p: Partial<PlatformCopy>) => void }) {
+function CaptionEditor({ platform, copy, bookingUrl, update }: { platform: PlatformId; copy?: PlatformCopy; bookingUrl?: string; update: (p: Partial<PlatformCopy>) => void }) {
   const { profile } = useStore();
   const p = getPlatform(platform);
   if (!copy) return <div className="p-8 text-center text-[14px] text-muted-foreground">No copy for {p.label} yet.</div>;
   const locked = disclosureFor(platform, profile);
-  const tags = copy.hashtags.map((h) => `#${h}`).join(" ");
-  const total = copy.description.length + (tags ? tags.length + 2 : 0) + locked.length + 2;
+  // Everything that goes out: caption, calendar link, hashtags and disclosure.
+  const total = composeCaption(copy, platform, profile, bookingUrl).length;
   const over = total > p.descLimit;
   return (
     <div className="space-y-4 p-5 sm:p-6">
@@ -371,6 +372,15 @@ function CaptionEditor({ platform, copy, update }: { platform: PlatformId; copy?
           }}
         />
       </div>
+      {bookingUrl && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-border p-4 text-[13px]">
+          <CalendarDays className="mt-0.5 size-4 shrink-0 text-primary" />
+          <div className="min-w-0">
+            <div className="truncate">{BOOKING_LINE} <span className="text-primary">{bookingUrl}</span></div>
+            <div className="mt-0.5 text-[12px] text-muted-foreground">Added to the caption automatically. Switch it off for this video in <span className="font-medium">Edit → Calendar link</span>.</div>
+          </div>
+        </div>
+      )}
       <div className="rounded-xl bg-brass-soft/60 p-4">
         <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-[#7d6238] uppercase dark:text-primary"><Lock className="size-3" /> Disclosure · {activeDisclosure(profile)?.version ?? "not set"} · added automatically</div>
         <p className="text-[12px] leading-relaxed whitespace-pre-line text-foreground/75 select-none">{locked}</p>

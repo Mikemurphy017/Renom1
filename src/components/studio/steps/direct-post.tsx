@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { PlatformIcon } from "@/components/shared/platform-icon";
 import { useStore } from "@/lib/store";
 import { activeDisclosure, composeCaption } from "@/lib/compose";
+import { bookingUrlFor } from "@/lib/booking";
 import type { PlatformCopy } from "@/lib/ai/content";
 import { getPlatform } from "@/lib/mock/platforms";
 import { SERVICE_OF, type SocialPost } from "@/lib/social/types";
@@ -105,7 +106,7 @@ export function DirectPost({ video, platforms, copies }: { video: Video; platfor
         outputId: out.id,
         posts: chosen.map(({ channel, platform }) => {
           const c = copies.find((x) => x.platform === platform)!;
-          return { channelId: channel.id, platform, text: composeCaption(c, platform, profile), title: c.title };
+          return { channelId: channel.id, platform, text: composeCaption(c, platform, profile, bookingUrlFor(video, profile)), title: c.title };
         }),
         disclosureVersion: activeDisclosure(profile)?.version ?? "none",
         scheduleAt: at ? at.toISOString() : undefined,

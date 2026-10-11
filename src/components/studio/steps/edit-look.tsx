@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Check, Film, Music2, Pause, Play, Sparkles, Volume2, Wand2, ZoomIn } from "lucide-react";
+import { CalendarDays, Check, Film, Music2, Pause, Play, Sparkles, Volume2, Wand2, ZoomIn } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -29,7 +29,10 @@ export function LookPanel({
   brandColors,
   frame,
   stockFootage,
+  booking,
 }: {
+  /** The calendar link toggle: on by default when the advisor has a link. */
+  booking?: { url?: string; on: boolean; onToggle: (on: boolean) => void };
   value: OverlayOptions;
   onChange: (next: OverlayOptions, peek: LookPeek) => void;
   brandColors: string[];
@@ -122,6 +125,21 @@ export function LookPanel({
         <Row label="Name & credentials" hint={`${value.lowerThird.name}, ${value.lowerThird.credentials}`} checked={value.lowerThird.enabled} onChange={(v) => onChange({ ...value, lowerThird: { ...value.lowerThird, enabled: v } }, "lowerThird")} />
         <Row label="Key-phrase emphasis" hint="Numbers and key terms in the highlight color" checked={value.keyPhrases} onChange={(v) => onChange({ ...value, keyPhrases: v }, "captions")} />
         <Row label="End card" hint={value.endCard.cta} checked={value.endCard.enabled} onChange={(v) => onChange({ ...value, endCard: { ...value.endCard, enabled: v } }, "endCard")} />
+        {booking && (
+          <div>
+            <Row
+              icon={CalendarDays}
+              label="Calendar link"
+              hint={booking.url ? `In the caption and as the end card’s call to action` : "Add your booking link in Settings to use it here"}
+              checked={booking.on}
+              disabled={!booking.url}
+              onChange={booking.onToggle}
+            />
+            {!booking.url && (
+              <Link href="/settings#calendar" className="mt-1 ml-5.5 block text-[11px] text-primary underline-offset-2 hover:underline">Add your calendar link</Link>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

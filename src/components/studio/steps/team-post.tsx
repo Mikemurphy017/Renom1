@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { PlatformIcon } from "@/components/shared/platform-icon";
 import { useStore } from "@/lib/store";
 import { activeDisclosure, composeCaption } from "@/lib/compose";
+import { bookingUrlFor } from "@/lib/booking";
 import type { PlatformCopy } from "@/lib/ai/content";
 import { getPlatform } from "@/lib/mock/platforms";
 import { cancelPostRequest, submitPostRequest, usePostRequests, videoPatchFor } from "@/lib/posting/use-posting";
@@ -148,7 +149,7 @@ function RequestForm({ video, platforms, copies, tagline, previous, onDone, onCa
         platforms: ready,
         captions: ready.map((p) => {
           const c = copies.find((x) => x.platform === p)!;
-          return { platform: p, text: composeCaption(c, p, profile), title: c.title };
+          return { platform: p, text: composeCaption(c, p, profile, bookingUrlFor(video, profile)), title: c.title };
         }),
         disclosureVersion: activeDisclosure(profile)?.version ?? "none",
         tagline: tagline || undefined,
