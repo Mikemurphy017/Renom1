@@ -18,6 +18,8 @@ import { WRITERS, getWriter, type WriterId } from "@/lib/ai/writers";
 import type { PlatformCopy } from "@/lib/ai/content";
 import { activeDisclosure, BOOKING_LINE, composeCaption, disclosureFor } from "@/lib/compose";
 import { bookingUrlFor } from "@/lib/booking";
+import { CoverIntroStatus } from "../cover-intro-note";
+import { useCoverIntro } from "../use-cover-intro";
 import { PLATFORMS, getPlatform } from "@/lib/mock/platforms";
 import type { PlatformId } from "@/lib/types";
 import { cn, fmtNumber } from "@/lib/utils";
@@ -55,6 +57,7 @@ export function PostStep({ video }: StepProps) {
   const { profile, updateVideo, requireApproval, submitForReview, reviewer } = useStore();
   const vertical = video.format === "short";
   const [sub, setSub] = useDraft(video.id, "post.sub", 0);
+  const intro = useCoverIntro(video);
 
   // ── Platforms ──
   const defaultPlatforms: PlatformId[] = video.platforms.length ? video.platforms : vertical ? ["youtube_shorts", "instagram", "linkedin"] : ["youtube", "linkedin"];
@@ -187,7 +190,7 @@ export function PostStep({ video }: StepProps) {
         )}
       </div>
 
-      {sub === 0 && <CoverStudio video={video} onDone={() => setSub(1)} />}
+      {sub === 0 && <CoverStudio video={video} intro={intro} onDone={() => setSub(1)} />}
 
       {sub === 1 && (
         <>
@@ -249,7 +252,7 @@ export function PostStep({ video }: StepProps) {
               {activeTab && <CaptionEditor platform={activeTab} bookingUrl={bookingUrlFor(video, profile)} copy={copies.find((c) => c.platform === activeTab)} update={(patch) => updateCopy(activeTab, patch)} />}
             </div>
             {video.output && (
-              <div className="flex justify-center lg:sticky lg:top-28">
+              <div className="flex flex-col items-center gap-2 lg:sticky lg:top-28">
                 <PhonePreview
                   src={video.output.url}
                   aspect={video.output.aspect}
@@ -261,6 +264,7 @@ export function PostStep({ video }: StepProps) {
                     return c && activeTab ? composeCaption(c, activeTab, profile, bookingUrlFor(video, profile)) : video.title;
                   })()}
                 />
+                <CoverIntroStatus intro={intro} />
               </div>
             )}
             </div>

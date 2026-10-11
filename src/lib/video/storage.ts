@@ -20,6 +20,8 @@ export interface StoredUpload {
   createdAt: string;
   /** The video in the app this take belongs to. */
   videoId?: string;
+  /** A render with the cover added at the start: the cover's media id and the render it was made from. */
+  coverIntro?: { coverId: string; from: string };
   /** Provider-side id once it has been sent on (e.g. Mirage). */
   remoteId?: string;
 }

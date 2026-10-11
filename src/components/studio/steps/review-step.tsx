@@ -10,6 +10,8 @@ import { useStore } from "@/lib/store";
 import { useDraft } from "@/lib/drafts";
 import { composeCaption } from "@/lib/compose";
 import { bookingUrlFor } from "@/lib/booking";
+import { CoverIntroStatus } from "../cover-intro-note";
+import { useCoverIntro } from "../use-cover-intro";
 import type { PlatformCopy } from "@/lib/ai/content";
 import type { PlatformId, Video } from "@/lib/types";
 import { PhonePreview } from "../phone-preview";
@@ -32,6 +34,8 @@ export function feedCaption(copies: PlatformCopy[], profile: Parameters<typeof c
 export function ReviewStep({ video, complete }: StepProps) {
   const { profile } = useStore();
   const [copies] = useDraft<PlatformCopy[]>(video.id, "desc.copies", []);
+  // Re-rendered after picking a cover: put the cover back at the start.
+  const intro = useCoverIntro(video);
   const out = video.output;
   const [view, setView] = React.useState<"phone" | "full">(out?.aspect === "16:9" ? "full" : "phone");
   if (!out) {
@@ -84,6 +88,7 @@ export function ReviewStep({ video, complete }: StepProps) {
               />
             </div>
           )}
+          <CoverIntroStatus intro={intro} />
         </div>
 
         <div className="space-y-4">

@@ -66,6 +66,8 @@ export async function POST(request: Request) {
       posts,
       disclosureVersion: str(b.disclosureVersion, 40) || "none",
       scheduleAt: schedule ? new Date(at).toISOString() : undefined,
+      // A video that starts on its cover: the first frame is the thumbnail.
+      thumbnailOffsetMs: rec!.coverIntro ? 0 : undefined,
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {

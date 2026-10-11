@@ -10,6 +10,7 @@ import { PlatformIcon } from "@/components/shared/platform-icon";
 import { useStore } from "@/lib/store";
 import { activeDisclosure, composeCaption } from "@/lib/compose";
 import { bookingUrlFor } from "@/lib/booking";
+import { coverFrameMs } from "@/lib/video/cover-intro";
 import type { PlatformCopy } from "@/lib/ai/content";
 import { getPlatform } from "@/lib/mock/platforms";
 import { cancelPostRequest, submitPostRequest, usePostRequests, videoPatchFor } from "@/lib/posting/use-posting";
@@ -145,7 +146,7 @@ function RequestForm({ video, platforms, copies, tagline, previous, onDone, onCa
         title: video.title,
         format: video.format,
         output: { id: out.id, url: out.url, aspect: out.aspect, durationSec: out.durationSec },
-        covers: (["short", "long"] as const).flatMap((shape) => (video.covers?.[shape] ? [{ shape, url: video.covers[shape]!.url, frameMs: video.covers[shape]!.frameMs }] : [])),
+        covers: (["short", "long"] as const).flatMap((shape) => (video.covers?.[shape] ? [{ shape, url: video.covers[shape]!.url, frameMs: coverFrameMs(video, video.covers[shape]!) }] : [])),
         platforms: ready,
         captions: ready.map((p) => {
           const c = copies.find((x) => x.platform === p)!;

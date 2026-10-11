@@ -79,6 +79,8 @@ export interface Video {
   /** The latest request for the team to post this video (mirrors the server). */
   /** Put the advisor's calendar link in this video's captions and end card. On unless set to false. */
   bookingLink?: boolean;
+  /** Start the video on its cover, so it's the first thing people (and the networks) see. On unless set to false. */
+  coverIntro?: boolean;
   teamPost?: { id: string; status: "submitted" | "in_buffer" | "scheduled" | "posted" | "returned" | "cancelled"; at?: string; note?: string };
 }
 
@@ -89,6 +91,8 @@ export interface RenderedVideo {
   sizeBytes?: number;
   aspect: "9:16" | "16:9";
   renderedAt: string;
+  /** This file is the render with the cover added at the start; `plain` is the render from Edit. */
+  withCover?: { coverId: string; introSec: number; plain: { id: string; url: string; durationSec: number; sizeBytes?: number } };
 }
 
 export interface StoredTake {

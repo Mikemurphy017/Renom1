@@ -144,6 +144,8 @@ export interface PublishInput {
   disclosureVersion: string;
   /** ISO; omitted to post now. */
   scheduleAt?: string;
+  /** Where the cover is, for networks where Buffer picks the thumbnail frame. */
+  thumbnailOffsetMs?: number;
 }
 
 const statusFrom = (s: string): SocialPostStatus => (s === "sent" ? "posted" : s === "error" ? "failed" : s === "sending" ? "posting" : "scheduled");
@@ -163,7 +165,7 @@ export async function publish(user: User, i: PublishInput) {
       errors.push({ platform: p.platform, channel: p.channelId, error: "That channel isn’t in your Buffer." });
       continue;
     }
-    const r = await createBufferPost({ channelId: ch.id, service: SERVICE_OF[p.platform], text: p.text, mode: i.scheduleAt ? "schedule" : "now", dueAt: i.scheduleAt, videoUrl: i.videoUrl, title: p.title || i.title }, token);
+    const r = await createBufferPost({ channelId: ch.id, service: SERVICE_OF[p.platform], text: p.text, mode: i.scheduleAt ? "schedule" : "now", dueAt: i.scheduleAt, videoUrl: i.videoUrl, title: p.title || i.title, thumbnailOffsetMs: i.thumbnailOffsetMs }, token);
     if (!r.ok) {
       errors.push({ platform: p.platform, channel: ch.name, error: r.error });
       continue;

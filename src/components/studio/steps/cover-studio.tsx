@@ -18,6 +18,8 @@ import { COVER_SIZE, LOOKS, PALETTES, TEMPLATES, releaseCanvas, renderCover, tem
 import type { CoverImage, Video, VideoFormat } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { AskBar } from "../ask-bar";
+import { CoverIntroSwitch } from "../cover-intro-note";
+import type { useCoverIntro } from "../use-cover-intro";
 
 type Lines = Record<VideoFormat, CoverText[]>;
 interface Option {
@@ -217,7 +219,7 @@ const freshOptions = (lines: Lines, brand: boolean, seed = 1): Options => ({
   short: buildOptions("short", lines, { seed: seed + 1, count: BATCH, brand }),
 });
 
-export function CoverStudio({ video, onDone }: { video: Video; onDone: () => void }) {
+export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: ReturnType<typeof useCoverIntro>; onDone: () => void }) {
   const { profile, updateVideo } = useStore();
   const memTake = React.useSyncExternalStore(subscribeTakes, () => getTake(video.id), () => undefined);
   const takeSrc = memTake?.url ?? video.take?.url;
@@ -426,7 +428,7 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
         };
       }
       updateVideo(video.id, { covers });
-      toast.success("Covers saved", { description: "Long form and short form, both in your library." });
+      toast.success("Covers saved", { description: intro?.on && video.output ? "Your video now starts on its cover, too." : "Long form and short form, both in your library." });
       onDone();
     } catch (e) {
       toast.error("Couldn’t save the covers", { description: (e as Error).message });
@@ -631,6 +633,8 @@ export function CoverStudio({ video, onDone }: { video: Video; onDone: () => voi
           </div>
         </div>
       )}
+
+      {intro && video.output && <CoverIntroSwitch intro={intro} />}
 
       <div className="flex items-center justify-between">
         <Button variant="ghost" className="rounded-full" disabled={busy} onClick={() => writeLines("Give me fresh options for each shape with different tactics.")}>
