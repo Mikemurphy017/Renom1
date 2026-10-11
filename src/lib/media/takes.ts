@@ -31,5 +31,5 @@ export function subscribeTakes(fn: () => void) {
 }
 
 export function takeExtension(mimeType: string) {
-  return mimeType.includes("mp4") ? "mp4" : "webm";
+  return mimeType.includes("mp4") ? "mp4" : mimeType.includes("quicktime") ? "mov" : "webm";
 }

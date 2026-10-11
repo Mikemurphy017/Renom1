@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Settings2, Camera, CameraOff, Check, Clapperboard, Download, Keyboard, ListVideo, Minus, Pause, Play, Plus, RotateCcw, Sparkles, UserRound, Video as VideoIcon } from "lucide-react";
+import { Settings2, Camera, CameraOff, Check, Clapperboard, Download, Keyboard, ListVideo, LoaderCircle, Minus, Pause, Play, Plus, RotateCcw, Sparkles, Upload, UserRound, Video as VideoIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -22,7 +22,7 @@ import { getTake, saveTake, takeExtension } from "@/lib/media/takes";
 import { peekDraft } from "@/lib/drafts";
 import { analyzeTake, persistTake, resetPipeline } from "@/lib/video/client";
 import { defaultOverlays } from "@/lib/video/edit-model";
-import { DEFAULT_EDIT, type OverlayOptions } from "@/lib/video/types";
+import { ACCEPTED_VIDEO_TYPES, DEFAULT_EDIT, MAX_UPLOAD_LABEL, MAX_UPLOAD_MB, type OverlayOptions } from "@/lib/video/types";
 import { StepSection, FieldLabel } from "../step-layout";
 import { PrompterSettingsPanel, PrompterShortcuts, Teleprompter, usePrompterSettings, WPM_STEP, type TeleprompterHandle } from "../teleprompter";
 import type { StepProps } from "../studio-view";
@@ -50,6 +50,34 @@ function MicMeter({ level, live, clippedAt }: { level: number; live: boolean; cl
     </div>
   );
 }
+/** A video file's type, from the browser or its name (some systems leave MOV files untyped). */
+function videoType(f: File) {
+  const t = f.type.split(";")[0].trim().toLowerCase();
+  if (t) return t === "video/x-m4v" ? "video/mp4" : t;
+  const ext = f.name.toLowerCase().split(".").pop();
+  return ext === "mov" ? "video/quicktime" : ext === "webm" ? "video/webm" : ext === "mp4" || ext === "m4v" ? "video/mp4" : "";
+}
+
+/** Length and size of a video file, when this browser can read it (some MOV files it can't; the edit still can). */
+function readVideoMeta(f: File): Promise<{ durationSec: number; width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const v = document.createElement("video");
+    const url = URL.createObjectURL(f);
+    const done = (r: { durationSec: number; width: number; height: number } | null) => {
+      clearTimeout(t);
+      URL.revokeObjectURL(url);
+      v.removeAttribute("src");
+      resolve(r);
+    };
+    const t = setTimeout(() => done(null), 10_000);
+    v.preload = "metadata";
+    v.muted = true;
+    v.onloadedmetadata = () => done(v.videoWidth ? { durationSec: Number.isFinite(v.duration) ? Math.round(v.duration) : 0, width: v.videoWidth, height: v.videoHeight } : null);
+    v.onerror = () => done(null);
+    v.src = url;
+  });
+}
+
 export function RecordStep({ video, complete }: StepProps) {
   const router = useRouter();
   const { videos, updateVideo, profile } = useStore();
@@ -85,6 +113,10 @@ export function RecordStep({ video, complete }: StepProps) {
   const setOffset = React.useCallback((words: number) => prompter.current?.seek(words), []);
   const [takes, setTakes] = React.useState(0);
   const [doneOpen, setDoneOpen] = React.useState(false);
+  // A video made elsewhere (phone, videographer) instead of recording here.
+  const fileInput = React.useRef<HTMLInputElement>(null);
+  const [uploaded, setUploaded] = React.useState(false);
+  const [dragging, setDragging] = React.useState(false);
 
   React.useEffect(() => setAspect(active.format === "short" ? "9:16" : "16:9"), [active.format]);
 
@@ -165,6 +197,41 @@ export function RecordStep({ video, complete }: StepProps) {
     else { updateVideo(active.id, { stage: "edit" }); toast.success("Sent to AI Edit", { description: active.title }); }
   };
 
+  const takeFile = async (file?: File | null) => {
+    if (!file || recording) return;
+    const type = videoType(file);
+    if (!ACCEPTED_VIDEO_TYPES.includes(type)) {
+      toast.error("That file isn’t a video we can use", { description: "Use an MP4, MOV or WebM file." });
+      return;
+    }
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      toast.error(`Videos can be up to ${MAX_UPLOAD_LABEL}`, { description: "Export a smaller copy and try again." });
+      return;
+    }
+    const target = active.id;
+    const meta = await readVideoMeta(file);
+    const vertical = active.format === "short";
+    saveTake(target, {
+      blob: file,
+      mimeType: type,
+      durationSec: meta?.durationSec || active.runtimeSec,
+      width: meta?.width ?? (vertical ? 1080 : 1920),
+      height: meta?.height ?? (vertical ? 1920 : 1080),
+      recordedAt: new Date().toISOString(),
+    });
+    resetPipeline(target);
+    const fresh = getTake(target);
+    setLastTake(fresh);
+    setUploaded(true);
+    setTakes((t) => t + 1);
+    setDoneOpen(true);
+    // Save to platform storage right away, like a recorded take.
+    if (fresh)
+      persistTake(target, fresh)
+        .then((take) => updateVideo(target, { take, analysisJobId: undefined }))
+        .catch((e) => toast.error("Your video didn’t upload", { description: `${(e as Error).message} Try again, or check your connection.` }));
+  };
+
   const toggleRecord = async () => {
     if (recording) {
       setRecording(false);
@@ -181,6 +248,7 @@ export function RecordStep({ video, complete }: StepProps) {
           persistTake(target, fresh)
             .then((take) => updateVideo(target, { take, analysisJobId: undefined }))
             .catch((e) => toast.error("Your take didn’t save", { description: `${(e as Error).message} Keep this tab open and try recording again.` }));
+        setUploaded(false);
         setTakes((t) => t + 1);
         setDoneOpen(true);
       } catch (e) {
@@ -305,7 +373,27 @@ export function RecordStep({ video, complete }: StepProps) {
         {/* Stage */}
         {/* Phones: edge to edge, as tall as the screen allows. */}
         <div data-prompter-scope className="-mx-4 -mt-2 overflow-hidden border-y border-border bg-[#06101F] shadow-soft sm:mx-0 sm:mt-0 sm:rounded-2xl sm:border">
-          <div className={cn("relative flex h-[calc(100dvh-15.5rem)] min-h-[380px] items-center px-0 py-0 sm:h-[min(62vh,600px)] sm:px-6 sm:py-6", position === "left" ? "justify-start" : position === "right" ? "justify-end" : "justify-center")}>
+          <div
+            className={cn("relative flex h-[calc(100dvh-15.5rem)] min-h-[380px] items-center px-0 py-0 sm:h-[min(62vh,600px)] sm:px-6 sm:py-6", position === "left" ? "justify-start" : position === "right" ? "justify-end" : "justify-center")}
+            onDragOver={(e) => {
+              if (recording || !e.dataTransfer.types.includes("Files")) return;
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              void takeFile(e.dataTransfer.files?.[0]);
+            }}
+          >
+            {dragging && (
+              <div className="pointer-events-none absolute inset-3 z-40 flex items-center justify-center rounded-xl border-2 border-dashed border-[#D2B07A] bg-[#06101F]/80 text-center text-white">
+                <div><Upload className="mx-auto size-7 text-[#E8CFA4]" /><p className="mt-2 font-serif text-xl">Drop your video here</p><p className="mt-1 text-[13px] text-white/70">MP4, MOV or WebM, up to {MAX_UPLOAD_LABEL}</p></div>
+              </div>
+            )}
             <div className={cn("relative overflow-hidden bg-gradient-to-b from-[#2A3B55] to-[#1A2840] shadow-2xl sm:h-full sm:rounded-md", vertical ? "aspect-[9/16] h-full max-w-full" : "aspect-video w-full sm:w-auto sm:max-w-full")}>
               {stream ? (
                 <video ref={videoRef} autoPlay muted playsInline className="absolute inset-0 h-full w-full object-cover" style={{ transform: mirror ? "scaleX(-1)" : undefined }} />
@@ -347,6 +435,10 @@ export function RecordStep({ video, complete }: StepProps) {
                   <Button className="mt-5" onClick={() => enableCamera()} disabled={capture.starting}>
                     <Camera /> {capture.starting ? "Waiting for permission…" : capture.error ? "Try again" : "Enable camera"}
                   </Button>
+                  <div className="mt-4 text-[13px] text-white/70">
+                    Already recorded it?{" "}
+                    <button type="button" onClick={() => fileInput.current?.click()} className="cursor-pointer font-medium text-[#E8CFA4] underline-offset-2 hover:underline">Upload a video instead</button>
+                  </div>
                 </div>
               </div>
             )}
@@ -385,6 +477,19 @@ export function RecordStep({ video, complete }: StepProps) {
               </PopoverTrigger>
               <PopoverContent align="start" side="top" className="w-72"><PrompterShortcuts /></PopoverContent>
             </Popover>
+            <Button size="sm" variant="ghost" className="text-white hover:bg-white/10" onClick={() => fileInput.current?.click()} disabled={recording} aria-label="Upload a video">
+              <Upload /> <span className="hidden md:inline">Upload a video</span>
+            </Button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm"
+              className="hidden"
+              onChange={(e) => {
+                void takeFile(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
             <div className="ml-auto flex items-center gap-4">
               <span className="hidden text-[12px] text-white/60 sm:inline">
                 Take <span className="tnum">{takes + (recording ? 1 : 0) || 1}</span> · est. <span className="tnum">{fmtDuration(active.runtimeSec)}</span>
@@ -436,15 +541,18 @@ export function RecordStep({ video, complete }: StepProps) {
       <Dialog open={doneOpen} onOpenChange={setDoneOpen}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <div className="eyebrow">Take {takes} {active.take && active.take.recordedAt === lastTake?.recordedAt ? "saved to your library" : "saving…"} · <span className="tnum">{fmtDuration(Math.max(lastTake?.durationSec ?? elapsed, 1))}</span></div>
-            <DialogTitle>Nice work. Who should edit this one?</DialogTitle>
+            <div className="eyebrow flex items-center gap-1.5">
+              {uploaded ? "Your video" : `Take ${takes}`}{" "}
+              {active.take && active.take.recordedAt === lastTake?.recordedAt ? "saved to your library" : <>{uploaded ? "uploading" : "saving"}<LoaderCircle className="size-3 animate-spin" /></>} · <span className="tnum">{fmtDuration(Math.max(lastTake?.durationSec ?? elapsed, 1))}</span>
+            </div>
+            <DialogTitle>{uploaded ? "Got it. Who should edit this one?" : "Nice work. Who should edit this one?"}</DialogTitle>
             <DialogDescription>Watch it back, download it, or send it on for editing.</DialogDescription>
           </DialogHeader>
           {lastTake && (
             <div className="flex items-start gap-4 rounded-lg border border-border bg-muted/40 p-3">
               <video src={lastTake.url} controls playsInline className={cn("rounded-md bg-black", lastTake.height > lastTake.width ? "h-48" : "w-56")} />
               <div className="min-w-0 flex-1 space-y-1 text-[12px] text-muted-foreground">
-                <div className="text-[13px] font-medium text-foreground">Take {takes}</div>
+                <div className="text-[13px] font-medium text-foreground">{uploaded ? "Uploaded video" : `Take ${takes}`}</div>
                 <div className="tnum">{lastTake.width}×{lastTake.height} · {fmtDuration(lastTake.durationSec)} · {(lastTake.blob.size / 1_000_000).toFixed(1)} MB</div>
                 <div className="flex gap-2 pt-2">
                   <Button size="xs" variant="outline" asChild>
@@ -452,9 +560,15 @@ export function RecordStep({ video, complete }: StepProps) {
                       <Download /> Download
                     </a>
                   </Button>
-                  <Button size="xs" variant="ghost" onClick={() => { setDoneOpen(false); setOffset(0); }}>
-                    <RotateCcw /> Re-record
-                  </Button>
+                  {uploaded ? (
+                    <Button size="xs" variant="ghost" onClick={() => fileInput.current?.click()}>
+                      <Upload /> Choose another
+                    </Button>
+                  ) : (
+                    <Button size="xs" variant="ghost" onClick={() => { setDoneOpen(false); setOffset(0); }}>
+                      <RotateCcw /> Re-record
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
