@@ -84,3 +84,18 @@ export function peekDraft<T>(videoId: string, key: string): T | undefined {
   ensureLoaded();
   return cache.get(`${videoId}:${key}`) as T | undefined;
 }
+
+/** Remove a video's drafts and hand them back (so a delete can be undone). */
+export function takeDrafts(videoId: string): [string, unknown][] {
+  const prefix = `${videoId}:`;
+  const taken = [...cache.entries()].filter(([k]) => k.startsWith(prefix));
+  for (const [k] of taken) cache.delete(k);
+  if (taken.length) scheduleSave();
+  return taken;
+}
+
+/** Put drafts back that takeDrafts removed. */
+export function putDrafts(entries: [string, unknown][]) {
+  for (const [k, v] of entries) cache.set(k, v);
+  if (entries.length) scheduleSave();
+}

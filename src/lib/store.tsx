@@ -64,6 +64,8 @@ interface Store {
   updateVideo: (id: string, patch: Partial<Video>) => void;
   addVideo: (v: Partial<Video> & Pick<Video, "title">) => Video;
   deleteVideo: (id: string) => void;
+  /** Put deleted videos back (Undo), with their approval threads. */
+  restoreVideos: (items: { video: Video; reviews: ReviewItem[] }[]) => void;
   setStage: (id: string, stage: StageId) => void;
   reviews: ReviewItem[];
   setReviewStatus: (id: string, status: ComplianceStatus) => void;
@@ -237,6 +239,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return v;
       },
       deleteVideo: (id) => set((s) => ({ videos: s.videos.filter((v) => v.id !== id), reviews: s.reviews.filter((r) => r.videoId !== id) })),
+      restoreVideos: (items) =>
+        set((s) => {
+          const back = items.filter((i) => !s.videos.some((v) => v.id === i.video.id));
+          return { videos: [...back.map((i) => i.video), ...s.videos], reviews: [...back.flatMap((i) => i.reviews), ...s.reviews] };
+        }),
       setStage: (id, stage) => set((s) => ({ videos: s.videos.map((v) => (v.id === id ? { ...v, stage, lastEdited: now() } : v)) })),
       reviews: state.reviews,
       setReviewStatus: (id, status) =>

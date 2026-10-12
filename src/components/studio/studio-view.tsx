@@ -4,9 +4,12 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronLeft, FileX } from "lucide-react";
+import { ChevronLeft, FileX, MoreHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DeleteVideosDialog } from "@/components/shared/delete-videos-dialog";
+import { deleteBlocker, useDeleteVideos } from "@/lib/delete-videos";
 import { EmptyState } from "@/components/shared/page";
 import { useStore } from "@/lib/store";
 import { STAGES, stageIndex } from "@/lib/stages";
@@ -41,6 +44,8 @@ export function StudioView({ id, step }: { id: string; step: StageId }) {
   const router = useRouter();
   const { getVideo, updateVideo } = useStore();
   const video = getVideo(id);
+  const removeVideos = useDeleteVideos();
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
 
   if (!video) {
     return (
@@ -51,6 +56,7 @@ export function StudioView({ id, step }: { id: string; step: StageId }) {
   }
 
   const Step = STEP_COMPONENTS[step];
+  const blocked = deleteBlocker(video);
   const locked = stageIndex(step) > stageIndex(video.stage);
 
   const complete = (patch?: Partial<Video>, target?: StageId) => {
@@ -71,7 +77,18 @@ export function StudioView({ id, step }: { id: string; step: StageId }) {
           <div className="order-last col-span-2 -mx-3 overflow-x-auto px-3 [scrollbar-width:none] md:order-none md:col-span-1 md:mx-0 md:overflow-visible md:px-0">
             <Stepper videoId={video.id} current={step} reached={video.stage} published={video.status === "published"} />
           </div>
-          <div className="flex justify-end">
+          <div className="flex items-center justify-end gap-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-sm" className="rounded-full text-muted-foreground" aria-label="More for this video"><MoreHorizontal /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem disabled={!!blocked} onSelect={() => setConfirmDelete(true)} className="text-destructive focus:text-destructive">
+                  <Trash2 /> Delete video
+                </DropdownMenuItem>
+                {blocked && <p className="px-2 pb-1.5 text-[11px] leading-snug text-muted-foreground">{blocked}</p>}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               variant="ghost"
               size="sm"
@@ -84,6 +101,15 @@ export function StudioView({ id, step }: { id: string; step: StageId }) {
               Done
             </Button>
           </div>
+          <DeleteVideosDialog
+            videos={confirmDelete ? [video] : []}
+            onCancel={() => setConfirmDelete(false)}
+            onConfirm={() => {
+              setConfirmDelete(false);
+              router.push("/videos");
+              removeVideos([video.id]);
+            }}
+          />
         </div>
       </div>
 
