@@ -17,6 +17,8 @@ import {
   rgba,
   rrect,
   scaleOf,
+  personEdge,
+  shotOf,
   scratch,
   setTracking,
   star,
@@ -33,6 +35,8 @@ import {
  * Creator-style covers (the YouTube look): the advisor cut out of their photo
  * with a sticker outline, on a loud background, with huge outlined words and a
  * drawn illustration that hints at the topic. Built for a feed, not an intranet.
+ * Layer order, back to front: ground, words, the person, then illustrations
+ * and arrows (placed beside the face). Words never cover the person.
  */
 
 const INK = "#0A0A0A";
@@ -642,6 +646,28 @@ export function burst(ctx: CanvasRenderingContext2D, text: string, cx: number, c
   ctx.restore();
 }
 
+/** Where a sticker of radius r can sit next to the head without covering it: the preferred side if there's room, else the other. */
+function besideHead(shot: Shot, r: number, W: number, H: number, prefer: "left" | "right", minY = 0) {
+  const h = shot.head;
+  const right = h.x + h.w + r * 0.95;
+  const left = h.x - r * 0.95;
+  const fitsR = right + r * 0.8 <= W;
+  const fitsL = left - r * 0.8 >= 0;
+  const x = (prefer === "right" ? fitsR || !fitsL : !fitsL && fitsR) ? Math.min(right, W - r * 0.85) : Math.max(left, r * 0.85);
+  const y = Math.min(H - r, Math.max(minY + r * 0.6, h.y + r * 0.4));
+  return { x, y };
+}
+
+/**
+ * How wide words starting at x (from y0 to y1) can be and still stop short of
+ * the person, who is drawn in front of them: their actual outline when cut
+ * out, else the head.
+ */
+function roomLeftOf(s: Still, box: [number, number, number, number], o: StickerOpts, x: number, y0: number, y1: number, W: number, max = 0.55) {
+  const edge = personEdge(s, ...box, o, y0, y1, "left") ?? shotOf(s, ...box, o).head.x;
+  return Math.max(W * 0.26, Math.min(W * max, edge - 28 - x));
+}
+
 /** What goes on a burst: a short shout that fits the words (never a repeat of them). */
 function burstText(i: CoverInput) {
   const k = iconFor(i);
@@ -676,8 +702,9 @@ export const CREATOR_LONG: CoverTemplate[] = [
       const hits = hitsOf(i);
       burstGround(ctx, W, H, p.bg, W * 0.72, H * 0.42);
       const fills = fillsOn(p, p.bg);
-      const shot = sticker(ctx, i.still, W * 0.42, 24, W * 0.58, H - 24, { bias: { x: 0.55, y: 0.36 }, face: 0.4, ring: 10, safe: { top: 24, left: 40, right: 20 } });
-      const t = punch(ctx, i.headline, ANTON(f), { x: 44, y: 44, w: W * 0.5, h: H * 0.6, lines: 3, max: 250, fills, accent: accentOn(p, p.bg, fills), hits });
+      const so: StickerOpts = { bias: { x: 0.55, y: 0.36 }, face: 0.4, ring: 10, safe: { top: 24, left: 40, right: 20 } };
+      const t = punch(ctx, i.headline, ANTON(f), { x: 44, y: 44, w: roomLeftOf(i.still, [W * 0.42, 24, W * 0.58, H - 24], so, 44, 44, 44 + H * 0.6, W), h: H * 0.6, lines: 3, max: 250, fills, accent: accentOn(p, p.bg, fills), hits });
+      const shot = sticker(ctx, i.still, W * 0.42, 24, W * 0.58, H - 24, so);
       const kind = iconFor(i);
       const ix = 44 + 75;
       const iy = Math.min(H - 85, t.bottom + 95);
@@ -697,8 +724,9 @@ export const CREATOR_LONG: CoverTemplate[] = [
     draw(ctx, W, H, i, f, p) {
       const hits = hitsOf(i);
       burstGround(ctx, W, H, p.bg, W * 0.74, H * 0.5, { rays: false, dots: true });
-      const shot = sticker(ctx, i.still, W * 0.44, 20, W * 0.56, H - 20, { bias: { x: 0.5, y: 0.36 }, face: 0.4, ring: 12, safe: { top: 30, left: 20, right: 20 } });
-      punch(ctx, i.headline, MONT(f), { x: 56, y: H * 0.5, w: W * 0.5, h: H - 140, lines: 3, max: 150, anchor: "middle", fills: [], accent: "#FF2E2E", hits, blocks: { bg: ["#FFFFFF", "#FFE14D"], fg: INK } });
+      const so: StickerOpts = { bias: { x: 0.5, y: 0.36 }, face: 0.4, ring: 12, safe: { top: 30, left: 20, right: 20 } };
+      punch(ctx, i.headline, MONT(f), { x: 56, y: H * 0.5, w: roomLeftOf(i.still, [W * 0.44, 20, W * 0.56, H - 20], so, 56, 70, H - 70, W, 0.5), h: H - 140, lines: 3, max: 150, anchor: "middle", fills: [], accent: "#FF2E2E", hits, blocks: { bg: ["#FFFFFF", "#FFE14D"], fg: INK } });
+      const shot = sticker(ctx, i.still, W * 0.44, 20, W * 0.56, H - 20, so);
       const kind = iconFor(i);
       const ix = Math.min(W - 115, shot.face.x + shot.face.w * 1.25);
       const iy = Math.max(115, shot.face.y - shot.face.h * 0.55);
@@ -716,8 +744,9 @@ export const CREATOR_LONG: CoverTemplate[] = [
       const hits = hitsOf(i);
       const base = mix(p.bg, "#000000", 0.55);
       burstGround(ctx, W, H, base, W * 0.7, H * 0.5, { rays: false, glow: p.accent });
-      sticker(ctx, i.still, W * 0.4, 24, W * 0.6, H - 24, { bias: { x: 0.55, y: 0.36 }, face: 0.4, ring: 8, ringColor: p.accent, glow: p.accent, safe: { top: 24, left: 40 } });
-      const t = punch(ctx, i.headline, ANTON(f), { x: 48, y: H * 0.5, w: W * 0.5, h: H - 160, lines: 3, max: 250, anchor: "middle", fills: ["#FFFFFF"], accent: p.accent, hits, strokeW: 0.07 });
+      const so: StickerOpts = { bias: { x: 0.55, y: 0.36 }, face: 0.4, ring: 8, ringColor: p.accent, glow: p.accent, safe: { top: 24, left: 40 } };
+      const t = punch(ctx, i.headline, ANTON(f), { x: 48, y: H * 0.5, w: roomLeftOf(i.still, [W * 0.4, 24, W * 0.6, H - 24], so, 48, 80, H - 80, W), h: H - 160, lines: 3, max: 250, anchor: "middle", fills: ["#FFFFFF"], accent: p.accent, hits, strokeW: 0.07 });
+      sticker(ctx, i.still, W * 0.4, 24, W * 0.6, H - 24, so);
       ctx.fillStyle = p.accent;
       ctx.shadowColor = p.accent;
       ctx.shadowBlur = 24;
@@ -736,11 +765,14 @@ export const CREATOR_LONG: CoverTemplate[] = [
       const hits = hitsOf(i);
       burstGround(ctx, W, H, p.bg, W * 0.28, H * 0.45);
       const fills = fillsOn(p, p.bg);
-      const shot = sticker(ctx, i.still, 0, 24, W * 0.56, H - 24, { bias: { x: 0.45, y: 0.36 }, face: 0.42, ring: 10, safe: { top: 24, left: 20, right: 40 } });
-      punch(ctx, i.headline, ANTON(f), { x: W * 0.55, y: H * 0.56, w: W * 0.41, h: H - 230, lines: 3, max: 230, anchor: "middle", fills, accent: accentOn(p, p.bg, fills), hits, tilt: -0.04 });
-      const bx = Math.min(W * 0.62, shot.face.x + shot.face.w * 1.75);
-      const by = Math.max(100, shot.face.y - shot.face.h * 0.75);
-      burst(ctx, burstText(i), bx, by, 88, "#FFE14D", INK, f);
+      const so: StickerOpts = { bias: { x: 0.45, y: 0.36 }, face: 0.42, ring: 10, safe: { top: 24, left: 20, right: 40 } };
+      const head = shotOf(i.still, 0, 24, W * 0.56, H - 24, so).head;
+      const edge = personEdge(i.still, 0, 24, W * 0.56, H - 24, so, 115, H - 115, "right") ?? head.x + head.w;
+      const tx = Math.min(W * 0.66, Math.max(W * 0.5, edge + 30));
+      punch(ctx, i.headline, ANTON(f), { x: tx, y: H * 0.56, w: W - 44 - tx, h: H - 230, lines: 3, max: 230, anchor: "middle", fills, accent: accentOn(p, p.bg, fills), hits, tilt: -0.04 });
+      const shot = sticker(ctx, i.still, 0, 24, W * 0.56, H - 24, so);
+      const b = besideHead(shot, 88, W, H, "right");
+      burst(ctx, burstText(i), b.x, b.y, 88, "#FFE14D", INK, f);
     },
   },
   {
@@ -798,7 +830,7 @@ export const CREATOR_SHORT: CoverTemplate[] = [
       const iy = Math.min(H - 300, shot.face.y + shot.face.h * 0.2);
       icon(ctx, kind, ix, iy, 200, f, -0.14);
       if (shot.face.x - shot.face.w * 0.8 > ix + 170) arrow(ctx, ix + 115, iy - 30, shot.face.x - shot.face.w * 0.8, shot.face.y - shot.face.h * 0.1, "#FF2E2E", 18, -0.3);
-      nameTag(ctx, i.byline, W / 2, H - 150, 34, "#FFFFFF", f, "center");
+      nameTag(ctx, i.byline, W / 2, 60, 30, "#FFFFFF", f, "center");
     },
   },
   {
@@ -818,7 +850,7 @@ export const CREATOR_SHORT: CoverTemplate[] = [
       const iy = Math.max(top + 90, shot.face.y - shot.face.h * 0.4);
       icon(ctx, kind, ix, iy, 180, f, 0.14);
       scribble(ctx, ix, iy, 135, 128, "#FF2E2E", 13);
-      nameTag(ctx, i.byline, W / 2, H - 150, 34, INK, f, "center");
+      nameTag(ctx, i.byline, W / 2, 60, 30, INK, f, "center");
     },
   },
   {
@@ -834,7 +866,7 @@ export const CREATOR_SHORT: CoverTemplate[] = [
       const t = punch(ctx, i.headline, ANTON(f), { x: W / 2, y: 160, w: W - 120, h: H * 0.33, lines: 4, max: 320, align: "center", fills: ["#FFFFFF"], accent: p.accent, hits, strokeW: 0.07 });
       const top = Math.max(t.bottom + 50, H * 0.4);
       sticker(ctx, i.still, 0, top, W, H - top, { bias: { x: 0.5, y: 0.32 }, face: 0.3, ring: 12, ringColor: p.accent, glow: p.accent, safe: { top: 30 } });
-      nameTag(ctx, i.byline, W / 2, H - 150, 34, p.accent, f, "center");
+      nameTag(ctx, i.byline, W / 2, 60, 30, p.accent, f, "center");
     },
   },
   {
@@ -850,10 +882,9 @@ export const CREATOR_SHORT: CoverTemplate[] = [
       const t = punch(ctx, i.headline, ANTON(f), { x: W / 2, y: 170, w: W - 130, h: H * 0.3, lines: 4, max: 320, align: "center", fills, accent: accentOn(p, p.bg, fills), hits, tilt: -0.045 });
       const top = Math.max(t.bottom + 70, H * 0.42);
       const shot = sticker(ctx, i.still, 0, top, W, H - top, { bias: { x: 0.5, y: 0.3 }, face: 0.32, ring: 16, safe: { top: 40, left: 60, right: 60 } });
-      const bx = Math.min(W - 160, shot.face.x + shot.face.w * 1.6);
-      const by = Math.max(top + 60, shot.face.y - shot.face.h * 0.9);
-      burst(ctx, burstText(i), bx, by, 150, "#FFE14D", INK, f);
-      nameTag(ctx, i.byline, W / 2, H - 150, 34, "#FFFFFF", f, "center");
+      const b = besideHead(shot, 150, W, H, "right", top);
+      burst(ctx, burstText(i), b.x, b.y, 150, "#FFE14D", INK, f);
+      nameTag(ctx, i.byline, W / 2, 60, 30, "#FFFFFF", f, "center");
     },
   },
 ];

@@ -32,6 +32,7 @@ import {
   mix,
   monogram,
   orbit,
+  personEdge,
   photo,
   pill,
   pillSplit,
@@ -73,8 +74,15 @@ const M = 64;
 function sided(ctx: CanvasRenderingContext2D, i: CoverInput, W: number, H: number, o: PhotoOpts & { bias: { x: number; y: number } }, prefer: "left" | "right" = "right") {
   const faceRight = faceSide(i.still, W, H, o, prefer) === "right";
   const bx = Math.max(o.bias.x, 1 - o.bias.x);
-  const shot = photo(ctx, i.still, 0, 0, W, H, { ...o, bias: { x: faceRight ? bx : 1 - bx, y: o.bias.y } });
-  return { faceRight, shot, ...column(W, shot, faceRight) };
+  // With the person cut out they sit in front of the words, so the words must stop short of
+  // them: zoom further to push the face to its side, and let the column narrow rather than run behind the head.
+  const cut = !!i.still.cut;
+  const po = { ...o, zoom: cut ? Math.max(o.zoom ?? 1.3, 1.8) : o.zoom, bias: { x: faceRight ? bx : 1 - bx, y: o.bias.y } };
+  const shot = photo(ctx, i.still, 0, 0, W, H, po);
+  // The person's real outline where the words go (most of the height), not just the head.
+  const edge = personEdge(i.still, 0, 0, W, H, po, H * 0.12, H * 0.9, faceRight ? "left" : "right");
+  const body = edge === null ? shot : { ...shot, head: faceRight ? { ...shot.head, x: Math.min(shot.head.x, edge) } : { ...shot.head, w: Math.max(shot.head.x + shot.head.w, edge) - shot.head.x } };
+  return { faceRight, shot, ...column(W, body, faceRight, 32, 0.56, cut ? 0.26 : 0.4) };
 }
 
 /** The words' column beside a face: from the margin to just short of the head. */
@@ -681,7 +689,10 @@ export const LONG: CoverTemplate[] = [
       const ph = H - bar * 2;
       const o: PhotoOpts & { bias: { x: number; y: number } } = { bias: { x: 0.68, y: 0.42 }, zoom: 1.4, face: 0.42, safe: { top: 12 } };
       const faceRight = faceSide(i.still, W, ph, o) === "right";
-      const shot = photo(ctx, i.still, 0, bar, W, ph, { ...o, bias: { x: faceRight ? 0.68 : 0.32, y: 0.42 } });
+      const po = { ...o, zoom: i.still.cut ? 1.8 : o.zoom, bias: { x: faceRight ? 0.68 : 0.32, y: 0.42 } };
+      const shot = photo(ctx, i.still, 0, bar, W, ph, po);
+      // The words stop at the person's outline (they're in front of the words).
+      const edge = personEdge(i.still, 0, bar, W, ph, po, H * 0.45, H - bar, faceRight ? "left" : "right");
       // A gentle grade toward the palette, then shadow under the words.
       ctx.save();
       ctx.globalCompositeOperation = "soft-light";
@@ -694,7 +705,8 @@ export const LONG: CoverTemplate[] = [
       ctx.fillStyle = "#050505";
       ctx.fillRect(0, 0, W, bar);
       ctx.fillRect(0, H - bar, W, bar);
-      const { colW, x } = column(W, shot, faceRight, 40, 0.54, 0.4);
+      const body = edge === null ? shot : { ...shot, head: faceRight ? { ...shot.head, x: Math.min(shot.head.x, edge) } : { ...shot.head, w: Math.max(shot.head.x + shot.head.w, edge) - shot.head.x } };
+      const { colW, x } = column(W, body, faceRight, 32, 0.54, i.still.cut ? 0.26 : 0.4);
       const acc = readable(p.accent, "#000000", 6);
       const st: TextStyle = { ...BEBAS(f), tracking: 0.03, lineHeight: 0.92 };
       const fitted = fit(ctx, i.headline, st, { w: colW, h: ph * 0.56, lines: 3, max: 132, min: 48 }, hitsOf(i));

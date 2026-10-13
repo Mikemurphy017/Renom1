@@ -390,6 +390,106 @@ const shift = (b: Box, x: number, y: number): Box => ({ x: b.x + x, y: b.y + y, 
 /** Cover-fit the still into a box (see `crop`) and return where the face landed. */
 export function photo(ctx: CanvasRenderingContext2D, s: Still, x: number, y: number, w: number, h: number, o: PhotoOpts = {}): Shot {
   const p = crop(s, w, h, o);
+  const off = paintPhoto(ctx, s.canvas, p, w, h, o, true);
+  ctx.save();
+  if (o.clip) ctx.clip(o.clip);
+  else {
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+  }
+  ctx.drawImage(off, x, y, w, h);
+  ctx.restore();
+  release(off);
+  // The person goes back on top at the end (see liftPeople), so words never cover them.
+  // Not for blurred photos: those are backgrounds.
+  if (s.cut && !o.blur) people.get(ctx)?.push({ s, p, x, y, w, h, o, at: ctx.getTransform() });
+  return { face: shift(p.face, x, y + p.lift), head: shift(p.head, x, y + p.lift) };
+}
+
+/** Where the face and head would land if the photo were drawn in this box (draws nothing). */
+export function shotOf(s: Still, x: number, y: number, w: number, h: number, o: PhotoOpts = {}): Shot {
+  const p = crop(s, w, h, o);
+  return { face: shift(p.face, x, y + p.lift), head: shift(p.head, x, y + p.lift) };
+}
+
+const alphas = new WeakMap<HTMLCanvasElement, { w: number; h: number; d: Uint8ClampedArray }>();
+/** A cutout's alpha channel at a small size, for finding where the person is. */
+function alphaOf(cut: HTMLCanvasElement) {
+  let a = alphas.get(cut);
+  if (!a) {
+    const k = Math.min(1, 240 / Math.max(cut.width, cut.height));
+    const c = scratch(cut.width * k, cut.height * k);
+    const x = c.getContext("2d", { willReadFrequently: true })!;
+    x.drawImage(cut, 0, 0, c.width, c.height);
+    a = { w: c.width, h: c.height, d: x.getImageData(0, 0, c.width, c.height).data };
+    release(c);
+    alphas.set(cut, a);
+  }
+  return a;
+}
+
+/**
+ * The person's outermost edge between two heights, if the photo were drawn in
+ * this box: their leftmost point (from: "left") or rightmost (from: "right"),
+ * in canvas pixels. Null without a cutout, or when no part of them is there.
+ * Words beside the person stop here, since the person is drawn in front of them.
+ */
+export function personEdge(s: Still, x: number, y: number, w: number, h: number, o: PhotoOpts, y0: number, y1: number, from: "left" | "right"): number | null {
+  if (!s.cut) return null;
+  const p = crop(s, w, h, o);
+  const a = alphaOf(s.cut);
+  const kx = a.w / s.cut.width;
+  const ky = a.h / s.cut.height;
+  const solid = (X: number, Y: number) => {
+    const sx = Math.floor((p.sx + ((X - x) / w) * p.sw) * kx);
+    const sy = Math.floor((p.sy + ((Y - y - p.lift) / h) * p.sh) * ky);
+    return sx >= 0 && sy >= 0 && sx < a.w && sy < a.h && a.d[(sy * a.w + sx) * 4 + 3] > 110;
+  };
+  let edge: number | null = null;
+  const step = Math.max(2, w / 160);
+  for (let Y = Math.max(y0, y); Y < Math.min(y1, y + h); Y += Math.max(3, h / 120)) {
+    if (from === "left") {
+      for (let X = x; X < x + w && (edge === null || X < edge); X += step) if (solid(X, Y)) { edge = X; break; }
+    } else {
+      for (let X = x + w; X > x && (edge === null || X > edge); X -= step) if (solid(X, Y)) { edge = X; break; }
+    }
+  }
+  return edge;
+}
+
+/** Photos drawn while a cover renders, to lift the person in each to the front afterwards. */
+const people = new WeakMap<CanvasRenderingContext2D, { s: Still; p: Crop; x: number; y: number; w: number; h: number; o: PhotoOpts; at: DOMMatrix }[]>();
+
+/** Start collecting photos for this cover. */
+export const collectPeople = (ctx: CanvasRenderingContext2D) => people.set(ctx, []);
+
+/**
+ * Draw the person cut out of each photo again, on top of everything else
+ * (inside the same frame, with the same color treatment), so the words sit
+ * behind them and never hide a head or a body.
+ */
+export function liftPeople(ctx: CanvasRenderingContext2D) {
+  for (const l of people.get(ctx) ?? []) {
+    if (!l.s.cut) continue;
+    ctx.save();
+    ctx.setTransform(l.at);
+    const off = paintPhoto(ctx, l.s.cut, l.p, l.w, l.h, l.o, false);
+    if (l.o.clip) ctx.clip(l.o.clip);
+    else {
+      ctx.beginPath();
+      ctx.rect(l.x, l.y, l.w, l.h);
+      ctx.clip();
+    }
+    ctx.drawImage(off, l.x, l.y, l.w, l.h);
+    ctx.restore();
+    release(off);
+  }
+  people.delete(ctx);
+}
+
+/** A photo (or its cutout) cropped into a box at the box's on-screen size, graded and faded like the layout asks. */
+function paintPhoto(ctx: CanvasRenderingContext2D, src: HTMLCanvasElement, p: Crop, w: number, h: number, o: PhotoOpts, fill: boolean) {
   // Work on a copy at the box's on-screen size: pixel work is the same in every
   // browser (older Safari has no ctx.filter), and it’s cheap for previews.
   const sc = scaleOf(ctx);
@@ -397,8 +497,8 @@ export function photo(ctx: CanvasRenderingContext2D, s: Still, x: number, y: num
   const octx = off.getContext("2d", { willReadFrequently: true })!;
   octx.imageSmoothingQuality = "high";
   const dy = Math.round(p.lift * sc);
-  octx.drawImage(s.canvas, p.sx, p.sy, p.sw, p.sh, 0, dy, off.width, off.height);
-  if (dy > 0) extendTop(octx, off.width, dy);
+  octx.drawImage(src, p.sx, p.sy, p.sw, p.sh, 0, dy, off.width, off.height);
+  if (dy > 0 && fill) extendTop(octx, off.width, dy);
   if (o.blur) {
     // Shrink and grow back: a cheap blur that works everywhere.
     const d = Math.max(2, Math.round((o.blur * sc) / 4));
@@ -417,17 +517,7 @@ export function photo(ctx: CanvasRenderingContext2D, s: Still, x: number, y: num
     octx.fillRect(0, 0, off.width, off.height);
     octx.globalCompositeOperation = "source-over";
   }
-  ctx.save();
-  if (o.clip) ctx.clip(o.clip);
-  else {
-    ctx.beginPath();
-    ctx.rect(x, y, w, h);
-    ctx.clip();
-  }
-  ctx.drawImage(off, x, y, w, h);
-  ctx.restore();
-  release(off);
-  return { face: shift(p.face, x, y + p.lift), head: shift(p.head, x, y + p.lift) };
+  return off;
 }
 
 /**

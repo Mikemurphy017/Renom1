@@ -1,7 +1,7 @@
 "use client";
 
 import type { VideoFormat } from "@/lib/types";
-import { loadFonts, paletteOf, type CoverInput, type CoverTemplate } from "./kit";
+import { collectPeople, liftPeople, loadFonts, paletteOf, type CoverInput, type CoverTemplate } from "./kit";
 import { LONG } from "./long";
 import { SHORT } from "./short";
 import { TEXT_LONG, TEXT_SHORT } from "./text";
@@ -32,7 +32,10 @@ export async function renderCover(t: CoverTemplate, input: CoverInput, scale = 1
   c.height = Math.round(H * scale);
   const ctx = c.getContext("2d")!;
   ctx.scale(scale, scale);
+  collectPeople(ctx);
   t.draw(ctx, W, H, input, f, paletteOf(input.palette ?? t.palettes[0], input.accentColor));
+  // The person in front of the words, never behind them.
+  liftPeople(ctx);
   return c;
 }
 
