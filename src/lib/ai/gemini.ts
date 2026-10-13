@@ -5,6 +5,8 @@
  * GEMINI_IMAGE_MODEL and GEMINI_API_URL.
  */
 
+import { CLONE_LOOKS, type CloneLook } from "./clone-looks";
+
 const key = () => process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim() || "";
 const BASE = () => (process.env.GEMINI_API_URL?.trim() || "https://generativelanguage.googleapis.com/v1beta").replace(/\/+$/, "");
 const MODEL = () => process.env.GEMINI_IMAGE_MODEL?.trim() || "gemini-2.5-flash-image";
@@ -19,8 +21,9 @@ export class GeminiError extends Error {
 
 type Part = { text?: string; inlineData?: { mimeType?: string; data?: string }; inline_data?: { mime_type?: string; data?: string } };
 
-/** One image from a reference photo and a prompt. */
-export async function editImage(o: { image: Uint8Array; mimeType: string; prompt: string; aspect: "16:9" | "9:16" }): Promise<{ bytes: Uint8Array; mimeType: string }> {
+/** One image from reference photos (one or several of the same person) and a prompt. */
+export async function editImage(o: { image?: Uint8Array; mimeType?: string; images?: { bytes: Uint8Array; mimeType: string }[]; prompt: string; aspect: "16:9" | "9:16" | "3:4" }): Promise<{ bytes: Uint8Array; mimeType: string }> {
+  const refs = o.images ?? (o.image ? [{ bytes: o.image, mimeType: o.mimeType ?? "image/jpeg" }] : []);
   if (!key()) throw new GeminiError("AI scenes aren’t set up for this studio yet.", 503);
   let res: Response;
   try {
@@ -28,7 +31,7 @@ export async function editImage(o: { image: Uint8Array; mimeType: string; prompt
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key() },
       body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ inline_data: { mime_type: o.mimeType, data: Buffer.from(o.image).toString("base64") } }, { text: o.prompt }] }],
+        contents: [{ role: "user", parts: [...refs.map((r) => ({ inline_data: { mime_type: r.mimeType, data: Buffer.from(r.bytes).toString("base64") } })), { text: o.prompt }] }],
         generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: o.aspect } },
       }),
       signal: AbortSignal.timeout(120_000),
@@ -135,4 +138,18 @@ export function scenePrompt(o: { title: string; topic?: string; setting: string;
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+export { CLONE_LOOKS };
+
+export function clonePrompt(look: CloneLook, count: number) {
+  return [
+    `Create a new photorealistic portrait photo of the person in the reference photo${count > 1 ? "s (all of the same person)" : ""}.`,
+    "Keep their identity exactly: same face, facial features, face shape, age, skin tone, eye color, hair (color, length, hairline) and any facial hair or glasses. Do not beautify, slim, de-age, or change their weight or ethnicity.",
+    `Expression, outfit and setting: ${look.brief}.`,
+    "Framing: chest-up, the person centered and facing the camera, the whole head in frame with clear space above the hair (at least 12% of the image height). Never crop the top of the head or the chin.",
+    "Keep the background simple and softly out of focus so the person stands out; a headline will be placed beside or above them later.",
+    "Professional photo-shoot look: soft key light on the face, natural color, crisp detail, shallow depth of field.",
+    "Do not add any text, letters, logos, watermarks or borders.",
+  ].join("\n");
 }

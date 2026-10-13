@@ -26,7 +26,7 @@ export interface CoverInput extends CoverText {
   points?: string[];
 }
 
-export type CoverLook = "Framed" | "Bold" | "Editorial" | "Minimal" | "Number" | "Quote";
+export type CoverLook = "Framed" | "Bold" | "Editorial" | "Minimal" | "Number" | "Quote" | "Text";
 export const LOOKS: CoverLook[] = ["Framed", "Bold", "Editorial", "Minimal", "Number", "Quote"];
 
 export interface CoverTemplate {
@@ -36,6 +36,8 @@ export interface CoverTemplate {
   look: CoverLook;
   /** Palettes that suit this layout, best first. */
   palettes: string[];
+  /** Words and graphics only, no photo of the advisor (the "no photo" cover style). */
+  noPhoto?: boolean;
   draw(ctx: CanvasRenderingContext2D, W: number, H: number, input: CoverInput, f: Fonts, p: Palette): void;
 }
 

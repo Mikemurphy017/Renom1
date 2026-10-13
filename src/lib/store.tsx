@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import type { AdvisorProfile, ComplianceStatus, StageId, Video } from "./types";
+import type { AdvisorProfile, ComplianceStatus, PhotoSetItem, StageId, Video } from "./types";
 import type { ReviewComment, ReviewItem } from "./compliance";
 import { EMPTY_PROFILE } from "./profile";
 import { clearDrafts, exportDrafts, importDrafts, legacyDrafts, onDraftsChange } from "./drafts";
@@ -78,6 +78,8 @@ interface Store {
   setReviewer: (name: string) => void;
   profile: AdvisorProfile;
   updateProfile: (patch: Partial<AdvisorProfile>) => void;
+  /** Change the AI photo set from its latest value (photos arrive one by one). */
+  editPhotoSet: (fn: (set: PhotoSetItem[]) => PhotoSetItem[]) => void;
   team: TeamMember[];
   setTeam: (t: TeamMember[]) => void;
 }
@@ -285,6 +287,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setReviewer: (name) => set(() => ({ reviewer: name })),
       profile: state.profile,
       updateProfile: (patch) => set((s) => ({ profile: { ...s.profile, ...patch } })),
+      editPhotoSet: (fn) => set((s) => ({ profile: { ...s.profile, photoSet: fn(s.profile.photoSet ?? []) } })),
       team: state.team,
       setTeam: (team) => set(() => ({ team })),
     };

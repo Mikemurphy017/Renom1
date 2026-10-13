@@ -4,6 +4,7 @@ import type { VideoFormat } from "@/lib/types";
 import { loadFonts, paletteOf, type CoverInput, type CoverTemplate } from "./kit";
 import { LONG } from "./long";
 import { SHORT } from "./short";
+import { TEXT_LONG, TEXT_SHORT } from "./text";
 
 /**
  * Cover templates, drawn on a canvas at the platforms' native sizes:
@@ -17,7 +18,7 @@ export type { CoverInput, CoverLook, CoverTemplate, CoverText, Palette } from ".
 
 export const COVER_SIZE: Record<VideoFormat, [number, number]> = { long: [1280, 720], short: [1080, 1920] };
 
-export const TEMPLATES: Record<VideoFormat, CoverTemplate[]> = { long: LONG, short: SHORT };
+export const TEMPLATES: Record<VideoFormat, CoverTemplate[]> = { long: [...LONG, ...TEXT_LONG], short: [...SHORT, ...TEXT_SHORT] };
 
 export const templateOf = (shape: VideoFormat, id: string) => TEMPLATES[shape].find((t) => t.id === id);
 

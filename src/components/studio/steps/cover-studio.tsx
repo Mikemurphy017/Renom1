@@ -15,10 +15,11 @@ import { getTake, subscribeTakes } from "@/lib/media/takes";
 import { uploadImage } from "@/lib/media/upload";
 import { framesFromVideo, stillFromImage, type Still } from "@/lib/thumbs/frames";
 import { COVER_SIZE, LOOKS, PALETTES, TEMPLATES, releaseCanvas, renderCover, templateOf, toJpeg, type CoverLook, type CoverTemplate, type CoverText } from "@/lib/thumbs/render";
-import type { CoverImage, Video, VideoFormat } from "@/lib/types";
+import type { CoverImage, CoverPhotos, Video, VideoFormat } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { AskBar } from "../ask-bar";
 import { CoverIntroSwitch } from "../cover-intro-note";
+import { CoverStyleChooser, CoverStyleSwitch, PhotoSetPanel, useAiPhotosAvailable } from "../photo-set";
 import type { useCoverIntro } from "../use-cover-intro";
 
 type Lines = Record<VideoFormat, CoverText[]>;
@@ -130,10 +131,11 @@ function lineFor(t: CoverTemplate, pool: CoverText[], used: Map<string, number>,
  * each with one of the palettes that suits it (never the same twice in a row),
  * the line that fits it, and frames in rotation.
  */
-function buildOptions(shape: VideoFormat, lines: Lines, o: { seed: number; count: number; look?: CoverLook; brand?: boolean; after?: Option[] }): Option[] {
+function buildOptions(shape: VideoFormat, lines: Lines, o: { seed: number; count: number; look?: CoverLook; brand?: boolean; after?: Option[]; noPhoto?: boolean }): Option[] {
   const rand = rng(o.seed);
   const pool = poolFor(lines, shape);
-  const templates = TEMPLATES[shape].filter((t) => !o.look || t.look === o.look);
+  // Photo layouts, or (the "no photo" cover style) words-and-graphics ones.
+  const templates = TEMPLATES[shape].filter((t) => !!t.noPhoto === !!o.noPhoto && (!o.look || t.look === o.look));
   const byLook = new Map<CoverLook, CoverTemplate[]>();
   for (const t of [...templates].sort(() => rand() - 0.5)) byLook.set(t.look, [...(byLook.get(t.look) ?? []), t]);
   // Framed layouts (one photo, graphics around it) lead each round.
@@ -193,12 +195,12 @@ const savedStill = (c: CoverImage) => c.still ?? (c.frameMs !== undefined ? `f${
  * cover in the library. Covers saved before palettes were stored keep the
  * layout's default colors.
  */
-function withSaved(opts: Options, picks: Record<VideoFormat, number>, covers: Video["covers"]) {
+function withSaved(opts: Options, picks: Record<VideoFormat, number>, covers: Video["covers"], noPhoto = false) {
   let options = opts;
   let picked = picks;
   for (const s of ["long", "short"] as VideoFormat[]) {
     const c = covers?.[s];
-    if (!c || !templateOf(s, c.template)) continue;
+    if (!c || !templateOf(s, c.template) || !!templateOf(s, c.template)!.noPhoto !== noPhoto) continue;
     const still = savedStill(c);
     const same = (o: Option) =>
       o.template === c.template &&
@@ -214,13 +216,26 @@ function withSaved(opts: Options, picks: Record<VideoFormat, number>, covers: Vi
   return { options, picks: picked };
 }
 
-const freshOptions = (lines: Lines, brand: boolean, seed = 1): Options => ({
-  long: buildOptions("long", lines, { seed, count: BATCH, brand }),
-  short: buildOptions("short", lines, { seed: seed + 1, count: BATCH, brand }),
+const freshOptions = (lines: Lines, brand: boolean, seed = 1, noPhoto = false): Options => ({
+  long: buildOptions("long", lines, { seed, count: BATCH, brand, noPhoto }),
+  short: buildOptions("short", lines, { seed: seed + 1, count: BATCH, brand, noPhoto }),
 });
 
+/** Whether a set of options is for the "no photo" style. */
+const isTextSet = (opts: Options) => [...opts.long.map((o) => templateOf("long", o.template)), ...opts.short.map((o) => templateOf("short", o.template))].some((t) => t?.noPhoto);
+
 export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: ReturnType<typeof useCoverIntro>; onDone: () => void }) {
-  const { profile, updateVideo } = useStore();
+  const { profile, updateVideo, updateProfile } = useStore();
+  // What goes on covers: the AI photo set, real photos, or no photo (unset: ask first).
+  const mode = profile.coverPhotos;
+  const noPhoto = mode === "none";
+  const aiAvailable = useAiPhotosAvailable();
+  const photoSet = React.useMemo(() => profile.photoSet ?? [], [profile.photoSet]);
+  const [showSet, setShowSet] = React.useState(mode === "ai" && !photoSet.length);
+  const chooseMode = (m: CoverPhotos) => {
+    updateProfile({ coverPhotos: m });
+    setShowSet(m === "ai" && !photoSet.length);
+  };
   const memTake = React.useSyncExternalStore(subscribeTakes, () => getTake(video.id), () => undefined);
   const takeSrc = memTake?.url ?? video.take?.url;
   const takeSec = memTake?.durationSec ?? video.take?.durationSec ?? video.runtimeSec;
@@ -233,33 +248,47 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
 
   const [shape, setShape] = React.useState<VideoFormat>(video.format);
   const [lines, setLines] = useDraft<Lines | null>(video.id, "cover.lines", null);
-  const [options, setOptions] = useDraft<Options>(video.id, "cover.options", () => freshOptions(lines ?? { long: fallbackLines(video.title), short: fallbackLines(video.title) }, !!brand));
+  const [options, setOptions] = useDraft<Options>(video.id, "cover.options", () => freshOptions(lines ?? { long: fallbackLines(video.title), short: fallbackLines(video.title) }, !!brand, 1, noPhoto));
   const [picks, setPicks] = useDraft<Record<VideoFormat, number>>(video.id, "cover.picks", { long: 0, short: 0 });
   const [note, setNote] = React.useState<string | null>(null);
   const [look, setLook] = React.useState<CoverLook | null>(null);
   const linesNow = React.useCallback((): Lines => lines ?? { long: fallbackLines(video.title), short: fallbackLines(video.title) }, [lines, video.title]);
 
-  // On opening: sets saved before there were palettes (four options, one per layout) start over
-  // with a varied set; saved covers go back in, selected, exactly as they were saved.
+  // On opening (and when the cover style changes): sets saved before there were palettes, or made
+  // for the other style, start over with a varied set; saved covers go back in, selected, exactly as saved.
   React.useEffect(() => {
-    const stale = !options.long.some((o) => o.palette) && !options.short.some((o) => o.palette);
-    const next = withSaved(stale ? freshOptions(linesNow(), !!brand) : options, stale ? { long: 0, short: 0 } : picks, video.covers);
+    const stale = (!options.long.some((o) => o.palette) && !options.short.some((o) => o.palette)) || isTextSet(options) !== noPhoto;
+    const next = withSaved(stale ? freshOptions(linesNow(), !!brand, 1, noPhoto) : options, stale ? { long: 0, short: 0 } : picks, video.covers, noPhoto);
     if (next.options !== options) setOptions(next.options);
     if (next.picks !== picks) setPicks(next.picks);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [noPhoto]);
   const { write, busy, status } = useWriter();
 
-  // ── stills: best frames from the take, then uploaded headshots, then AI scenes ──
+  // ── stills: the AI photo set and scenes (AI style), or frames from the take and headshots (real photos); none for "no photo" ──
   const [stills, setStills] = React.useState<Still[] | null>(null);
   const [scenes, setScenes] = useDraft<Scene[]>(video.id, "cover.scenes", []);
   const scenesRef = React.useRef(scenes);
   const headshotKey = headshots.map((h) => h.id).join(",");
+  const setKey = photoSet.map((p) => p.id).join(",");
   React.useEffect(() => {
     let live = true;
     setStills(null);
+    if (noPhoto || !mode) {
+      setStills([]);
+      return;
+    }
     (async () => {
       const out: Still[] = [];
+      if (mode === "ai") {
+        for (const p of photoSet) {
+          try {
+            out.push({ ...(await stillFromImage(p.url, `p-${p.id}`, p.face ?? undefined)), source: "ai" });
+          } catch {
+            /* skip a photo that's gone */
+          }
+        }
+      }
       if (takeSrc) {
         try {
           // The frames of saved covers come back too, so a reopened cover has its own photo.
@@ -277,7 +306,7 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
         }
       }
       const found: Record<string, Scene["face"]> = {};
-      for (const sc of scenesRef.current.slice(-8)) {
+      for (const sc of mode === "ai" ? scenesRef.current.slice(-8) : []) {
         try {
           let face = sc.face;
           // Scenes made before they came with a face box: ask once, and keep the answer.
@@ -300,7 +329,7 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [takeSrc, headshotKey]);
+  }, [takeSrc, headshotKey, setKey, mode]);
 
   // ── words from Claude ──
   const writeLines = React.useCallback(
@@ -334,7 +363,8 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
     [stills]
   );
   const inputFor = React.useCallback(
-    (o: Option, k: number) => ({ ...o.text, still: stillFor(o, k)!, byline, palette: o.palette, accentColor: o.palette === "brand" ? brand : undefined, points }),
+    // No-photo layouts never read the still.
+    (o: Option, k: number) => ({ ...o.text, still: stillFor(o, k) as Still, byline, palette: o.palette, accentColor: o.palette === "brand" ? brand : undefined, points }),
     [stillFor, byline, brand, points]
   );
 
@@ -343,7 +373,7 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
   const drawn = React.useRef(new Map<string, string>());
   const keyOf = React.useCallback((s: VideoFormat, o: Option, k: number) => JSON.stringify([s, o.template, o.palette, o.text, stillFor(o, k)?.id, byline, brand, points]), [stillFor, byline, brand, points]);
   React.useEffect(() => {
-    if (!stills?.length) return;
+    if (!stills || (!stills.length && !noPhoto)) return;
     let live = true;
     (async () => {
       // The shape on screen first, then the other one.
@@ -367,7 +397,7 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
     return () => {
       live = false;
     };
-  }, [options, stills, shape, keyOf, inputFor]);
+  }, [options, stills, shape, keyOf, inputFor, noPhoto]);
 
   const current = options[shape];
   const sel = Math.min(picks[shape], current.length - 1);
@@ -378,11 +408,11 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
   // ── more, shuffle, filter ──
   const seed = () => Math.floor(Math.random() * 1e9);
   const more = (l: CoverLook | null = look) =>
-    setOptions((prev) => ({ ...prev, [shape]: [...prev[shape], ...buildOptions(shape, linesNow(), { seed: seed(), count: l ? 4 : BATCH, look: l ?? undefined, brand: !!brand, after: prev[shape] })] }));
+    setOptions((prev) => ({ ...prev, [shape]: [...prev[shape], ...buildOptions(shape, linesNow(), { seed: seed(), count: l ? 4 : BATCH, look: l ?? undefined, brand: !!brand, after: prev[shape], noPhoto })] }));
   const shuffle = () => {
     // Keep the one they picked (with their edits) first; everything else is new.
     const keep = options[shape][sel];
-    const fresh = buildOptions(shape, linesNow(), { seed: seed(), count: BATCH, look: look ?? undefined, brand: !!brand, after: keep ? [keep] : [] });
+    const fresh = buildOptions(shape, linesNow(), { seed: seed(), count: BATCH, look: look ?? undefined, brand: !!brand, after: keep ? [keep] : [], noPhoto });
     setOptions((prev) => ({ ...prev, [shape]: keep ? [keep, ...fresh] : fresh }));
     setPicks({ ...picks, [shape]: 0 });
   };
@@ -401,7 +431,7 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
   // ── save ──
   const [saving, setSaving] = React.useState(false);
   const save = async () => {
-    if (!stills?.length) return onDone();
+    if (!stills || (!stills.length && !noPhoto)) return onDone();
     setSaving(true);
     try {
       const covers: Partial<Record<VideoFormat, CoverImage>> = { ...video.covers };
@@ -413,7 +443,7 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
         const blob = await toJpeg(full, 0.9);
         releaseCanvas(full);
         const up = await uploadImage(blob, "thumbnail", `${s}-cover`);
-        const still = stillFor(o, k)!;
+        const still = noPhoto ? undefined : stillFor(o, k);
         covers[s] = {
           id: up.id,
           url: up.url,
@@ -422,8 +452,8 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
           palette: o.palette,
           accent: o.text.accent,
           kicker: o.text.kicker,
-          still: still.id,
-          frameMs: still.source === "frame" && still.time !== undefined ? Math.round(still.time * 1000) : undefined,
+          still: still?.id,
+          frameMs: still?.source === "frame" && still.time !== undefined ? Math.round(still.time * 1000) : undefined,
           createdAt: new Date().toISOString(),
         };
       }
@@ -437,8 +467,19 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
     }
   };
 
+  // ── first: what goes on covers, then (AI style) the photo set ──
+  if (!mode) return <CoverStyleChooser onPick={chooseMode} aiAvailable={aiAvailable} />;
+  if (mode === "ai" && showSet) {
+    return (
+      <div className="space-y-5">
+        <CoverStyleSwitch value={mode} onChange={chooseMode} aiAvailable={aiAvailable} />
+        <PhotoSetPanel onContinue={() => setShowSet(false)} onSkip={() => chooseMode("real")} />
+      </div>
+    );
+  }
+
   // ── nothing to build from yet ──
-  if (stills && !stills.length) {
+  if (stills && !stills.length && !noPhoto) {
     return (
       <div className="mx-auto max-w-[620px] rounded-2xl border border-border bg-card p-8 text-center">
         <ImagePlus className="mx-auto size-6 text-primary" />
@@ -447,6 +488,7 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
           {takeSrc ? "We couldn’t read frames from this take. " : "There’s no take saved for this video yet. "}
           Record one, or add a headshot and we’ll build the covers around it.
         </p>
+        <div className="mt-5"><CoverStyleSwitch value={mode} onChange={chooseMode} aiAvailable={aiAvailable} onManage={() => setShowSet(true)} /></div>
         <div className="mt-6 flex justify-center">
           <HeadshotPicker compact />
         </div>
@@ -469,12 +511,16 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
         {!stills ? (
           <>
             <LoaderCircle className="mr-1.5 inline size-3.5 animate-spin align-[-2px]" />
-            Finding your best frames…
+            {mode === "ai" && photoSet.length ? "Loading your photo set…" : "Finding your best frames…"}
           </>
         ) : (
-          <>Real frames from your take, words by {busy ? "Claude (writing…)" : "Claude"}. Pick one of each shape.</>
+          <>
+            {noPhoto ? "Words, colors and graphics, no photo" : mode === "ai" ? (photoSet.length ? "Your AI photo set" : "Frames from your take (make your AI photo set for more)") : takeSrc ? "Real frames from your take" : "Your headshots"}, words by {busy ? "Claude (writing…)" : "Claude"}. Pick one of each shape.
+          </>
         )}
       </p>
+
+      <CoverStyleSwitch value={mode} onChange={chooseMode} aiAvailable={aiAvailable} onManage={() => setShowSet(true)} />
 
       <div className="flex justify-center">
         <div className="inline-flex rounded-full border border-border bg-card p-1">
@@ -492,7 +538,7 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
         </div>
       </div>
 
-      <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:justify-center sm:px-0" role="group" aria-label="Filter by look">
+      {!noPhoto && <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:justify-center sm:px-0" role="group" aria-label="Filter by look">
         {[null, ...LOOKS].map((l) => (
           <button
             key={l ?? "all"}
@@ -502,7 +548,7 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
             {l ?? "All looks"}
           </button>
         ))}
-      </div>
+      </div>}
 
       <div className={cn("grid gap-3 sm:gap-4", vertical ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 lg:grid-cols-3")}>
         {visible.map(({ o, k }) => {
@@ -540,9 +586,9 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
         <span className="tnum text-[12px] text-muted-foreground">{W}×{H}</span>
       </div>
 
-      {selected && stills && stills.length > 0 && (
-        <div className="grid gap-5 rounded-2xl border border-border bg-card p-5 md:grid-cols-[1fr_1.1fr]">
-          <div>
+      {selected && stills && (stills.length > 0 || noPhoto) && (
+        <div className={cn("grid gap-5 rounded-2xl border border-border bg-card p-5", !noPhoto && "md:grid-cols-[1fr_1.1fr]")}>
+          {!noPhoto && <div>
             <div className="eyebrow mb-2">Photo</div>
             <div className="flex flex-wrap gap-2">
               {stills.map((s, k) => {
@@ -556,16 +602,16 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
                     style={{ aspectRatio: `${s.canvas.width}/${s.canvas.height}` }}
                   >
                     <StillImg still={s} />
-                    {s.source !== "frame" && <span className={cn("absolute inset-x-0 bottom-0 text-center text-[9px] text-white", s.source === "ai" ? "bg-primary/85" : "bg-black/55")}>{s.source === "ai" ? "AI scene" : "Photo"}</span>}
+                    {s.source !== "frame" && <span className={cn("absolute inset-x-0 bottom-0 text-center text-[9px] text-white", s.source === "ai" ? "bg-primary/85" : "bg-black/55")}>{s.source === "ai" ? (s.id.startsWith("p-") ? "AI photo" : "AI scene") : "Photo"}</span>}
                     <span className="sr-only">Use still {k + 1}</span>
                   </button>
                 );
               })}
             </div>
             <p className="mt-2 text-[12px] text-muted-foreground">
-              Frames are picked for sharpness and light. <Link href="/settings#voice" className="underline underline-offset-2">Add headshots</Link> for more choice.
+              {mode === "ai" ? <>Your AI photo set comes first, then frames from your take. <button type="button" onClick={() => setShowSet(true)} className="cursor-pointer underline underline-offset-2">Manage the set</button></> : <>Frames are picked for sharpness and light. <Link href="/settings#voice" className="underline underline-offset-2">Add headshots</Link> for more choice.</>}
             </p>
-            <AiScene
+            {mode === "ai" && <AiScene
               video={video}
               shape={shape}
               from={(() => {
@@ -581,8 +627,8 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
                 setPicks((prev) => ({ ...prev, [shape]: 0 }));
                 if (look && look !== "Bold") setLook(null);
               }}
-            />
-          </div>
+            />}
+          </div>}
           <div className="space-y-3">
             <div className="eyebrow">Words</div>
             <Input value={selected.text.headline} onChange={(e) => editSelected({ text: { headline: e.target.value } })} className="font-semibold" aria-label="Headline" />
@@ -608,9 +654,9 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
                   onChange={(e) => editSelected({ template: e.target.value })}
                   className="h-8 cursor-pointer rounded-md border border-border bg-background px-2 text-[13px] text-foreground"
                 >
-                  {LOOKS.map((l) => (
-                    <optgroup key={l} label={l}>
-                      {TEMPLATES[shape].filter((t) => t.look === l).map((t) => (
+                  {(noPhoto ? (["Text"] as CoverLook[]) : LOOKS).map((l) => (
+                    <optgroup key={l} label={l === "Text" ? "No photo" : l}>
+                      {TEMPLATES[shape].filter((t) => t.look === l && !!t.noPhoto === noPhoto).map((t) => (
                         <option key={t.id} value={t.id}>{t.label}</option>
                       ))}
                     </optgroup>

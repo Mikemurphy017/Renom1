@@ -15,6 +15,7 @@ import { MediaLibrary } from "@/components/settings/media-library";
 import { AccountSection } from "@/components/settings/account-section";
 import { PublishingSection } from "@/components/settings/publishing-section";
 import { CalendarLink } from "@/components/settings/calendar-link";
+import { CoverSettings } from "@/components/settings/cover-settings";
 import { useStore } from "@/lib/store";
 import { disclosureTemplate, firstDisclosure, initials } from "@/lib/profile";
 import { useRouter } from "next/navigation";
@@ -24,6 +25,7 @@ import { BRAND } from "@/lib/brand";
 
 const SECTIONS = [
   ["voice", "Your voice"],
+  ["covers", "Covers"],
   ["library", "B-roll & music"],
   ["disclosures", "Disclosures"],
   ["calendar", "Calendar link"],
@@ -156,6 +158,10 @@ export default function SettingsPage() {
             <Field label="Headshots" hint="Used on your thumbnails when a frame from the video won’t do">
               <HeadshotPicker />
             </Field>
+          </Section>
+
+          <Section id="covers" title="Covers" desc="What goes on your thumbnails. The AI photo set turns your headshots into a range of photos of you; or keep it to real photos, or words only.">
+            <CoverSettings />
           </Section>
 
           <Section id="library" title="B-roll & music" desc="Your own footage and tracks. Edit styles use them for cutaways and background music.">

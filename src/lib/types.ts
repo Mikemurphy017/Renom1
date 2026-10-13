@@ -169,6 +169,24 @@ export interface AdvisorProfile {
   disclosures: DisclosureVersion[];
   /** Booking page (Calendly, Google, Microsoft Bookings…): added to post captions and the end card's call to action. */
   calendarUrl?: string;
+  /** The AI photo set made from the headshots: the advisor in varied expressions, outfits and settings, for covers. */
+  photoSet?: PhotoSetItem[];
+  /** What goes on covers: the AI photo set, real photos only (video frames, headshots), or no photo (words and graphics). Unset: not chosen yet. */
+  coverPhotos?: CoverPhotos;
+}
+
+export type CoverPhotos = "ai" | "real" | "none";
+
+export interface PhotoSetItem {
+  /** Media id. */
+  id: string;
+  url: string;
+  /** Which look it was made as (CLONE_LOOKS). */
+  look: string;
+  label: string;
+  /** Where the face is, 0–1 (found by Gemini when made). */
+  face?: { x: number; y: number; w: number; h: number } | null;
+  createdAt: string;
 }
 
 export interface LibraryItem {
