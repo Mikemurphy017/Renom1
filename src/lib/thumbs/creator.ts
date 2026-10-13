@@ -212,6 +212,8 @@ export interface PunchOpts {
   /** Each line on its own tilted block instead of outlined. */
   blocks?: { bg: string[]; fg: string };
   tilt?: number;
+  /** No outline or shadow (words printed on a card). */
+  plain?: boolean;
   /** Measure only. */
   dry?: boolean;
 }
@@ -283,7 +285,7 @@ export function punch(ctx: CanvasRenderingContext2D, text: string, st: TextStyle
     words.forEach((w, i) => {
       const hit = o.hits.has(norm(w));
       const fill = o.blocks ? (hit ? o.accent : o.blocks.fg) : hit ? o.accent : o.fills[n % o.fills.length];
-      if (!o.blocks) {
+      if (!o.blocks && !o.plain) {
         const sw = size * (o.strokeW ?? 0.09);
         // Hard shadow, then the outline, then the letters.
         ctx.fillStyle = "rgba(0,0,0,.6)";
@@ -691,6 +693,44 @@ const accentOn = (p: Palette, base: string, fills: string[]) => (fills[1] === p.
 
 const CREATOR_PALETTES = ["pop", "hot", "electric", "night", "grape", "money", "signal"];
 
+/** A white card with a heavy border, tilted like a stamp, behind words. Returns nothing; draw words after. */
+function stampCard(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, border: string, turn: number) {
+  ctx.save();
+  ctx.translate(x + w / 2, y + h / 2);
+  ctx.rotate(turn);
+  ctx.shadowColor = "rgba(0,0,0,.45)";
+  ctx.shadowBlur = 30;
+  ctx.shadowOffsetY = 12;
+  ctx.fillStyle = "#FFFFFF";
+  fillRound(ctx, -w / 2, -h / 2, w, h, 18);
+  ctx.shadowColor = "transparent";
+  const b = Math.max(8, Math.min(w, h) * 0.05);
+  ctx.strokeStyle = border;
+  ctx.lineWidth = b;
+  const p = new Path2D();
+  rrect(p, -w / 2 + b * 1.4, -h / 2 + b * 1.4, w - b * 2.8, h - b * 2.8, 10);
+  ctx.stroke(p);
+  ctx.restore();
+}
+
+/** A neon rounded frame (behind the person), glowing in the accent. */
+function neonFrame(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string, width: number) {
+  ctx.save();
+  const p = new Path2D();
+  rrect(p, x, y, w, h, width * 3);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = width * 4;
+  ctx.stroke(p);
+  ctx.stroke(p);
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = rgba("#FFFFFF", 0.7);
+  ctx.lineWidth = width * 0.3;
+  ctx.stroke(p);
+  ctx.restore();
+}
+
 export const CREATOR_LONG: CoverTemplate[] = [
   {
     id: "c-react",
@@ -809,6 +849,64 @@ export const CREATOR_LONG: CoverTemplate[] = [
       arrow(ctx, W * 0.32, iy - 40, shot.face.x - shot.face.w * 0.7, shot.face.y + shot.face.h * 0.3, "#FFFFFF", 12, -0.25);
     },
   },
+  {
+    id: "c-stamp",
+    label: "Stamp",
+    shape: "long",
+    look: "Creator",
+    palettes: ["electric", "money", "grape", "hot"],
+    draw(ctx, W, H, i, f, p) {
+      const hits = hitsOf(i);
+      burstGround(ctx, W, H, p.bg, W * 0.72, H * 0.45);
+      const so: StickerOpts = { bias: { x: 0.55, y: 0.36 }, face: 0.42, ring: 10, safe: { top: 24, left: 30, right: 20 } };
+      const w = roomLeftOf(i.still, [W * 0.42, 24, W * 0.58, H - 24], so, 70, 120, H - 120, W, 0.5);
+      const st = ANTON(f);
+      const m = punch(ctx, i.headline, st, { x: 110, y: H / 2, w: w - 80, h: H - 300, lines: 3, max: 200, anchor: "middle", fills: [INK], accent: "#E3171F", hits, plain: true, dry: true });
+      stampCard(ctx, 70, m.top - 40, m.width + 80, m.bottom - m.top + 80, "#E3171F", -0.045);
+      ctx.save();
+      ctx.translate(70 + (m.width + 80) / 2, H / 2);
+      ctx.rotate(-0.045);
+      ctx.translate(-(70 + (m.width + 80) / 2), -H / 2);
+      punch(ctx, i.headline, st, { x: 110, y: H / 2, w: w - 80, h: H - 300, lines: 3, max: 200, anchor: "middle", fills: [INK], accent: "#E3171F", hits, plain: true });
+      ctx.restore();
+      const shot = sticker(ctx, i.still, W * 0.42, 24, W * 0.58, H - 24, so);
+      const b = besideHead(shot, 80, W, H, "right");
+      icon(ctx, iconFor(i), b.x, b.y, 130, f, 0.12);
+    },
+  },
+  {
+    id: "c-zoom",
+    label: "Close-up",
+    shape: "long",
+    look: "Creator",
+    palettes: ["signal", "night", "hot", "electric"],
+    draw(ctx, W, H, i, f, p) {
+      const hits = hitsOf(i);
+      burstGround(ctx, W, H, p.bg, W * 0.7, H * 0.4, { rays: false });
+      // A big face: most of the right side.
+      const so: StickerOpts = { bias: { x: 0.5, y: 0.42 }, face: 0.58, zoom: 2.2, ring: 10, safe: { top: 18, left: 30, right: 10 } };
+      const w = roomLeftOf(i.still, [W * 0.36, 10, W * 0.64, H - 10], so, 44, 60, H - 60, W, 0.5);
+      punch(ctx, i.headline, ANTON(f), { x: 52, y: H / 2, w, h: H - 110, lines: 3, max: 230, anchor: "middle", fills: [], accent: "#FFE14D", hits, blocks: { bg: ["#0A0A0A"], fg: "#FFFFFF" } });
+      sticker(ctx, i.still, W * 0.36, 10, W * 0.64, H - 10, so);
+    },
+  },
+  {
+    id: "c-neon",
+    label: "Neon frame",
+    shape: "long",
+    look: "Creator",
+    palettes: ["night", "grape", "electric"],
+    draw(ctx, W, H, i, f, p) {
+      const hits = hitsOf(i);
+      const base = mix(p.bg, "#000000", 0.6);
+      burstGround(ctx, W, H, base, W * 0.72, H * 0.5, { rays: false, glow: mix(p.accent, base, 0.5) });
+      neonFrame(ctx, W * 0.5, 70, W * 0.44, H - 40, p.accent, 9);
+      const so: StickerOpts = { bias: { x: 0.5, y: 0.36 }, face: 0.4, ring: 0, safe: { top: 30, left: 30, right: 30 } };
+      const t = punch(ctx, i.headline, ANTON(f), { x: 48, y: H * 0.5, w: roomLeftOf(i.still, [W * 0.44, 24, W * 0.56, H - 24], so, 48, 80, H - 80, W, 0.48), h: H - 170, lines: 3, max: 240, anchor: "middle", fills: ["#FFFFFF", p.accent], accent: p.mark, hits, strokeW: 0.06 });
+      sticker(ctx, i.still, W * 0.44, 24, W * 0.56, H - 24, so);
+      if (i.byline.trim()) label(ctx, i.byline, 48, Math.min(H - 40, t.bottom + 46), { size: 22, font: (z) => `800 ${z}px ${f.mont}`, color: rgba("#FFFFFF", 0.85), tracking: 0.04, upper: true, maxW: W * 0.42 });
+    },
+  },
 ];
 
 export const CREATOR_SHORT: CoverTemplate[] = [
@@ -885,6 +983,85 @@ export const CREATOR_SHORT: CoverTemplate[] = [
       const b = besideHead(shot, 150, W, H, "right", top);
       burst(ctx, burstText(i), b.x, b.y, 150, "#FFE14D", INK, f);
       nameTag(ctx, i.byline, W / 2, 60, 30, "#FFFFFF", f, "center");
+    },
+  },
+  {
+    id: "c-split",
+    label: "Big icon",
+    shape: "short",
+    look: "Creator",
+    palettes: ["money", "electric", "hot", "grape"],
+    draw(ctx, W, H, i, f, p) {
+      const hits = hitsOf(i);
+      burstGround(ctx, W, H, p.bg, W * 0.62, H * 0.72, { rays: false, dots: true });
+      const fills = fillsOn(p, p.bg);
+      const t = punch(ctx, i.headline, ANTON(f), { x: W / 2, y: 150, w: W - 120, h: H * 0.28, lines: 3, max: 320, align: "center", fills, accent: accentOn(p, p.bg, fills), hits });
+      const top = Math.max(t.bottom + 260, H * 0.5);
+      // The illustration big, between the words and the person.
+      icon(ctx, iconFor(i), W * 0.3, t.bottom + 150, 230, f, -0.1);
+      const shot = sticker(ctx, i.still, W * 0.1, top, W * 0.9, H - top, { bias: { x: 0.6, y: 0.3 }, face: 0.32, ring: 16, safe: { top: 30, left: 40, right: 40 } });
+      const ax = shot.face.x - shot.face.w * 0.2;
+      const ay = shot.face.y - shot.face.h * 0.85;
+      if (Math.hypot(ax - W * 0.42, ay - (t.bottom + 190)) > 220) arrow(ctx, W * 0.42, t.bottom + 190, ax, ay, "#FFFFFF", 16, -0.3);
+      nameTag(ctx, i.byline, W / 2, 60, 30, "#FFFFFF", f, "center");
+    },
+  },
+  {
+    id: "c-stamp",
+    label: "Stamp",
+    shape: "short",
+    look: "Creator",
+    palettes: ["electric", "money", "grape", "hot"],
+    draw(ctx, W, H, i, f, p) {
+      const hits = hitsOf(i);
+      burstGround(ctx, W, H, p.bg, W / 2, H * 0.7);
+      const st = ANTON(f);
+      const box = { x: W / 2, y: 200, w: W - 300, h: H * 0.26, lines: 4, max: 260, align: "center" as const, fills: [INK], accent: "#E3171F", hits, plain: true };
+      const m = punch(ctx, i.headline, st, { ...box, dry: true });
+      stampCard(ctx, W / 2 - m.width / 2 - 60, m.top - 50, m.width + 120, m.bottom - m.top + 100, "#E3171F", -0.04);
+      ctx.save();
+      ctx.translate(W / 2, (m.top + m.bottom) / 2);
+      ctx.rotate(-0.04);
+      ctx.translate(-W / 2, -(m.top + m.bottom) / 2);
+      punch(ctx, i.headline, st, box);
+      ctx.restore();
+      const top = Math.max(m.bottom + 110, H * 0.42);
+      const shot = sticker(ctx, i.still, 0, top, W, H - top, { bias: { x: 0.5, y: 0.3 }, face: 0.3, ring: 16, safe: { top: 30, left: 60, right: 60 } });
+      const b = besideHead(shot, 100, W, H, "left", top);
+      icon(ctx, iconFor(i), b.x, b.y, 170, f, -0.12);
+      nameTag(ctx, i.byline, W / 2, 60, 30, "#FFFFFF", f, "center");
+    },
+  },
+  {
+    id: "c-zoom",
+    label: "Close-up",
+    shape: "short",
+    look: "Creator",
+    palettes: ["signal", "night", "hot", "electric"],
+    draw(ctx, W, H, i, f, p) {
+      const hits = hitsOf(i);
+      burstGround(ctx, W, H, p.bg, W / 2, H * 0.62, { rays: false });
+      const t = punch(ctx, i.headline, MONT(f), { x: W / 2, y: 190, w: W - 140, h: H * 0.3, lines: 4, max: 170, align: "center", fills: [], accent: "#FFE14D", hits, blocks: { bg: ["#0A0A0A"], fg: "#FFFFFF" } });
+      const top = Math.max(t.bottom + 50, H * 0.38);
+      sticker(ctx, i.still, 0, top, W, H - top, { bias: { x: 0.5, y: 0.4 }, face: 0.46, zoom: 2.2, ring: 16, safe: { top: 24, left: 30, right: 30 } });
+      nameTag(ctx, i.byline, W / 2, 60, 30, "#FFFFFF", f, "center");
+    },
+  },
+  {
+    id: "c-neon",
+    label: "Neon frame",
+    shape: "short",
+    look: "Creator",
+    palettes: ["night", "grape", "electric"],
+    draw(ctx, W, H, i, f, p) {
+      const hits = hitsOf(i);
+      const base = mix(p.bg, "#000000", 0.6);
+      burstGround(ctx, W, H, base, W / 2, H * 0.66, { rays: false, glow: mix(p.accent, base, 0.5) });
+      const t = punch(ctx, i.headline, ANTON(f), { x: W / 2, y: 160, w: W - 120, h: H * 0.3, lines: 4, max: 300, align: "center", fills: ["#FFFFFF", p.accent], accent: p.mark, hits, strokeW: 0.06 });
+      const top = Math.max(t.bottom + 90, H * 0.42);
+      neonFrame(ctx, 110, top + 30, W - 220, H - top + 40, p.accent, 14);
+      sticker(ctx, i.still, 0, top, W, H - top, { bias: { x: 0.5, y: 0.32 }, face: 0.3, ring: 0, safe: { top: 40, left: 80, right: 80 } });
+      nameTag(ctx, i.byline, W / 2, 60, 30, p.accent, f, "center");
     },
   },
 ];

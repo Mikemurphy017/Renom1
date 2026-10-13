@@ -23,6 +23,13 @@ export const TEMPLATES: Record<VideoFormat, CoverTemplate[]> = { long: [...CREAT
 
 export const templateOf = (shape: VideoFormat, id: string) => TEMPLATES[shape].find((t) => t.id === id);
 
+/**
+ * Layouts offered for new covers: the creator layouts (the person cut out, big
+ * words) and, for the "no photo" style, the words-only ones. The older photo
+ * layouts stay above only so covers saved with them still reopen.
+ */
+export const isPickable = (t: CoverTemplate) => t.look === "Creator" || !!t.noPhoto;
+
 /** Draw one cover. `scale` < 1 draws a smaller copy (for previews) with the same layout. */
 export async function renderCover(t: CoverTemplate, input: CoverInput, scale = 1): Promise<HTMLCanvasElement> {
   const f = await loadFonts();

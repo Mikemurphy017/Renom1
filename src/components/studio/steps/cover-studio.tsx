@@ -15,7 +15,7 @@ import { getTake, subscribeTakes } from "@/lib/media/takes";
 import { uploadImage } from "@/lib/media/upload";
 import { framesFromVideo, stillFromImage, type Still } from "@/lib/thumbs/frames";
 import { cutAll } from "@/lib/thumbs/cutout";
-import { COVER_SIZE, LOOKS, PALETTES, TEMPLATES, releaseCanvas, renderCover, templateOf, toJpeg, type CoverLook, type CoverTemplate, type CoverText } from "@/lib/thumbs/render";
+import { COVER_SIZE, PALETTES, TEMPLATES, isPickable, releaseCanvas, renderCover, templateOf, toJpeg, type CoverLook, type CoverTemplate, type CoverText } from "@/lib/thumbs/render";
 import type { CoverImage, CoverPhotos, Video, VideoFormat } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { AskBar } from "../ask-bar";
@@ -136,7 +136,7 @@ function buildOptions(shape: VideoFormat, lines: Lines, o: { seed: number; count
   const rand = rng(o.seed);
   const pool = poolFor(lines, shape);
   // Photo layouts, or (the "no photo" cover style) words-and-graphics ones.
-  const templates = TEMPLATES[shape].filter((t) => !!t.noPhoto === !!o.noPhoto && (!o.look || t.look === o.look));
+  const templates = TEMPLATES[shape].filter((t) => isPickable(t) && !!t.noPhoto === !!o.noPhoto && (!o.look || t.look === o.look));
   const byLook = new Map<CoverLook, CoverTemplate[]>();
   for (const t of [...templates].sort(() => rand() - 0.5)) byLook.set(t.look, [...(byLook.get(t.look) ?? []), t]);
   // Creator layouts (the advisor cut out on a loud ground) are every other option; the rest go
@@ -266,7 +266,8 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
   // On opening (and when the cover style changes): sets saved before there were palettes, or made
   // for the other style, start over with a varied set; saved covers go back in, selected, exactly as saved.
   React.useEffect(() => {
-    const stale = (!options.long.some((o) => o.palette) && !options.short.some((o) => o.palette)) || isTextSet(options) !== noPhoto;
+    const retired = (["long", "short"] as VideoFormat[]).some((s) => options[s].some((o) => !o.own && !isPickable(templateOf(s, o.template) ?? TEMPLATES[s][0])));
+    const stale = (!options.long.some((o) => o.palette) && !options.short.some((o) => o.palette)) || isTextSet(options) !== noPhoto || retired;
     const next = withSaved(stale ? freshOptions(linesNow(), !!brand, 1, noPhoto) : options, stale ? { long: 0, short: 0 } : picks, video.covers, noPhoto);
     if (next.options !== options) setOptions(next.options);
     if (next.picks !== picks) setPicks(next.picks);
@@ -433,10 +434,6 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
     setOptions((prev) => ({ ...prev, [shape]: keep ? [keep, ...fresh] : fresh }));
     setPicks({ ...picks, [shape]: 0 });
   };
-  const filterTo = (l: CoverLook | null) => {
-    setLook(l);
-    if (l && options[shape].filter((o) => templateOf(shape, o.template)?.look === l).length < 4) more(l);
-  };
   const visible = current.map((o, k) => ({ o, k })).filter(({ o }) => !look || templateOf(shape, o.template)?.look === look);
   // Keep the pick among what's on screen when filtering.
   const firstVisible = visible[0]?.k;
@@ -555,17 +552,6 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
         </div>
       </div>
 
-      {!noPhoto && <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:justify-center sm:px-0" role="group" aria-label="Filter by look">
-        {[null, ...LOOKS].map((l) => (
-          <button
-            key={l ?? "all"}
-            onClick={() => filterTo(l)}
-            className={cn("shrink-0 cursor-pointer rounded-full border px-3 py-1 text-[12px] transition-colors", look === l ? "border-primary bg-brass-soft text-foreground" : "border-border text-muted-foreground hover:text-foreground")}
-          >
-            {l ?? "All looks"}
-          </button>
-        ))}
-      </div>}
 
       <div className={cn("grid gap-3 sm:gap-4", vertical ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 lg:grid-cols-3")}>
         {visible.map(({ o, k }) => {
@@ -640,9 +626,9 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
                 setScenes((prev) => [...prev, scene].slice(-12));
                 // Show it straight away in the two layouts made for it, with the words they have now.
                 const text = selected.text;
-                setOptions((prev) => ({ ...prev, [shape]: [{ template: "stack", palette: "signal", text, stillId: still.id }, { template: "pill", palette: "signal", text, stillId: still.id }, ...prev[shape]] }));
+                setOptions((prev) => ({ ...prev, [shape]: [{ template: "c-react", palette: "electric", text, stillId: still.id }, { template: "c-shock", palette: "hot", text, stillId: still.id }, ...prev[shape]] }));
                 setPicks((prev) => ({ ...prev, [shape]: 0 }));
-                if (look && look !== "Bold") setLook(null);
+                if (look) setLook(null);
               }}
             />}
           </div>}
@@ -671,12 +657,8 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
                   onChange={(e) => editSelected({ template: e.target.value })}
                   className="h-8 cursor-pointer rounded-md border border-border bg-background px-2 text-[13px] text-foreground"
                 >
-                  {(noPhoto ? (["Text"] as CoverLook[]) : LOOKS).map((l) => (
-                    <optgroup key={l} label={l === "Text" ? "No photo" : l}>
-                      {TEMPLATES[shape].filter((t) => t.look === l && !!t.noPhoto === noPhoto).map((t) => (
-                        <option key={t.id} value={t.id}>{t.label}</option>
-                      ))}
-                    </optgroup>
+                  {TEMPLATES[shape].filter((t) => (isPickable(t) && !!t.noPhoto === noPhoto) || t.id === selected.template).map((t) => (
+                    <option key={t.id} value={t.id}>{t.label}{isPickable(t) ? "" : " (older style)"}</option>
                   ))}
                 </select>
               </label>
