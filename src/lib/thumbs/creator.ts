@@ -651,8 +651,9 @@ export function burst(ctx: CanvasRenderingContext2D, text: string, cx: number, c
 /** Where a sticker of radius r can sit next to the head without covering it: the preferred side if there's room, else the other. */
 function besideHead(shot: Shot, r: number, W: number, H: number, prefer: "left" | "right", minY = 0) {
   const h = shot.head;
-  const right = h.x + h.w + r * 0.95;
-  const left = h.x - r * 0.95;
+  // Hair runs wider than the head box: keep a little extra distance.
+  const right = h.x + h.w + r * 1.2;
+  const left = h.x - r * 1.2;
   const fitsR = right + r * 0.8 <= W;
   const fitsL = left - r * 0.8 >= 0;
   const x = (prefer === "right" ? fitsR || !fitsL : !fitsL && fitsR) ? Math.min(right, W - r * 0.85) : Math.max(left, r * 0.85);
@@ -768,10 +769,9 @@ export const CREATOR_LONG: CoverTemplate[] = [
       punch(ctx, i.headline, MONT(f), { x: 56, y: H * 0.5, w: roomLeftOf(i.still, [W * 0.44, 20, W * 0.56, H - 20], so, 56, 70, H - 70, W, 0.5), h: H - 140, lines: 3, max: 150, anchor: "middle", fills: [], accent: "#FF2E2E", hits, blocks: { bg: ["#FFFFFF", "#FFE14D"], fg: INK } });
       const shot = sticker(ctx, i.still, W * 0.44, 20, W * 0.56, H - 20, so);
       const kind = iconFor(i);
-      const ix = Math.min(W - 115, shot.face.x + shot.face.w * 1.25);
-      const iy = Math.max(115, shot.face.y - shot.face.h * 0.55);
-      icon(ctx, kind, ix, iy, 120, f, 0.14);
-      scribble(ctx, ix, iy, 92, 86, "#FF2E2E", 9);
+      const b = besideHead(shot, 80, W, H, "right");
+      icon(ctx, kind, b.x, b.y, 120, f, 0.14);
+      scribble(ctx, b.x, b.y, 92, 86, "#FF2E2E", 9);
     },
   },
   {
@@ -944,10 +944,9 @@ export const CREATOR_SHORT: CoverTemplate[] = [
       const top = Math.max(t.bottom + 60, H * 0.42);
       const shot = sticker(ctx, i.still, 0, top, W, H - top, { bias: { x: 0.5, y: 0.3 }, face: 0.3, ring: 18, safe: { top: 40, left: 60, right: 60 } });
       const kind = iconFor(i);
-      const ix = Math.min(W - 150, shot.face.x + shot.face.w * 1.3);
-      const iy = Math.max(top + 90, shot.face.y - shot.face.h * 0.4);
-      icon(ctx, kind, ix, iy, 180, f, 0.14);
-      scribble(ctx, ix, iy, 135, 128, "#FF2E2E", 13);
+      const b = besideHead(shot, 110, W, H, "right", top);
+      icon(ctx, kind, b.x, b.y, 180, f, 0.14);
+      scribble(ctx, b.x, b.y, 135, 128, "#FF2E2E", 13);
       nameTag(ctx, i.byline, W / 2, 60, 30, INK, f, "center");
     },
   },

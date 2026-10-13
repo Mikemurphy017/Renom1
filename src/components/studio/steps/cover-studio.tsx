@@ -335,7 +335,7 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
       if (live && Object.keys(found).length) setScenes((prev) => prev.map((sc) => (sc.id in found ? { ...sc, face: found[sc.id] } : sc)));
       if (live) setStills(out);
       // Cut the person out of each photo (creator layouts put them on the ground as a sticker); previews redraw as each is ready.
-      await cutAll(out, (id, cut) => live && setStills((prev) => prev?.map((st) => (st.id === id ? { ...st, cut } : st)) ?? prev), () => live);
+      await cutAll(out, (id, patch) => live && setStills((prev) => prev?.map((st) => (st.id === id ? { ...st, ...patch } : st)) ?? prev), () => live);
     })();
     return () => {
       live = false;

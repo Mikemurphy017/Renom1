@@ -316,6 +316,9 @@ export function crop(s: Still, w: number, h: number, o: PhotoOpts = {}): Crop {
   // A detector's box runs brow to chin; hair and ears sit outside it.
   // (Generous on top: hair, and detectors that put the brow low, are what get cut.)
   const head = { x0: fx - fw * 0.7, x1: fx + fw * 0.7, y0: fy - fh * 1.2, y1: fy + fh * 0.62 };
+  // With a cutout we know where the hair really ends: big hair (or a completed crown) goes higher than the estimate.
+  const top = s.cut ? hairTop(s.cut, fx - fw * 0.5, fx + fw * 0.5, fy, cw) : null;
+  if (top !== null) head.y0 = Math.min(head.y0, top - fh * 0.06);
   const core = { x0: fx - fw * 0.42, x1: fx + fw * 0.42, y0: fy - fh * 0.42, y1: fy + fh * 0.5 };
   const bias = o.bias ?? { x: 0.5, y: 0.42 };
   const safe = { l: o.safe?.left ?? 0, r: w - (o.safe?.right ?? 0), t: o.safe?.top ?? 0, b: h - (o.safe?.bottom ?? 0) };
@@ -456,6 +459,17 @@ export function personEdge(s: Still, x: number, y: number, w: number, h: number,
     }
   }
   return edge;
+}
+
+/** The top of the person above the face (source pixels), from the cutout: the first solid row in the face's columns. */
+function hairTop(cut: HTMLCanvasElement, x0: number, x1: number, below: number, cw: number) {
+  const a = alphaOf(cut);
+  const k = a.w / cw;
+  const c0 = Math.max(0, Math.floor(x0 * k));
+  const c1 = Math.min(a.w - 1, Math.ceil(x1 * k));
+  const stop = Math.min(a.h, Math.floor(below * k));
+  for (let y = 0; y < stop; y++) for (let x = c0; x <= c1; x += 1) if (a.d[(y * a.w + x) * 4 + 3] > 110) return y / k;
+  return null;
 }
 
 /** Photos drawn while a cover renders, to lift the person in each to the front afterwards. */
