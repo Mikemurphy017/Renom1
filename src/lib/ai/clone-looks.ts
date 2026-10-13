@@ -9,13 +9,13 @@ export interface CloneLook {
 }
 
 export const CLONE_LOOKS: CloneLook[] = [
-  { id: "smile-office", label: "Smiling · office", brief: "a warm, genuine smile; navy suit and white shirt, no tie; a bright modern office with softly blurred windows" },
-  { id: "surprised-home", label: "Surprised · home office", brief: "a surprised expression (eyebrows raised, mouth slightly open, like they just saw an unexpected number); light blue button-down shirt, sleeves neat; a home office with bookshelves softly blurred" },
-  { id: "concerned-boardroom", label: "Concerned · boardroom", brief: "a concerned, serious expression with a slight frown, as if delivering a warning; charcoal suit and tie; a calm conference room, softly blurred" },
-  { id: "confident-outdoors", label: "Confident · outdoors", brief: "a confident, assured look with a small smile and arms crossed; a navy quarter-zip sweater over a collared shirt; outdoors on a terrace with golden-hour light and blurred greenery" },
-  { id: "thoughtful-study", label: "Thoughtful · study", brief: "a thoughtful expression, hand lightly at the chin; a tweed or textured blazer with an open-collar shirt; a cozy study with a brass desk lamp, softly blurred" },
-  { id: "pointing-studio", label: "Pointing · plain backdrop", brief: "an engaged, friendly expression, pointing to the side of the frame with one hand (towards empty space); crisp white shirt; a plain, softly lit studio backdrop in a muted color" },
-  { id: "laughing-kitchen", label: "Laughing · kitchen", brief: "laughing naturally, relaxed; a casual sweater; a light, clean kitchen at home with morning light, softly blurred" },
-  { id: "skeptical-dark", label: "Skeptical · dark backdrop", brief: "a skeptical look, one eyebrow slightly raised, lips pressed; dark suit and open-collar shirt; a plain dark charcoal backdrop with soft rim light" },
+  { id: "shocked", label: "Shocked", brief: "genuinely shocked, eyes wide and mouth open, one hand raised to the cheek, a big readable reaction for a YouTube thumbnail; navy suit and white shirt, no tie; a bright modern office, softly blurred" },
+  { id: "excited", label: "Excited", brief: "excited and delighted, a huge open smile, eyebrows up, leaning slightly toward the camera; light blue button-down shirt; a home office with bookshelves, softly blurred" },
+  { id: "worried", label: "Worried", brief: "worried and concerned, brows pulled together, grimacing slightly, as if warning the viewer about a costly mistake; charcoal suit and tie; a calm conference room, softly blurred" },
+  { id: "pointing", label: "Pointing", brief: "confident and energetic, pointing to the side of the frame with one arm extended (towards empty space where words will go), an engaged smile; crisp white shirt, sleeves rolled; a plain, softly lit studio backdrop" },
+  { id: "skeptical", label: "Skeptical", brief: "skeptical, one eyebrow raised high, lips pressed, a 'really?' look straight into the camera; dark suit and open-collar shirt; a plain dark charcoal backdrop with a soft rim light" },
+  { id: "facepalm", label: "Facepalm", brief: "a playful facepalm, one hand on the forehead, eyes still visible and looking at the camera, an 'oh no' expression; a navy quarter-zip sweater over a collared shirt; outdoors with golden-hour light and blurred greenery" },
+  { id: "thinking", label: "Thinking", brief: "thinking hard, hand at the chin, eyes looking up and to the side, slightly squinting; a textured blazer with an open-collar shirt; a cozy study with a brass desk lamp, softly blurred" },
+  { id: "confident", label: "Confident", brief: "confident and warm, arms crossed, a knowing half-smile straight into the camera; a casual sweater; a light, clean kitchen at home with morning light, softly blurred" },
 ];
 

@@ -128,7 +128,7 @@ export function scenePrompt(o: { title: string; topic?: string; setting: string;
     "Keep their identity exactly: same face, facial features, age, skin tone, hair and facial hair. Do not beautify, slim, de-age or change them. Similar clothing is fine.",
     `Setting: ${where}.`,
     "Framing: the whole head must be in frame with clear space above the top of the hair (at least 12% of the image height). Never crop the top of the head or the chin.",
-    `Place the person ${place}, looking into the camera with an expression that fits the topic (thoughtful, concerned or confident; never cartoonish).`,
+    `Place the person ${place}, looking into the camera with a big, readable expression that fits the topic, YouTube-thumbnail style (surprised, worried, excited or skeptical; exaggerated enough to read at phone size, but still a real photo, never cartoonish).`,
     `Video topic: "${o.title.slice(0, 160)}".${o.topic ? ` What it covers: ${o.topic.slice(0, 500)}` : ""}`,
     "Include one simple prop that illustrates the topic, for example a tablet or computer monitor showing a clean line or bar chart (at most two short labels on the chart), or a relevant everyday object.",
     o.extra ? `Also: ${o.extra.slice(0, 200)}.` : "",
@@ -146,7 +146,7 @@ export function clonePrompt(look: CloneLook, count: number) {
   return [
     `Create a new photorealistic portrait photo of the person in the reference photo${count > 1 ? "s (all of the same person)" : ""}.`,
     "Keep their identity exactly: same face, facial features, face shape, age, skin tone, eye color, hair (color, length, hairline) and any facial hair or glasses. Do not beautify, slim, de-age, or change their weight or ethnicity.",
-    `Expression, outfit and setting: ${look.brief}.`,
+    `Expression, outfit and setting: ${look.brief}.\nThe expression should be big and readable at phone size, like a creator's YouTube thumbnail, while still looking like a real photo of this person.`,
     "Framing: chest-up, the person centered and facing the camera, the whole head in frame with clear space above the hair (at least 12% of the image height). Never crop the top of the head or the chin.",
     "Keep the background simple and softly out of focus so the person stands out; a headline will be placed beside or above them later.",
     "Professional photo-shoot look: soft key light on the face, natural color, crisp detail, shallow depth of field.",

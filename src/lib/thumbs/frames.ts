@@ -8,6 +8,8 @@ export interface Still {
   id: string;
   source: "frame" | "headshot" | "ai";
   canvas: HTMLCanvasElement;
+  /** The person cut out of the background (transparent elsewhere), same size as `canvas`, when segmentation found one. */
+  cut?: HTMLCanvasElement | null;
   /** Seconds into the take, for frames. */
   time?: number;
   /** Where to keep in shot when cropping, 0–1 of width/height (the face when we can find it). */

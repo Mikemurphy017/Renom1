@@ -94,6 +94,8 @@ export function PhotoSetPanel({ onContinue, onSkip, compact }: { onContinue?: ()
   const ps = usePhotoSet();
   const byLook = new Map(ps.photos.map((p) => [p.look, p]));
   const missing = PHOTO_LOOKS.filter((l) => !byLook.has(l.id)).map((l) => l.id);
+  // Photos from looks that have since been replaced: still used, and removable.
+  const older = ps.photos.filter((p) => !PHOTO_LOOKS.some((l) => l.id === p.look));
   const done = ps.photos.length;
   return (
     <div className={cn("space-y-5", !compact && "mx-auto max-w-[960px] rounded-2xl border border-border bg-card p-5 shadow-soft sm:p-7")}>
@@ -136,6 +138,15 @@ export function PhotoSetPanel({ onContinue, onSkip, compact }: { onContinue?: ()
             </div>
           );
         })}
+        {older.map((p) => (
+          <div key={p.id} className="group relative">
+            <div className="relative aspect-[3/4] overflow-hidden rounded-xl border border-border bg-muted/60">
+              <img src={p.url} alt={p.label} className="absolute inset-0 h-full w-full object-cover" />
+              <button type="button" onClick={() => ps.remove(p.id)} className="absolute top-1.5 right-1.5 flex size-7 cursor-pointer items-center justify-center rounded-full bg-black/55 text-white backdrop-blur" aria-label={`Remove ${p.label}`} title="Remove"><X className="size-3.5" /></button>
+            </div>
+            <div className="mt-1.5 truncate px-0.5 text-[12px] text-muted-foreground">{p.label} · earlier set</div>
+          </div>
+        ))}
       </div>
 
       {ps.error && <p className="text-[13px] text-destructive">{ps.error}</p>}

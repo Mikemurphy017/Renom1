@@ -14,6 +14,7 @@ import { isAbort, useWriter } from "@/lib/ai/writer";
 import { getTake, subscribeTakes } from "@/lib/media/takes";
 import { uploadImage } from "@/lib/media/upload";
 import { framesFromVideo, stillFromImage, type Still } from "@/lib/thumbs/frames";
+import { cutAll } from "@/lib/thumbs/cutout";
 import { COVER_SIZE, LOOKS, PALETTES, TEMPLATES, releaseCanvas, renderCover, templateOf, toJpeg, type CoverLook, type CoverTemplate, type CoverText } from "@/lib/thumbs/render";
 import type { CoverImage, CoverPhotos, Video, VideoFormat } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -138,10 +139,18 @@ function buildOptions(shape: VideoFormat, lines: Lines, o: { seed: number; count
   const templates = TEMPLATES[shape].filter((t) => !!t.noPhoto === !!o.noPhoto && (!o.look || t.look === o.look));
   const byLook = new Map<CoverLook, CoverTemplate[]>();
   for (const t of [...templates].sort(() => rand() - 0.5)) byLook.set(t.look, [...(byLook.get(t.look) ?? []), t]);
-  // Framed layouts (one photo, graphics around it) lead each round.
-  const looks = [...byLook.keys()].sort(() => rand() - 0.5).sort((a, b) => Number(b === "Framed") - Number(a === "Framed"));
+  // Creator layouts (the advisor cut out on a loud ground) are every other option; the rest go
+  // round-robin by look, the punchier looks first and the quiet ones (Editorial, Minimal, Quote) last.
+  const RANK: CoverLook[] = ["Bold", "Framed", "Number", "Text", "Editorial", "Minimal", "Quote"];
+  const looks = [...byLook.keys()].filter((l) => l !== "Creator").sort(() => rand() - 0.5).sort((a, b) => Math.floor(RANK.indexOf(a) / 2) - Math.floor(RANK.indexOf(b) / 2));
+  const rest: CoverTemplate[] = [];
+  for (let r = 0; rest.length < templates.length - (byLook.get("Creator")?.length ?? 0); r++) for (const l of looks) if (byLook.get(l)![r]) rest.push(byLook.get(l)![r]);
+  const creator = byLook.get("Creator") ?? [];
   const order: CoverTemplate[] = [];
-  for (let r = 0; order.length < templates.length; r++) for (const l of looks) if (byLook.get(l)![r]) order.push(byLook.get(l)![r]);
+  for (let n = 0; order.length < templates.length; n++) {
+    if (creator[n]) order.push(creator[n]);
+    if (rest[n]) order.push(rest[n]);
+  }
 
   const before = o.after ?? [];
   const used = new Map<string, number>();
@@ -324,6 +333,8 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
       }
       if (live && Object.keys(found).length) setScenes((prev) => prev.map((sc) => (sc.id in found ? { ...sc, face: found[sc.id] } : sc)));
       if (live) setStills(out);
+      // Cut the person out of each photo (creator layouts put them on the ground as a sticker); previews redraw as each is ready.
+      await cutAll(out, (id, cut) => live && setStills((prev) => prev?.map((st) => (st.id === id ? { ...st, cut } : st)) ?? prev), () => live);
     })();
     return () => {
       live = false;
@@ -371,7 +382,13 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
   // ── previews: small copies, drawn once per look of an option (editing one redraws only that one) ──
   const [previews, setPreviews] = React.useState<Record<string, string>>({});
   const drawn = React.useRef(new Map<string, string>());
-  const keyOf = React.useCallback((s: VideoFormat, o: Option, k: number) => JSON.stringify([s, o.template, o.palette, o.text, stillFor(o, k)?.id, byline, brand, points]), [stillFor, byline, brand, points]);
+  const keyOf = React.useCallback(
+    (s: VideoFormat, o: Option, k: number) => {
+      const st = stillFor(o, k);
+      return JSON.stringify([s, o.template, o.palette, o.text, st?.id, st?.cut === undefined ? "?" : st.cut ? "cut" : "-", byline, brand, points]);
+    },
+    [stillFor, byline, brand, points]
+  );
   React.useEffect(() => {
     if (!stills || (!stills.length && !noPhoto)) return;
     let live = true;

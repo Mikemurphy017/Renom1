@@ -26,8 +26,8 @@ export interface CoverInput extends CoverText {
   points?: string[];
 }
 
-export type CoverLook = "Framed" | "Bold" | "Editorial" | "Minimal" | "Number" | "Quote" | "Text";
-export const LOOKS: CoverLook[] = ["Framed", "Bold", "Editorial", "Minimal", "Number", "Quote"];
+export type CoverLook = "Creator" | "Framed" | "Bold" | "Editorial" | "Minimal" | "Number" | "Quote" | "Text";
+export const LOOKS: CoverLook[] = ["Creator", "Bold", "Framed", "Number", "Editorial", "Minimal", "Quote"];
 
 export interface CoverTemplate {
   id: string;
@@ -66,6 +66,13 @@ export const PALETTES: Palette[] = [
   { id: "signal", label: "Black & yellow", bg: "#101010", paper: "#FFFFFF", ink: "#101010", accent: "#FFD23F", mark: "#101010" },
   { id: "plum", label: "Plum & peach", bg: "#3B1527", paper: "#F6EDE6", ink: "#3B1527", accent: "#F2A07B", mark: "#B23A48" },
   { id: "teal", label: "Teal & mint", bg: "#0B3540", paper: "#EEF6F4", ink: "#0B3540", accent: "#4FD8BC", mark: "#0E7C6B" },
+  // Loud ones, for creator-style covers.
+  { id: "pop", label: "Yellow pop", bg: "#FFC814", paper: "#FFFFFF", ink: "#111111", accent: "#FF2E2E", mark: "#111111" },
+  { id: "hot", label: "Hot red", bg: "#E3171F", paper: "#FFFFFF", ink: "#140405", accent: "#FFE14D", mark: "#140405" },
+  { id: "electric", label: "Electric blue", bg: "#1D3DFF", paper: "#FFFFFF", ink: "#070B2B", accent: "#FFE14D", mark: "#FF3B3B" },
+  { id: "night", label: "Night & lime", bg: "#0A0A12", paper: "#FFFFFF", ink: "#0A0A12", accent: "#B4FF39", mark: "#FF3B5C" },
+  { id: "grape", label: "Grape & gold", bg: "#5B21E6", paper: "#FFFFFF", ink: "#160736", accent: "#FFD23F", mark: "#FF4D6D" },
+  { id: "money", label: "Money green", bg: "#0C9A4F", paper: "#FFFFFF", ink: "#06261A", accent: "#FFE14D", mark: "#111111" },
 ];
 
 /** A palette, with the advisor's color as the highlight when they have one. */
@@ -222,7 +229,7 @@ export function release(c: HTMLCanvasElement) {
   c.height = 0;
 }
 
-function scratch(w: number, h: number) {
+export function scratch(w: number, h: number) {
   const c = document.createElement("canvas");
   c.width = Math.max(1, Math.round(w));
   c.height = Math.max(1, Math.round(h));
@@ -230,7 +237,7 @@ function scratch(w: number, h: number) {
 }
 
 /** How much the context is scaled (previews draw the full-size layout at a fraction). */
-function scaleOf(ctx: CanvasRenderingContext2D) {
+export function scaleOf(ctx: CanvasRenderingContext2D) {
   try {
     const m = ctx.getTransform();
     return Math.hypot(m.a, m.b) || 1;

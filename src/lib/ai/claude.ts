@@ -73,13 +73,14 @@ Also write three taglines for the video: standalone one-liners (at most 12 words
     }
 
     case "covers":
-      return `Write the words for this video's thumbnails. The advisor's face from the video sits beside the words, so the words carry the curiosity and the face carries the trust.
+      return `Write the words for this video's thumbnails, creator-style (think the best finance YouTubers, not a company intranet). The advisor's face sits beside the words, huge and expressive, so the words carry the curiosity and the face carries the emotion.
 Video: "${req.video.title}" (made as ${req.video.format === "short" ? "short-form vertical" : "long-form horizontal"}; write both shapes anyway)
 ${req.video.script ? `Hook: ${req.video.script.hook}\nBody:\n${req.video.script.body.join("\n")}` : `Outline:\n${req.video.outline.map((o) => `- ${o}`).join("\n")}`}
 
 Rules for thumbnail words:
 - Never repeat the title. Add what the title leaves out: the stake, the number, the enemy, the open loop.
-- Two to five words. Concrete nouns and numbers beat adjectives. Readable at phone size in one glance.
+- Two to four words is the target, five at most. Punchy and spoken, like a reaction: "I WAS WRONG", "DON'T DO THIS", "$7K MISTAKE", "TOO LATE?". Concrete nouns, numbers and verbs beat adjectives. Readable at phone size in one glance.
+- No corporate phrasing ("strategies", "considerations", "overview", "insights", "planning tips"): that reads like a training video.
 - Write six options per shape, each with a different tactic. In every shape include:
   1. one that starts with a specific figure from the video ("$7,000 IRA mistake", "3 Roth moves", "73: the age that matters");
   2. one plain question ending in "?";
