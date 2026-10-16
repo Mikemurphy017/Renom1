@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CLONE_LOOKS } from "./ai/clone-looks";
+import { CLONE_GROUPS, CLONE_LOOKS } from "./ai/clone-looks";
 import { useStore } from "./store";
 import type { PhotoSetItem } from "./types";
 
@@ -11,7 +11,8 @@ import type { PhotoSetItem } from "./types";
  * in a component, so Settings and the cover step show the same run.
  */
 
-export const PHOTO_LOOKS = CLONE_LOOKS.map(({ id, label }) => ({ id, label }));
+export const PHOTO_LOOKS = CLONE_LOOKS.map(({ id, label, group }) => ({ id, label, group }));
+export const PHOTO_GROUPS = CLONE_GROUPS;
 
 type Run = { pending: string[]; error?: string };
 let run: Run = { pending: [] };

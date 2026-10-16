@@ -146,7 +146,11 @@ export function clonePrompt(look: CloneLook, count: number) {
   return [
     `Create a new photorealistic portrait photo of the person in the reference photo${count > 1 ? "s (all of the same person)" : ""}.`,
     "Keep their identity exactly: same face, facial features, face shape, age, skin tone, eye color, hair (color, length, hairline) and any facial hair or glasses. Do not beautify, slim, de-age, or change their weight or ethnicity.",
-    `Expression, outfit and setting: ${look.brief}.\nThe expression should be big and readable at phone size, like a creator's YouTube thumbnail, while still looking like a real photo of this person.`,
+    `Expression, outfit and setting: ${look.brief}.`,
+    look.group === "Reactions" || look.group === "Gestures & props"
+      ? "The expression should be big and readable at phone size, like a creator's YouTube thumbnail, while still looking like a real photo of this person."
+      : "Keep it natural and credible: a real, polished photo of this person, the kind used on a professional profile or magazine feature.",
+    "Any props, charts, screens or whiteboards show no readable words or numbers.",
     "Framing: chest-up, the person centered and facing the camera, the whole head in frame with clear space above the hair (at least 12% of the image height). Never crop the top of the head or the chin.",
     "Keep the background simple and softly out of focus so the person stands out; a headline will be placed beside or above them later.",
     "Professional photo-shoot look: soft key light on the face, natural color, crisp detail, shallow depth of field.",

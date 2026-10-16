@@ -7,8 +7,8 @@ import { isMediaId, mediaKey, mediaUrl, newMediaId } from "@/lib/storage/media";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-/** Photos per advisor per hour: each one costs the studio money (a full set is eight). */
-const PER_HOUR = 24;
+/** Photos per advisor per hour: each one costs the studio money (a full set is 24, plus a few remakes). */
+const PER_HOUR = 36;
 const recent = new Map<string, number[]>();
 
 /** Whether the photo set can be made, and the looks in it. */

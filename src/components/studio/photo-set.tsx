@@ -5,7 +5,7 @@ import * as React from "react";
 import { ArrowRight, Camera, ImageOff, LoaderCircle, RefreshCw, Sparkles, Type, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { HeadshotPicker } from "@/components/settings/headshot-picker";
-import { PHOTO_LOOKS, usePhotoSet } from "@/lib/photo-set";
+import { PHOTO_GROUPS, PHOTO_LOOKS, usePhotoSet } from "@/lib/photo-set";
 import type { CoverPhotos } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -104,7 +104,7 @@ export function PhotoSetPanel({ onContinue, onSkip, compact }: { onContinue?: ()
           <div className="eyebrow">Before your covers</div>
           <h2 className="mt-1 font-serif text-2xl">Your AI photo set</h2>
           <p className="mt-1.5 max-w-2xl text-[14px] text-muted-foreground">
-            Gemini makes {PHOTO_LOOKS.length} new photos of you from your headshots: different expressions, outfits and settings, so every cover doesn’t use the same picture. You make the set once and every video uses it.
+            Gemini makes up to {PHOTO_LOOKS.length} new photos of you from your headshots: big reactions, gestures and props, professional settings and lifestyle shots, so every cover doesn’t use the same picture. Make the whole set or just the groups you want; every video uses it.
           </p>
         </div>
       )}
@@ -114,40 +114,66 @@ export function PhotoSetPanel({ onContinue, onSkip, compact }: { onContinue?: ()
         <HeadshotPicker compact />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {PHOTO_LOOKS.map((l) => {
-          const p = byLook.get(l.id);
-          const making = ps.pending.includes(l.id);
-          return (
-            <div key={l.id} className="group relative">
-              <div className="relative aspect-[3/4] overflow-hidden rounded-xl border border-border bg-muted/60">
-                {p && <img src={p.url} alt={l.label} className={cn("absolute inset-0 h-full w-full object-cover", making && "opacity-40")} />}
-                {making ? (
-                  <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[12px] text-muted-foreground"><LoaderCircle className="size-5 animate-spin text-primary" /> Making…</span>
-                ) : !p ? (
-                  <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-3 text-center text-[12px] text-muted-foreground"><ImageOff className="size-5 opacity-60" /> Not made yet</span>
-                ) : null}
-                {p && !making && (
-                  <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
-                    <button type="button" onClick={() => ps.make([l.id])} disabled={ps.busy} className="flex size-7 cursor-pointer items-center justify-center rounded-full bg-black/55 text-white backdrop-blur disabled:opacity-50" aria-label={`Remake ${l.label}`} title="Make a new one"><RefreshCw className="size-3.5" /></button>
-                    <button type="button" onClick={() => ps.remove(p.id)} className="flex size-7 cursor-pointer items-center justify-center rounded-full bg-black/55 text-white backdrop-blur" aria-label={`Remove ${l.label}`} title="Remove"><X className="size-3.5" /></button>
+      {PHOTO_GROUPS.map((g) => {
+        const looks = PHOTO_LOOKS.filter((l) => l.group === g);
+        const todo = looks.filter((l) => !byLook.has(l.id)).map((l) => l.id);
+        return (
+          <section key={g} className="space-y-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-[13px] font-semibold">
+                {g} <span className="font-normal text-muted-foreground tnum">· {looks.length - todo.length} of {looks.length}</span>
+              </h3>
+              {todo.length > 0 && done > 0 && (
+                <Button size="sm" variant="ghost" className="h-7 rounded-full text-[12px]" disabled={ps.busy || !ps.headshots.length} onClick={() => ps.make(todo)}>
+                  <Sparkles className="size-3.5" /> Make these {todo.length}
+                </Button>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-6">
+              {looks.map((l) => {
+                const p = byLook.get(l.id);
+                const making = ps.pending.includes(l.id);
+                return (
+                  <div key={l.id} className="group relative">
+                    <div className="relative aspect-[3/4] overflow-hidden rounded-xl border border-border bg-muted/60">
+                      {p && <img src={p.url} alt={l.label} className={cn("absolute inset-0 h-full w-full object-cover", making && "opacity-40")} />}
+                      {making ? (
+                        <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[11px] text-muted-foreground"><LoaderCircle className="size-5 animate-spin text-primary" /> Making…</span>
+                      ) : !p ? (
+                        <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-2 text-center text-[11px] text-muted-foreground"><ImageOff className="size-4 opacity-60" /> Not made yet</span>
+                      ) : null}
+                      {p && !making && (
+                        <div className="absolute top-1 right-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+                          <button type="button" onClick={() => ps.make([l.id])} disabled={ps.busy} className="flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/55 text-white backdrop-blur disabled:opacity-50" aria-label={`Remake ${l.label}`} title="Make a new one"><RefreshCw className="size-3" /></button>
+                          <button type="button" onClick={() => ps.remove(p.id)} className="flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/55 text-white backdrop-blur" aria-label={`Remove ${l.label}`} title="Remove"><X className="size-3" /></button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-1 truncate px-0.5 text-[11.5px] text-muted-foreground">{l.label}</div>
                   </div>
-                )}
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+
+      {older.length > 0 && (
+        <section className="space-y-2.5">
+          <h3 className="text-[13px] font-semibold">Earlier photos</h3>
+          <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-6">
+            {older.map((p) => (
+              <div key={p.id} className="group relative">
+                <div className="relative aspect-[3/4] overflow-hidden rounded-xl border border-border bg-muted/60">
+                  <img src={p.url} alt={p.label} className="absolute inset-0 h-full w-full object-cover" />
+                  <button type="button" onClick={() => ps.remove(p.id)} className="absolute top-1 right-1 flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/55 text-white backdrop-blur" aria-label={`Remove ${p.label}`} title="Remove"><X className="size-3" /></button>
+                </div>
+                <div className="mt-1 truncate px-0.5 text-[11.5px] text-muted-foreground">{p.label}</div>
               </div>
-              <div className="mt-1.5 truncate px-0.5 text-[12px] text-muted-foreground">{l.label}</div>
-            </div>
-          );
-        })}
-        {older.map((p) => (
-          <div key={p.id} className="group relative">
-            <div className="relative aspect-[3/4] overflow-hidden rounded-xl border border-border bg-muted/60">
-              <img src={p.url} alt={p.label} className="absolute inset-0 h-full w-full object-cover" />
-              <button type="button" onClick={() => ps.remove(p.id)} className="absolute top-1.5 right-1.5 flex size-7 cursor-pointer items-center justify-center rounded-full bg-black/55 text-white backdrop-blur" aria-label={`Remove ${p.label}`} title="Remove"><X className="size-3.5" /></button>
-            </div>
-            <div className="mt-1.5 truncate px-0.5 text-[12px] text-muted-foreground">{p.label} · earlier set</div>
+            ))}
           </div>
-        ))}
-      </div>
+        </section>
+      )}
 
       {ps.error && <p className="text-[13px] text-destructive">{ps.error}</p>}
 
