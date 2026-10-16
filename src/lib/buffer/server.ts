@@ -115,10 +115,15 @@ export async function getBufferStatus(): Promise<BufferStatus> {
   }
 }
 
+/** YouTube's "Education" category. */
+const YOUTUBE_CATEGORY = "27";
+
 function metadataFor(req: CreateBufferPostRequest) {
   switch (req.service) {
     case "youtube":
-      return { youtube: { title: (req.title || req.text.split("\n")[0]).slice(0, 100), privacy: "public", madeForKids: false, notifySubscribers: true } };
+      // YouTube requires a category on every upload; "27" is Education, the fit for advisors' videos.
+      // Titles can't contain angle brackets.
+      return { youtube: { title: (req.title || req.text.split("\n")[0]).replace(/[<>]/g, "").trim().slice(0, 100) || "New video", categoryId: YOUTUBE_CATEGORY, privacy: "public", madeForKids: false, notifySubscribers: true } };
     case "instagram":
       return { instagram: { type: "reel", shouldShareToFeed: true } };
     case "facebook":
