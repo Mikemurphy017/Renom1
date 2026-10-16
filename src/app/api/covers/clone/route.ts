@@ -33,7 +33,11 @@ export async function POST(request: Request) {
   const refs: { bytes: Uint8Array; mimeType: string }[] = [];
   for (const id of ids) {
     const r = await objects().read(mediaKey(id)).catch(() => null);
-    if (!r || !/^image\/(jpeg|png|webp)$/.test(r.contentType)) continue;
+    if (!r) continue;
+    if (!/^image\/(jpeg|png|webp)$/.test(r.contentType)) {
+      void r.body.cancel().catch(() => {});
+      continue;
+    }
     const bytes = new Uint8Array(await new Response(r.body).arrayBuffer());
     if (bytes.length <= 8 * 1024 * 1024) refs.push({ bytes, mimeType: r.contentType });
   }

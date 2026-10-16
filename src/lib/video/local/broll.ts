@@ -24,7 +24,10 @@ async function fromLibrary(ids: string[], dir: string): Promise<Clip[]> {
     const r = await objects().read(mediaKey(id)).catch(() => null);
     if (!r) continue;
     const kind = r.contentType.startsWith("video/") ? "video" : r.contentType.startsWith("image/") ? "image" : null;
-    if (!kind) continue;
+    if (!kind) {
+      void r.body.cancel().catch(() => {});
+      continue;
+    }
     const file = path.join(dir, `lib-${id}`);
     await fs.writeFile(file, new Uint8Array(await new Response(r.body).arrayBuffer()));
     out.push({ file, kind });

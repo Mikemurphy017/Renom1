@@ -109,7 +109,12 @@ async function musicFile(choice: string, dir: string): Promise<string | null> {
     const id = choice.slice(6);
     if (!isMediaId(id)) return null;
     const r = await objects().read(mediaKey(id)).catch(() => null);
-    if (!r || !r.contentType.startsWith("audio/")) return null;
+    if (!r) return null;
+    // Let go of the bucket connection when it isn't the kind of file we can use.
+    if (!r.contentType.startsWith("audio/")) {
+      void r.body.cancel().catch(() => {});
+      return null;
+    }
     const file = path.join(dir, "music-upload");
     await fs.writeFile(file, new Uint8Array(await new Response(r.body).arrayBuffer()));
     return file;

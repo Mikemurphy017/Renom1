@@ -81,6 +81,15 @@ function bucketStore(cfg: NonNullable<ReturnType<typeof bucketConfig>>): Store {
     // encoding, which some S3-compatible buckets handle slowly or not at all.
     requestChecksumCalculation: "WHEN_REQUIRED",
     credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey },
+    // Never wait forever on the bucket: a stuck connection used to hang sign-in and every page load.
+    // Video streams hold a connection each, so the pool is larger than the default 50.
+    requestHandler: {
+      connectionTimeout: 5_000,
+      requestTimeout: 20_000,
+      httpAgent: { keepAlive: true, maxSockets: 256 },
+      httpsAgent: { keepAlive: true, maxSockets: 256 },
+    },
+    maxAttempts: 3,
   });
   const Bucket = cfg.bucket;
   return {
@@ -225,11 +234,49 @@ export async function serveObject(request: Request, key: string, cache = "privat
     start = Math.max(0, start);
     end = Math.min(info.size - 1, end);
     if (start > end) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${info.size}` } });
+    // Answer in chunks (browsers ask again for the rest), read from the bucket in full before
+    // sending: a browser that pauses a video then never holds a bucket connection open.
+    end = Math.min(end, start + RANGE_CHUNK - 1);
     const r = await objects().read(key, { start, end });
     if (!r) return Response.json({ error: "Not found" }, { status: 404 });
-    return new Response(r.body, { status: 206, headers: { ...headers, "Content-Range": `bytes ${start}-${end}/${info.size}`, "Content-Length": String(end - start + 1) } });
+    const bytes = new Uint8Array(await new Response(r.body).arrayBuffer());
+    return new Response(bytes, { status: 206, headers: { ...headers, "Content-Range": `bytes ${start}-${end}/${info.size}`, "Content-Length": String(end - start + 1) } });
   }
   const r = await objects().read(key);
   if (!r) return Response.json({ error: "Not found" }, { status: 404 });
-  return new Response(r.body, { headers: { ...headers, "Content-Length": String(info.size) } });
+  return new Response(releasing(r.body, request), { headers: { ...headers, "Content-Length": String(info.size) } });
+}
+
+/** Most bytes sent for an open-ended range request. */
+const RANGE_CHUNK = 4 * 1024 * 1024;
+
+/**
+ * A body that lets go of its bucket connection as soon as the browser stops
+ * reading (Safari opens and drops video requests constantly). Without this,
+ * abandoned streams could use up the connection pool and stall every request.
+ */
+function releasing(body: ReadableStream, request: Request): ReadableStream {
+  const reader = body.getReader();
+  let done = false;
+  const stop = () => {
+    if (done) return;
+    done = true;
+    reader.cancel().catch(() => {});
+  };
+  request.signal?.addEventListener("abort", stop, { once: true });
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const { value, done: end } = await reader.read();
+        if (end) {
+          done = true;
+          controller.close();
+        } else controller.enqueue(value);
+      } catch (e) {
+        done = true;
+        controller.error(e);
+      }
+    },
+    cancel: stop,
+  });
 }

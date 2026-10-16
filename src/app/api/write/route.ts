@@ -38,9 +38,21 @@ export async function POST(request: Request) {
   const req = parsed;
 
   const encoder = new TextEncoder();
+  // The advisor can leave (or reload) before Claude answers: after that, nothing more may be written.
+  let closed = false;
   const stream = new ReadableStream({
+    cancel() {
+      closed = true;
+    },
     async start(controller) {
-      const send = (e: WriteEvent) => controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
+      const send = (e: WriteEvent) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
+        } catch {
+          closed = true;
+        }
+      };
       const statuses = STATUS[req.task];
       let i = 0;
       send({ type: "status", text: statuses[0] });
@@ -71,7 +83,14 @@ export async function POST(request: Request) {
         send({ type: "error", message });
       } finally {
         clearInterval(timer);
-        controller.close();
+        if (!closed) {
+          closed = true;
+          try {
+            controller.close();
+          } catch {
+            /* already closed by the client leaving */
+          }
+        }
       }
     },
   });
