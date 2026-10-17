@@ -11,7 +11,8 @@ export type WriteRequest =
       mode: "evergreen" | "timely";
       format: VideoFormat;
       topic?: string;
-      existingTitles: string[];
+      /** Everything the advisor already has or was already offered: videos, ideas on screen, past suggestions. No new idea may repeat one. */
+      existing: { title: string; outline?: string[] }[];
       instruction?: string;
     }
   | {
@@ -22,6 +23,8 @@ export type WriteRequest =
       writer?: WriterId;
       idea: { title: string; outline: string[] };
       context?: string;
+      /** How the advisor's other scripts open, so this one doesn't reuse an opening, story or line. */
+      otherOpenings?: string[];
       current?: Script;
       instruction?: string;
     }

@@ -42,7 +42,7 @@ type Drafts = Partial<Record<WriterId | "current", Script>>;
 type Run = { status: string; error?: string };
 
 export function ScriptStep({ video, complete }: StepProps) {
-  const { profile } = useStore();
+  const { profile, videos } = useStore();
   const [format, setFormat] = useDraft<VideoFormat>(video.id, "script.format", video.format);
   // Four versions, one per writer. A script saved before versions existed shows as "Current".
   const [drafts, setDrafts] = useDraft<Drafts>(video.id, "script.drafts", () => (video.script ? { current: video.script } : {}));
@@ -71,6 +71,7 @@ export function ScriptStep({ video, complete }: StepProps) {
           writer: id,
           idea: { title: video.title, outline: video.outline.length ? video.outline : [video.title] },
           context: ctx || undefined,
+          otherOpenings: videos.filter((v) => v.id !== video.id && v.script?.hook).slice(0, 25).map((v) => v.script!.hook.slice(0, 240)),
           current: instruction && current ? current : undefined,
           instruction,
         },

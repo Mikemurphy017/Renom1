@@ -19,7 +19,7 @@ function validate(body: unknown): WriteRequest | string {
   if (!b.task || !["ideas", "script", "captions", "covers"].includes(b.task)) return "Unknown task";
   if (!b.profile || typeof b.profile !== "object") return "Missing profile";
   if ((b.task === "script" || b.task === "captions") && "writer" in b && b.writer !== undefined && !WRITERS.some((w) => w.id === b.writer)) return "Unknown writer";
-  if (JSON.stringify(b).length > 60_000) return "Request too large";
+  if (JSON.stringify(b).length > 120_000) return "Request too large";
   return b as WriteRequest;
 }
 

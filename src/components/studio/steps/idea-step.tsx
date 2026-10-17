@@ -24,7 +24,7 @@ let n = 0;
 const withIds = (ideas: IdeasOutput["ideas"]): Idea[] => ideas.map((i) => ({ ...i, id: `i${Date.now()}${n++}` }));
 
 export function IdeaStep({ video, complete }: StepProps) {
-  const { videos, addVideo, profile } = useStore();
+  const { videos, addVideo, profile, updateProfile } = useStore();
   const [mode, setMode] = useDraft<"evergreen" | "timely">(video.id, "idea.mode", video.mode);
   const [topic, setTopic] = useDraft(video.id, "idea.topic", "");
   const [ideas, setIdeas] = useDraft<Idea[]>(video.id, "idea.list", []);
@@ -32,6 +32,22 @@ export function IdeaStep({ video, complete }: StepProps) {
   const { write, busy, status, source } = useWriter();
   const others = videos.filter((v) => v.id !== video.id);
   const hasCurrent = video.outline.length > 0;
+  // What a new idea mustn't repeat: every video (this one too, once it has an idea), and every idea suggested before.
+  const existing = React.useCallback(
+    (onScreen: Idea[] = []) => [
+      ...[...(hasCurrent ? [video] : []), ...others].slice(0, 120).map((v, i) => ({ title: v.title, outline: i < 60 ? v.outline.slice(0, 4).map((o) => o.slice(0, 140)) : undefined })),
+      ...onScreen.map((x) => ({ title: x.title, outline: x.outline })),
+      ...(profile.ideaHistory ?? []).slice(-150).map((title) => ({ title })),
+    ],
+    [hasCurrent, video, others, profile.ideaHistory]
+  );
+  const remember = React.useCallback(
+    (fresh: IdeasOutput["ideas"]) => {
+      const past = profile.ideaHistory ?? [];
+      updateProfile({ ideaHistory: [...past, ...fresh.map((i) => i.title).filter((t) => !past.includes(t))].slice(-300) });
+    },
+    [profile.ideaHistory, updateProfile]
+  );
   const generate = React.useCallback(
     async (instruction?: string) => {
       try {
@@ -41,16 +57,18 @@ export function IdeaStep({ video, complete }: StepProps) {
           mode,
           format: video.format,
           topic: topic || undefined,
-          existingTitles: others.map((v) => v.title),
+          // "New ideas" replaces the ones on screen, so those count as offered too.
+          existing: existing(ideas),
           instruction,
         });
+        remember(out.ideas);
         setIdeas(withIds(out.ideas));
       } catch (e) {
         if (isAbort(e)) return;
         toast.error("Couldn’t write ideas", { description: (e as Error).message });
       }
     },
-    [write, profile, mode, video.format, topic, others, setIdeas]
+    [write, profile, mode, video.format, topic, existing, ideas, remember, setIdeas]
   );
 
   React.useEffect(() => {
@@ -164,7 +182,8 @@ export function IdeaStep({ video, complete }: StepProps) {
                           aria-label="Replace this idea"
                           onClick={async () => {
                             try {
-                              const out = await write({ task: "ideas", profile: voiceProfileOf(profile), mode, format: video.format, topic: topic || undefined, existingTitles: [...others.map((v) => v.title), ...ideas.map((x) => x.title)], instruction: `Give a different idea to replace: "${idea.title}"` });
+                              const out = await write({ task: "ideas", profile: voiceProfileOf(profile), mode, format: video.format, topic: topic || undefined, existing: existing(ideas), instruction: `Give a different idea to replace: "${idea.title}"` });
+                              remember(out.ideas.slice(0, 1));
                               const fresh = withIds(out.ideas)[0];
                               if (fresh) setIdeas((xs) => xs.map((x) => (x.id === idea.id ? fresh : x)));
                             } catch (e) {

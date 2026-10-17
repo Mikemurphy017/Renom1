@@ -3,7 +3,8 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { HOUSE_VOICE, advisorBlock } from "./voice";
 import { getWriter } from "./writers";
 import { CaptionsSchema, CoversSchema, IdeasSchema, ScriptSchema } from "./schemas";
-import type { WriteRequest } from "./write-types";
+import type { WriteRequest, WriteResult } from "./write-types";
+import { originalIdeas, repeatsOpening } from "./originality";
 import { PLATFORMS } from "../mock/platforms";
 
 /** Server-only. Uses ANTHROPIC_API_KEY (or any credential the SDK resolves). */
@@ -29,8 +30,9 @@ ${req.mode === "timely"
   ? "Make them timely: tie each to something happening in the next few weeks — the season, tax and enrollment deadlines, year-end planning, or market themes advisors are being asked about now. Don't invent specific news events, quotes or numbers."
   : "Make them evergreen: questions the ideal client will still be asking a year from now."}
 ${req.topic ? `The advisor wants to talk about: "${req.topic}". Every idea should serve that topic.` : "Pick the topics most likely to bring the ideal client in the door."}
-Avoid repeating these videos the advisor already has:
-${req.existingTitles.map((t) => `- ${t}`).join("\n") || "- (none)"}
+Every idea must be original. The advisor already has, or was already offered, each of these:
+${[...new Set(req.existing.map((x) => x.title.trim()))].map((t) => `- ${t}`).join("\n") || "- (none)"}
+Don't suggest any of them again: not reworded, not with a new title over the same points, not the same question from a different side. If a topic is already covered, find a genuinely different question the ideal client asks. The ideas must also differ from each other in topic, not just angle.
 Each title should work as a hook on its own.${revise(undefined, req.instruction)}`;
 
     case "script":
@@ -38,7 +40,7 @@ Each title should work as a hook on its own.${revise(undefined, req.instruction)
 Video: "${req.idea.title}"
 Points to cover, in whatever order serves the story:
 ${req.idea.outline.map((o) => `- ${o}`).join("\n")}
-${req.context ? `\nNotes from the advisor (use them; they're the advisor's own material):\n"""\n${req.context}\n"""` : ""}
+${req.otherOpenings?.length ? `\nThe advisor's other videos open like this. This script must be its own: don't reuse these openings, or the stories, examples, numbers and lines they use.\n${req.otherOpenings.map((o) => `- ${o}`).join("\n")}\n` : ""}${req.context ? `\nNotes from the advisor (use them; they're the advisor's own material):\n"""\n${req.context}\n"""` : ""}
 Write it as one connected narrative the advisor will read on a teleprompter:
 - A through-line from the first sentence to the last. Each paragraph picks up where the last one left off. Someone hearing it once should be able to retell it.
 - The hook is the natural opening of that narrative (one to three sentences), not a slogan.
@@ -101,7 +103,39 @@ function descBudget(id: string, limit: number) {
 
 const SCHEMAS = { ideas: IdeasSchema, script: ScriptSchema, captions: CaptionsSchema, covers: CoversSchema } as const;
 
+/** Ideas that repeat nothing the advisor has or was offered: repeats are dropped and Claude is asked again (twice at most). */
+async function writeIdeas(req: Extract<WriteRequest, { task: "ideas" }>) {
+  const want = 3;
+  const kept: WriteResult<"ideas">["ideas"] = [];
+  let avoid = [...req.existing];
+  for (let round = 0; round < 3 && kept.length < want; round++) {
+    const ask = round === 0 ? req : { ...req, existing: avoid, instruction: [req.instruction, `Give ${want - kept.length} more, each on a topic none of the listed videos covers.`].filter(Boolean).join(" ") };
+    const out = await writeOnce(ask);
+    const { kept: fresh, dropped } = originalIdeas(out.ideas, [...req.existing, ...kept], req.topic);
+    kept.push(...fresh.slice(0, want - kept.length));
+    if (dropped.length) console.info(`[write] dropped ${dropped.length} repeated idea(s): ${dropped.map((d) => d.title).join(" | ")}`);
+    avoid = [...avoid, ...out.ideas];
+  }
+  if (!kept.length) throw new Error("Every idea Claude found is one you already have. Try a different topic or angle.");
+  return { ideas: kept };
+}
+
+/** A script that doesn't open like the advisor's other scripts: asked again once if it does. */
+async function writeScript(req: Extract<WriteRequest, { task: "script" }>) {
+  const out = await writeOnce(req);
+  if (!req.otherOpenings?.length || !repeatsOpening(out.hook, req.otherOpenings)) return out;
+  console.info("[write] script opening repeated another video's; writing it again");
+  return writeOnce({ ...req, instruction: [req.instruction, `The opening "${out.hook}" is too close to one of the other videos. Open differently, with a different story or example.`].filter(Boolean).join(" ") });
+}
+
 export async function writeWithClaude(req: WriteRequest) {
+  if (req.task === "ideas") return writeIdeas(req);
+  if (req.task === "script" && !req.current) return writeScript(req);
+  return writeOnce(req);
+}
+
+async function writeOnce<T extends WriteRequest["task"]>(ask: Extract<WriteRequest, { task: T }>): Promise<WriteResult<T>> {
+  const req = ask as WriteRequest;
   const client = new Anthropic();
   const response = await client.beta.messages.parse({
     model: MODEL,
@@ -126,5 +160,5 @@ export async function writeWithClaude(req: WriteRequest) {
   if (response.stop_reason === "refusal") throw new Error("Claude declined this request. Try rephrasing the topic.");
   if (response.stop_reason === "max_tokens") throw new Error("The response was cut off. Try a shorter request.");
   if (!response.parsed_output) throw new Error("Claude's response couldn't be read. Please try again.");
-  return response.parsed_output;
+  return response.parsed_output as WriteResult<T>;
 }

@@ -173,6 +173,8 @@ export interface AdvisorProfile {
   photoSet?: PhotoSetItem[];
   /** What goes on covers: the AI photo set, real photos only (video frames, headshots), or no photo (words and graphics). Unset: not chosen yet. */
   coverPhotos?: CoverPhotos;
+  /** Titles of every idea suggested so far (newest last), so later suggestions stay original. */
+  ideaHistory?: string[];
 }
 
 export type CoverPhotos = "ai" | "real" | "none";
