@@ -12,7 +12,7 @@ export type WriteRequest =
       format: VideoFormat;
       topic?: string;
       /** Everything the advisor already has or was already offered: videos, ideas on screen, past suggestions. No new idea may repeat one. */
-      existing: { title: string; outline?: string[] }[];
+      existing: { title: string; outline?: string[]; subject?: string; angle?: string }[];
       instruction?: string;
     }
   | {
@@ -21,7 +21,7 @@ export type WriteRequest =
       format: VideoFormat;
       /** Which of the four writers writes this version. */
       writer?: WriterId;
-      idea: { title: string; outline: string[] };
+      idea: { title: string; outline: string[]; angle?: string };
       context?: string;
       /** How the advisor's other scripts open, so this one doesn't reuse an opening, story or line. */
       otherOpenings?: string[];

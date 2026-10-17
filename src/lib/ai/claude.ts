@@ -5,6 +5,7 @@ import { getWriter } from "./writers";
 import { CaptionsSchema, CoversSchema, IdeasSchema, ScriptSchema } from "./schemas";
 import type { WriteRequest, WriteResult } from "./write-types";
 import { originalIdeas, repeatsOpening } from "./originality";
+import { ANGLES } from "./angles";
 import { PLATFORMS } from "../mock/platforms";
 
 /** Server-only. Uses ANTHROPIC_API_KEY (or any credential the SDK resolves). */
@@ -13,6 +14,20 @@ const MODEL = "claude-opus-5-5";
 export const claudeConfigured = () => !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 
 const today = () => new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+/** The advisor's past videos and ideas, one per line, without repeats. */
+function pastList(existing: Extract<WriteRequest, { task: "ideas" }>["existing"]) {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const x of existing) {
+    const title = x.title.trim();
+    if (!title || seen.has(title.toLowerCase())) continue;
+    seen.add(title.toLowerCase());
+    const tag = [x.subject, x.angle].filter(Boolean).join(" · ");
+    lines.push(`- ${title}${tag ? ` [${tag}]` : ""}`);
+  }
+  return lines.join("\n") || "- (none)";
+}
 
 function userPrompt(req: WriteRequest): string {
   const revise = (current: unknown, instruction?: string) =>
@@ -30,14 +45,17 @@ ${req.mode === "timely"
   ? "Make them timely: tie each to something happening in the next few weeks — the season, tax and enrollment deadlines, year-end planning, or market themes advisors are being asked about now. Don't invent specific news events, quotes or numbers."
   : "Make them evergreen: questions the ideal client will still be asking a year from now."}
 ${req.topic ? `The advisor wants to talk about: "${req.topic}". Every idea should serve that topic.` : "Pick the topics most likely to bring the ideal client in the door."}
-Every idea must be original. The advisor already has, or was already offered, each of these:
-${[...new Set(req.existing.map((x) => x.title.trim()))].map((t) => `- ${t}`).join("\n") || "- (none)"}
-Don't suggest any of them again: not reworded, not with a new title over the same points, not the same question from a different side. If a topic is already covered, find a genuinely different question the ideal client asks. The ideas must also differ from each other in topic, not just angle.
+Each idea is one subject seen through one angle. The angles:
+${ANGLES.map((a) => `- ${a.label}: ${a.brief}`).join("\n")}
+Give each of the 3 ideas a different angle${req.topic ? "" : " and, unless asked otherwise, a different subject"}.
+The advisor already has, or was already offered, these (title [subject · angle]):
+${pastList(req.existing)}
+A subject that's already covered can come back, but only through an angle it hasn't had yet, as a genuinely different video: new question, new points. Never the same subject through the same angle again, and never a listed video reworded. Prefer angles this advisor has used least.
 Each title should work as a hook on its own.${revise(undefined, req.instruction)}`;
 
     case "script":
       return `Write a ${req.format === "short" ? "short-form script: 60 to 90 seconds spoken, about 150 to 210 words, for a vertical video" : "long-form script: 6 to 9 minutes spoken, about 900 to 1,300 words, for a horizontal video"}.
-Video: "${req.idea.title}"
+Video: "${req.idea.title}"${req.idea.angle ? `\nAngle: ${req.idea.angle} (${ANGLES.find((a) => a.label === req.idea.angle)?.brief ?? ""}). The script is built around this angle.` : ""}
 Points to cover, in whatever order serves the story:
 ${req.idea.outline.map((o) => `- ${o}`).join("\n")}
 ${req.otherOpenings?.length ? `\nThe advisor's other videos open like this. This script must be its own: don't reuse these openings, or the stories, examples, numbers and lines they use.\n${req.otherOpenings.map((o) => `- ${o}`).join("\n")}\n` : ""}${req.context ? `\nNotes from the advisor (use them; they're the advisor's own material):\n"""\n${req.context}\n"""` : ""}
@@ -109,7 +127,7 @@ async function writeIdeas(req: Extract<WriteRequest, { task: "ideas" }>) {
   const kept: WriteResult<"ideas">["ideas"] = [];
   let avoid = [...req.existing];
   for (let round = 0; round < 3 && kept.length < want; round++) {
-    const ask = round === 0 ? req : { ...req, existing: avoid, instruction: [req.instruction, `Give ${want - kept.length} more, each on a topic none of the listed videos covers.`].filter(Boolean).join(" ") };
+    const ask = round === 0 ? req : { ...req, existing: avoid, instruction: [req.instruction, `Give ${want - kept.length} more. Each must be a new subject, or a listed subject through an angle it hasn't had yet.`].filter(Boolean).join(" ") };
     const out = await writeOnce(ask);
     const { kept: fresh, dropped } = originalIdeas(out.ideas, [...req.existing, ...kept], req.topic);
     kept.push(...fresh.slice(0, want - kept.length));

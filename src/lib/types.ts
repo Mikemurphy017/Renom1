@@ -56,6 +56,9 @@ export interface Video {
   lastEdited: string; // ISO
   createdAt: string;
   outline: string[];
+  /** The subject and angle of the idea it was made from (see ai/angles). */
+  subject?: string;
+  angle?: string;
   thumbnail?: ThumbnailSpec;
   script?: Script;
   runtimeSec: number;
@@ -173,8 +176,10 @@ export interface AdvisorProfile {
   photoSet?: PhotoSetItem[];
   /** What goes on covers: the AI photo set, real photos only (video frames, headshots), or no photo (words and graphics). Unset: not chosen yet. */
   coverPhotos?: CoverPhotos;
-  /** Titles of every idea suggested so far (newest last), so later suggestions stay original. */
+  /** Titles of ideas suggested before angles were tracked (read only). */
   ideaHistory?: string[];
+  /** Every idea suggested so far (newest last): a subject can come back through a new angle, never the same one. */
+  ideaLog?: { title: string; subject?: string; angle?: string }[];
 }
 
 export type CoverPhotos = "ai" | "real" | "none";

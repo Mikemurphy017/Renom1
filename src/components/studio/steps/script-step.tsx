@@ -69,7 +69,7 @@ export function ScriptStep({ video, complete }: StepProps) {
           profile: voiceProfileOf(profile),
           format,
           writer: id,
-          idea: { title: video.title, outline: video.outline.length ? video.outline : [video.title] },
+          idea: { title: video.title, outline: video.outline.length ? video.outline : [video.title], angle: video.angle },
           context: ctx || undefined,
           otherOpenings: videos.filter((v) => v.id !== video.id && v.script?.hook).slice(0, 25).map((v) => v.script!.hook.slice(0, 240)),
           current: instruction && current ? current : undefined,

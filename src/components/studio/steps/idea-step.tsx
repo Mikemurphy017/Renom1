@@ -3,7 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, Bookmark, RefreshCw, Sparkles, TriangleAlert } from "lucide-react";
+import { ArrowRight, Bookmark, RefreshCw, Shuffle, Sparkles, TriangleAlert } from "lucide-react";
+import { SUBJECTS } from "@/lib/ai/angles";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +19,7 @@ import { AskBar, RequestLine, Writing } from "../ask-bar";
 import { StepIntro } from "../step-layout";
 import type { StepProps } from "../studio-view";
 import { BRAND } from "@/lib/brand";
+import { cn } from "@/lib/utils";
 
 type Idea = IdeasOutput["ideas"][number] & { id: string };
 let n = 0;
@@ -32,31 +34,33 @@ export function IdeaStep({ video, complete }: StepProps) {
   const { write, busy, status, source } = useWriter();
   const others = videos.filter((v) => v.id !== video.id);
   const hasCurrent = video.outline.length > 0;
+  // Ideas suggested before (titles only from before angles were tracked).
+  const log = React.useMemo(() => [...(profile.ideaHistory ?? []).map((title) => ({ title })), ...(profile.ideaLog ?? [])], [profile.ideaHistory, profile.ideaLog]);
   // What a new idea mustn't repeat: every video (this one too, once it has an idea), and every idea suggested before.
   const existing = React.useCallback(
     (onScreen: Idea[] = []) => [
-      ...[...(hasCurrent ? [video] : []), ...others].slice(0, 120).map((v, i) => ({ title: v.title, outline: i < 60 ? v.outline.slice(0, 4).map((o) => o.slice(0, 140)) : undefined })),
-      ...onScreen.map((x) => ({ title: x.title, outline: x.outline })),
-      ...(profile.ideaHistory ?? []).slice(-150).map((title) => ({ title })),
+      ...[...(hasCurrent ? [video] : []), ...others].slice(0, 120).map((v, i) => ({ title: v.title, subject: v.subject, angle: v.angle, outline: i < 60 ? v.outline.slice(0, 4).map((o) => o.slice(0, 140)) : undefined })),
+      ...onScreen.map((x) => ({ title: x.title, subject: x.subject, angle: x.angle, outline: x.outline })),
+      ...log.slice(-150),
     ],
-    [hasCurrent, video, others, profile.ideaHistory]
+    [hasCurrent, video, others, log]
   );
   const remember = React.useCallback(
     (fresh: IdeasOutput["ideas"]) => {
-      const past = profile.ideaHistory ?? [];
-      updateProfile({ ideaHistory: [...past, ...fresh.map((i) => i.title).filter((t) => !past.includes(t))].slice(-300) });
+      const titles = new Set(log.map((x) => x.title));
+      updateProfile({ ideaLog: [...log, ...fresh.filter((i) => !titles.has(i.title)).map(({ title, subject, angle }) => ({ title, subject, angle }))].slice(-300) });
     },
-    [profile.ideaHistory, updateProfile]
+    [log, updateProfile]
   );
   const generate = React.useCallback(
-    async (instruction?: string) => {
+    async (instruction?: string, about = topic) => {
       try {
         const out = await write({
           task: "ideas",
           profile: voiceProfileOf(profile),
           mode,
           format: video.format,
-          topic: topic || undefined,
+          topic: about || undefined,
           // "New ideas" replaces the ones on screen, so those count as offered too.
           existing: existing(ideas),
           instruction,
@@ -71,6 +75,30 @@ export function IdeaStep({ video, complete }: StepProps) {
     [write, profile, mode, video.format, topic, existing, ideas, remember, setIdeas]
   );
 
+  /** Three more ideas on this idea's subject, each through an angle it hasn't had yet, shown right after it. */
+  const moreAngles = async (idea: Idea) => {
+    try {
+      const out = await write({
+        task: "ideas",
+        profile: voiceProfileOf(profile),
+        mode,
+        format: video.format,
+        topic: idea.subject,
+        existing: existing(ideas),
+        instruction: `Three more angles on ${idea.subject}: the same subject as "${idea.title}", each through a different angle that ${idea.subject} hasn't had yet in the list.`,
+      });
+      remember(out.ideas);
+      const fresh = withIds(out.ideas);
+      setIdeas((xs) => {
+        const at = xs.findIndex((x) => x.id === idea.id);
+        return at < 0 ? [...fresh, ...xs] : [...xs.slice(0, at + 1), ...fresh, ...xs.slice(at + 1)];
+      });
+    } catch (e) {
+      if (isAbort(e)) return;
+      toast.error("Couldn’t find more angles", { description: (e as Error).message });
+    }
+  };
+
   React.useEffect(() => {
     if (autostart && !ideas.length) {
       setAutostart(false);
@@ -79,7 +107,7 @@ export function IdeaStep({ video, complete }: StepProps) {
   }, [autostart, ideas.length, setAutostart, generate]);
 
   const choose = (idea: Idea) =>
-    complete({ title: idea.title.replace(/^[“"]|[”"]$/g, ""), category: idea.category as Category, outline: idea.outline, mode });
+    complete({ title: idea.title.replace(/^[“"]|[”"]$/g, ""), category: idea.category as Category, outline: idea.outline, subject: idea.subject, angle: idea.angle, mode });
 
   return (
     <div className="space-y-10 pb-28">
@@ -108,6 +136,24 @@ export function IdeaStep({ video, complete }: StepProps) {
             <Sparkles /> {ideas.length ? "New ideas" : "Suggest ideas"}
           </Button>
         </div>
+      </div>
+
+      <div className="-mt-6 flex flex-wrap items-center justify-center gap-1.5">
+        <span className="mr-1 text-[12px] text-muted-foreground">Fresh angles on:</span>
+        {SUBJECTS.map((sub) => (
+          <button
+            key={sub}
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setTopic(sub);
+              generate(undefined, sub);
+            }}
+            className={cn("cursor-pointer rounded-full border px-3 py-1 text-[12px] transition-colors disabled:cursor-not-allowed disabled:opacity-50", topic === sub ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground")}
+          >
+            {sub}
+          </button>
+        ))}
       </div>
 
       {hasCurrent && !ideas.length && !busy && (
@@ -150,7 +196,11 @@ export function IdeaStep({ video, complete }: StepProps) {
                       exit={{ opacity: 0 }}
                       className="rounded-2xl border border-border bg-card p-6 shadow-soft"
                     >
-                      <div className="text-[12px] text-muted-foreground">({idea.angle}) · {idea.category}</div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">
+                        {idea.subject && <span className="rounded-full bg-muted px-2 py-0.5 font-medium text-foreground">{idea.subject}</span>}
+                        <span className="rounded-full bg-brass-soft px-2 py-0.5 font-medium text-primary">{idea.angle}</span>
+                        <span>· {idea.category}</span>
+                      </div>
                       <h2 className="mt-1.5 font-serif text-[24px] leading-snug">{idea.title}</h2>
                       <ul className="mt-3 space-y-1.5 text-[14px]">
                         {idea.outline.map((o) => <li key={o} className="flex gap-2.5"><span className="mt-2 size-1 shrink-0 rounded-full bg-primary" />{o}</li>)}
@@ -168,13 +218,18 @@ export function IdeaStep({ video, complete }: StepProps) {
                           variant="ghost"
                           className="rounded-full"
                           onClick={() => {
-                            addVideo({ title: idea.title.replace(/^[“"]|[”"]$/g, ""), category: idea.category as Category, outline: idea.outline, mode, format: video.format });
+                            addVideo({ title: idea.title.replace(/^[“"]|[”"]$/g, ""), category: idea.category as Category, outline: idea.outline, subject: idea.subject, angle: idea.angle, mode, format: video.format });
                             setIdeas((xs) => xs.filter((x) => x.id !== idea.id));
                             toast.success("Saved to Videos");
                           }}
                         >
                           <Bookmark /> Save for later
                         </Button>
+                        {idea.subject && (
+                          <Button variant="ghost" className="rounded-full" disabled={busy} onClick={() => moreAngles(idea)}>
+                            <Shuffle /> More angles on {idea.subject.length > 24 ? "this" : idea.subject}
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"

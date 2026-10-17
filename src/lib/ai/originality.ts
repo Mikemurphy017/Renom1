@@ -5,6 +5,8 @@
  * shared by the browser and the server.
  */
 
+import { sameAngle } from "./angles";
+
 const STOP = new Set(
   "the a an and or of for to in on at by from your you yours is it its what why how when who i me my we our with vs versus before after this that these those are was were be do does did should can could will would not no just about into than then so if".split(" ")
 );
@@ -39,18 +41,25 @@ const norm = (s: string) => [...words(s)].sort().join(" ");
 export interface IdeaLike {
   title: string;
   outline?: string[];
+  subject?: string;
+  angle?: string;
 }
 
 /**
  * Whether `idea` is the same video as one in `past`; returns the one it
- * repeats. Words of the advisor's chosen topic don't count as overlap, or
- * every idea on "Roth conversions" would repeat every other.
+ * repeats. The same subject through a different angle is a new video (that's
+ * the point of angles); only a near-identical title repeats across angles.
+ * Through the same angle (or when the angle isn't known), the same question
+ * in other words, the same points under a new title, or the same subject
+ * all count as a repeat. Words of the advisor's chosen topic don't count as
+ * overlap, or every idea on "Roth conversions" would repeat every other.
  */
 export function repeatOf<T extends IdeaLike>(idea: IdeaLike, past: T[], topic = ""): T | undefined {
   const skip = words(topic);
   const t = without(words(idea.title), skip);
   const key = norm(idea.title);
   const beats = without(words([idea.title, ...(idea.outline ?? [])].join(" ")), skip);
+  const subj = words(idea.subject ?? "");
   let best: { p: T; score: number } | undefined;
   for (const p of past) {
     if (!p.title) continue;
@@ -58,10 +67,16 @@ export function repeatOf<T extends IdeaLike>(idea: IdeaLike, past: T[], topic = 
     const pt = without(words(p.title), skip);
     const n = shared(t, pt);
     const titles = overlap(t, pt);
-    // The same question in other words, or the same beats under a new title.
-    const both = p.outline?.length && idea.outline?.length ? overlap(beats, without(words([p.title, ...p.outline].join(" ")), skip)) : 0;
-    const sameTitle = (n >= 3 && titles >= 0.6) || (n >= 2 && titles >= 0.8);
-    const score = Math.max(sameTitle ? titles : 0, both >= 0.55 ? both : 0);
+    let score = 0;
+    if (idea.angle && p.angle && !sameAngle(idea.angle, p.angle)) {
+      score = n >= 3 && titles >= 0.85 ? titles : 0;
+    } else {
+      const both = p.outline?.length && idea.outline?.length ? overlap(beats, without(words([p.title, ...p.outline].join(" ")), skip)) : 0;
+      const sameTitle = (n >= 3 && titles >= 0.6) || (n >= 2 && titles >= 0.8);
+      // Same angle on the same subject: "RSUs · Costly mistake" twice.
+      const sameSubject = !!idea.angle && sameAngle(idea.angle, p.angle) && subj.size > 0 && overlap(subj, words(p.subject ?? "")) >= 0.6;
+      score = Math.max(sameTitle ? titles : 0, both >= 0.55 ? both : 0, sameSubject ? 1 : 0);
+    }
     if (score && (!best || score > best.score)) best = { p, score };
   }
   return best?.p;
