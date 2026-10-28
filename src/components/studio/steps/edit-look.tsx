@@ -11,6 +11,7 @@ import { useStore } from "@/lib/store";
 import { STYLES, MUSIC_CHOICES, extrasFor, getStyle, type StyleCategory, type StyleDef, type StyleId } from "@/lib/video/styles";
 import type { CaptionPosition, OverlayOptions, StyleExtras, TranscriptWord } from "@/lib/video/types";
 import { cn } from "@/lib/utils";
+import { CAPTION_CASES, CAPTION_HIGHLIGHTS, SAFE_BOTTOM, Y_MAX, Y_MIN, applyCase, captionCase, captionHighlight, captionY, inkFor, type CaptionCase, type CaptionHighlight } from "@/lib/video/caption-look";
 
 /** Which overlay the advisor just touched, shown in the preview for a moment. */
 export type LookPeek = "captions" | "lowerThird" | "endCard" | null;
@@ -30,7 +31,10 @@ export function LookPanel({
   frame,
   stockFootage,
   booking,
+  vertical = true,
 }: {
+  /** The video's shape, for where the captions sit. */
+  vertical?: boolean;
   /** The calendar link toggle: on by default when the advisor has a link. */
   booking?: { url?: string; on: boolean; onToggle: (on: boolean) => void };
   value: OverlayOptions;
@@ -44,6 +48,7 @@ export function LookPanel({
   const c = value.captions;
   const st = getStyle(c.style);
   const ex = value.extras;
+  const capY = captionY(c, vertical, value.lowerThird.enabled);
   const [cat, setCat] = React.useState<(typeof CATEGORIES)[number]>("All");
   const swatches = [...new Set([st.accent, BRAND.captionColor, "#FFFFFF", "#F5C542", ...brandColors.filter((x) => !/^#(0b1f3a|f7f5f0)$/i.test(x))].map((x) => x.toUpperCase()))].slice(0, 6);
   const setCaptions = (patch: Partial<OverlayOptions["captions"]>) => onChange({ ...value, captions: { ...c, ...patch } }, "captions");
@@ -70,7 +75,7 @@ export function LookPanel({
       </div>
       <div className="grid grid-cols-3 gap-2">
         {STYLES.filter((s) => cat === "All" || s.category === cat).map((s) => (
-          <StyleCard key={s.id} style={s} frame={frame} selected={s.id === c.style} onClick={() => pickStyle(s.id)} />
+          <StyleCard key={s.id} style={s} frame={frame} selected={s.id === c.style} onClick={() => pickStyle(s.id)} textCase={captionCase(c)} highlight={captionHighlight(c)} />
         ))}
       </div>
       <p className="mt-2 text-[11px] leading-snug text-muted-foreground">{st.description}</p>
@@ -78,11 +83,39 @@ export function LookPanel({
       <div className="mt-4 space-y-3 border-t border-border pt-4">
         <Row label="Captions" checked={c.enabled} onChange={(v) => setCaptions({ enabled: v })} />
         <div className={cn("space-y-2.5 transition-opacity", !c.enabled && "pointer-events-none opacity-40")}>
-          <ToggleGroup type="single" value={c.position} onValueChange={(v) => v && setCaptions({ position: v as CaptionPosition })} className="w-full" aria-label="Caption position">
+          <ToggleGroup type="single" value={c.y === undefined ? c.position : ""} onValueChange={(v) => v && setCaptions({ position: v as CaptionPosition, y: undefined })} className="w-full" aria-label="Caption position">
             {POSITIONS.map((s) => (
               <ToggleGroupItem key={s.id} value={s.id} className="flex-1">{s.label}</ToggleGroupItem>
             ))}
           </ToggleGroup>
+          <div className="flex items-center gap-3">
+            <span className="w-14 shrink-0 text-[12px] text-muted-foreground">Height</span>
+            <Slider
+              value={[Math.round(capY * 100)]}
+              min={Math.round(Y_MIN * 100)}
+              max={Math.round(Y_MAX * 100)}
+              onValueChange={([v]) => setCaptions({ y: v / 100 })}
+              aria-label="Caption height (higher number is lower on screen)"
+            />
+            <span className="w-14 shrink-0 text-right text-[11px] text-muted-foreground tnum">{capY >= 0.75 ? "Low" : capY <= 0.3 ? "High" : "Middle"}</span>
+          </div>
+          {vertical && capY > SAFE_BOTTOM && <p className="text-[11px] leading-snug text-destructive">This low, TikTok’s and Reels’ buttons and caption can cover the words.</p>}
+          <div className="flex items-center gap-3">
+            <span className="w-14 shrink-0 text-[12px] text-muted-foreground">Letters</span>
+            <ToggleGroup type="single" value={captionCase(c)} onValueChange={(v) => v && setCaptions({ case: v as CaptionCase })} className="w-full" aria-label="Caption letter case">
+              {CAPTION_CASES.map((x) => (
+                <ToggleGroupItem key={x.id} value={x.id} className="flex-1 text-[12px]">{x.label}</ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="w-14 shrink-0 text-[12px] text-muted-foreground">Word</span>
+            <ToggleGroup type="single" value={captionHighlight(c)} onValueChange={(v) => v && setCaptions({ highlight: v as CaptionHighlight })} className="w-full" aria-label="How the spoken word is highlighted">
+              {CAPTION_HIGHLIGHTS.map((x) => (
+                <ToggleGroupItem key={x.id} value={x.id} className="flex-1 text-[12px]" title={x.hint}>{x.label}</ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </div>
           <div className="flex items-center gap-2">
             <span className="mr-1 text-[12px] text-muted-foreground">Highlight</span>
             {swatches.map((hex) => (
@@ -217,18 +250,25 @@ interface Word {
  * heavy outline, the spoken word lit and slightly larger, key figures in the
  * highlight color. Sized relative to the frame height (cqh units).
  */
-export function StyledCaption({ words, accent, keys, frameH }: { style?: StyleDef; words: Word[]; accent: string; keys: Set<string>; frameH: number }) {
+export function StyledCaption({ words, accent, keys, frameH, textCase = "lower", highlight = "color" }: { style?: StyleDef; words: Word[]; accent: string; keys: Set<string>; frameH: number; textCase?: CaptionCase; highlight?: CaptionHighlight }) {
   const size = (frameH > 1500 ? 84 : 76) / frameH;
   const hl = /^#?f{6}$/i.test(accent) ? "#D9B97E" : accent;
   const outline = "0 0 0.09em #000, 0.05em 0.05em 0 #000, -0.05em 0.05em 0 #000, 0.05em -0.05em 0 #000, -0.05em -0.05em 0 #000, 0 0.08em 0.06em rgba(0,0,0,.55)";
   return (
     <span className="inline leading-[1.2]" style={{ fontFamily: '"Liberation Sans", Arial, Helvetica, sans-serif', fontWeight: 700, fontSize: `${size * 100}cqh`, color: "#FFFFFF", textShadow: outline }}>
       {words.map((x, i) => {
-        const lit = x.on || keys.has(clean(x.w));
+        const on = x.on && highlight !== "none";
+        const key = keys.has(clean(x.w));
+        const style: React.CSSProperties =
+          on && highlight === "marker"
+            ? { background: accent, color: inkFor(accent), textShadow: "none", borderRadius: "0.16em", padding: "0 0.14em", margin: "0 -0.04em" }
+            : on && highlight === "pop"
+              ? { transform: "scale(1.18)", color: key ? hl : undefined }
+              : { color: (on && highlight === "color") || key ? hl : undefined, transform: on ? "scale(1.08)" : undefined };
         return (
           <React.Fragment key={i}>
-            <span className="inline-block" style={{ color: lit ? hl : undefined, transform: x.on ? "scale(1.08)" : undefined }}>
-              {x.w.toUpperCase()}
+            <span className="inline-block" style={style}>
+              {applyCase(x.w, textCase)}
             </span>{" "}
           </React.Fragment>
         );
@@ -239,7 +279,7 @@ export function StyledCaption({ words, accent, keys, frameH }: { style?: StyleDe
 
 const SAMPLE = ["Your", "bracket", "drops", "at", "65"];
 
-function StyleCard({ style, frame, selected, onClick }: { style: StyleDef; frame?: string; selected: boolean; onClick: () => void }) {
+function StyleCard({ style, frame, selected, onClick, textCase, highlight }: { style: StyleDef; frame?: string; selected: boolean; onClick: () => void; textCase: CaptionCase; highlight: CaptionHighlight }) {
   return (
     <button onClick={onClick} className={cn("group cursor-pointer rounded-xl p-0.5 text-left transition-all", selected ? "bg-primary" : "hover:bg-border")} aria-pressed={selected}>
       <div className="relative aspect-[9/14] overflow-hidden rounded-[10px] bg-gradient-to-b from-[#2A3B55] to-[#0E1A2E]" style={{ containerType: "size" }}>
@@ -249,7 +289,7 @@ function StyleCard({ style, frame, selected, onClick }: { style: StyleDef; frame
         {style.card === "backdrop" && <span className="absolute inset-x-0 top-[12%] text-center font-[Anton] text-[22cqh] leading-none tracking-tight text-transparent" style={{ WebkitTextStroke: `1px ${style.accent}`, fontFamily: "Anton" }}>65</span>}
         {style.card === "banner" && <span className="absolute inset-x-0 top-[66%] bg-[#2347E6] py-[2cqh] text-center text-[9cqh] font-black text-white" style={{ fontFamily: '"Montserrat Black"' }}>BRACKET</span>}
         <div className="absolute inset-x-[6%] top-[40%] text-center">
-          <StyledCaption style={style} words={SAMPLE.slice(0, Math.max(3, Math.min(5, style.words[0] + 1))).map((w, i) => ({ w, on: i === 1, past: i <= 1 }))} accent={style.accent} keys={new Set(["65"])} frameH={1920 * 1.25} />
+          <StyledCaption style={style} words={SAMPLE.slice(0, Math.max(3, Math.min(5, style.words[0] + 1))).map((w, i) => ({ w, on: i === 1, past: i <= 1 }))} accent={style.accent} keys={new Set(["65"])} frameH={1920 * 1.25} textCase={textCase} highlight={highlight} />
         </div>
         <span className="absolute inset-x-0 bottom-[5%] text-center text-[11px] font-semibold text-white drop-shadow">{style.name}</span>
         {selected && <span className="absolute top-1.5 right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="size-2.5" /></span>}
@@ -301,14 +341,13 @@ export function PreviewOverlays({
   const c = look.captions;
   const st = getStyle(c.style);
   const keys = React.useMemo(() => new Set(look.keyPhrases ? keyPhrases.flatMap((p) => p.split(/\s+/)).map(clean) : []), [keyPhrases, look.keyPhrases]);
-  // Bottom captions on long form sit above the name & credentials, which always take the bottom-left corner.
-  const top = c.position === "top" ? "20%" : c.position === "middle" ? (vertical ? "56%" : "50%") : vertical ? "74%" : look.lowerThird.enabled ? "76%" : "85%";
+  const top = `${captionY(c, vertical, look.lowerThird.enabled) * 100}%`;
 
   return (
     <>
       {c.enabled && caption && !showEndCard && (
         <div className="absolute inset-x-[7%] -translate-y-1/2 text-center" style={{ top }}>
-          <StyledCaption style={st} words={caption} accent={c.color} keys={keys} frameH={vertical ? 1920 : 1080} />
+          <StyledCaption style={st} words={caption} accent={c.color} keys={keys} frameH={vertical ? 1920 : 1080} textCase={captionCase(c)} highlight={captionHighlight(c)} />
         </div>
       )}
       {look.lowerThird.enabled && showLowerThird && !showEndCard && (

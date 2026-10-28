@@ -1,4 +1,5 @@
 import type { OverlayOptions } from "../types";
+import { applyCase, captionCase, captionHighlight, captionY, inkFor } from "../caption-look";
 import { getStyle, type StyleDef } from "../styles";
 
 /**
@@ -55,9 +56,9 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
   const accent = ov.captions.color || st.accent;
   const l: Look = { st, W, H, vertical, base: Math.round((vertical ? 88 : 66) * st.font.size), accent };
   const out = assColor(st.outline.color);
-  const capAlign = ov.captions.position === "top" ? 8 : ov.captions.position === "middle" ? 5 : 2;
-  // Bottom captions on long form sit above the name & credentials, which always take the bottom-left corner.
-  const capMarginV = ov.captions.position === "middle" ? 0 : Math.round(H * (vertical ? (ov.captions.position === "bottom" ? 0.2 : 0.12) : ov.captions.position === "bottom" && ov.lowerThird.enabled ? 0.19 : 0.08));
+  // Every caption line is centred on the chosen height (a preset, or the advisor's own).
+  const capPos = `\\an5\\pos(${Math.round(W / 2)},${Math.round(H * captionY(ov.captions, vertical, ov.lowerThird.enabled))})`;
+  const capFont = vertical ? 84 : 76;
 
   const lines: string[] = [
     "[Script Info]",
@@ -71,7 +72,7 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     // Captions: the original look for every style (big bold caps, heavy outline,
     // the spoken word lit). Styles change everything around the captions.
-    `Style: Cap,Liberation Sans,${vertical ? 84 : 76},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,7,3,${capAlign},70,70,${capMarginV},1`,
+    `Style: Cap,Liberation Sans,${capFont},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,7,3,5,70,70,0,1`,
     `Style: CapBox,${st.font.family},${l.base},&H00FFFFFF,&H00FFFFFF,&H00FFFFFF,&H00FFFFFF,0,0,0,0,100,100,0,0,3,${Math.round(l.base * 0.16)},0,5,80,80,0,1`,
     // Karaoke fills Secondary → Primary as each word is said.
     `Style: Kara,${st.font.family},${l.base},${assColor(accent)},${assColor(st.text)},${out},&H80000000,0,0,0,0,100,100,0,0,1,${st.outline.width},2,5,80,80,0,1`,
@@ -96,6 +97,11 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
   if (cap.enabled && o.words.length) {
     // White on white wouldn't show: a white highlight uses the original brass.
     const hl = assColor(/^#?f{6}$/i.test(accent) ? "#D9B97E" : accent);
+    const mode = captionHighlight(cap);
+    const letters = captionCase(cap);
+    // Marker: a block of the highlight color behind the spoken word (a thick outline in that color), the word in readable ink.
+    const marker = `\\3c${assColor(accent)}\\bord${Math.round(capFont * 0.2)}\\shad0\\c${assColor(inkFor(accent))}`;
+    const litTag = mode === "color" ? `\\c${hl}\\fscx108\\fscy108` : mode === "marker" ? marker : mode === "pop" ? "\\fscx118\\fscy118" : "";
     const chunks: TimedWord[][] = [];
     let cur: TimedWord[] = [];
     for (const w of o.words) {
@@ -118,12 +124,13 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
         const b = Math.min(wi < c.length - 1 ? c[wi + 1].start : chunkEnd, endCardAt);
         const text = c
           .map((x, xi) => {
-            const lit = xi === wi;
-            const t = esc(x.text.toUpperCase());
-            return lit || o.keyWords.has(normWord(x.text)) ? `{\\c${hl}${lit ? "\\fscx108\\fscy108" : ""}}${t}{\\r}` : t;
+            const t = esc(applyCase(x.text, letters));
+            // The marker block gets a little room so it doesn't touch the words beside it.
+            if (xi === wi && litTag) return mode === "marker" ? `\\h{${litTag}}${t}{\\r}\\h` : `{${litTag}}${t}{\\r}`;
+            return o.keyWords.has(normWord(x.text)) ? `{\\c${hl}}${t}{\\r}` : t;
           })
           .join(" ");
-        ev(1, a, b, "Cap", text);
+        ev(1, a, b, "Cap", `{${capPos}}${text}`);
       });
     });
   }

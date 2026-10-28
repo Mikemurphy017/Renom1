@@ -28,6 +28,8 @@ export function validateProcessRequest(body: unknown): ProcessRequest | string {
     const c = o.captions;
     if (!c || !isBool(c.enabled) || !STYLES.includes(c.style as string) || !POSITIONS.includes(c.position) || typeof c.color !== "string" || !/^#[0-9a-f]{6}$/i.test(c.color))
       errors.push("caption options are invalid");
+    if (c && ((c.y !== undefined && (!isNum(c.y) || c.y < 0 || c.y > 1)) || (c.case !== undefined && !["lower", "natural", "upper"].includes(c.case)) || (c.highlight !== undefined && !["color", "marker", "pop", "none"].includes(c.highlight))))
+      errors.push("caption look is invalid");
     const l = o.lowerThird;
     if (!l || !isBool(l.enabled) || !isStr(l.name, 120) || !isStr(l.credentials, 120) || !isStr(l.firm, 120)) errors.push("lower-third options are invalid");
     if (!isBool(o.keyPhrases)) errors.push("keyPhrases must be true or false");

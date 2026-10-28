@@ -311,7 +311,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
               </span>
             </div>
           </div>
-          <LookPanel value={look} onChange={changeLook} brandColors={profile.brandColors} frame={frame} stockFootage={stockFootage} booking={{ url: calendarUrl, on: booking, onToggle: setBooking }} />
+          <LookPanel value={look} onChange={changeLook} brandColors={profile.brandColors} frame={frame} stockFootage={stockFootage} booking={{ url: calendarUrl, on: booking, onToggle: setBooking }} vertical={vertical} />
         </div>
 
         {/* Transcript */}

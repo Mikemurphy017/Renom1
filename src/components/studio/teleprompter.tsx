@@ -22,6 +22,10 @@ export type PrompterSettings = {
   align: "left" | "center";
   /** Flip the text for glass (beam-splitter) teleprompter rigs. */
   mirrorText: boolean;
+  /** Where the reading line sits, % down from the top of the prompter: lower numbers sit closer to a camera on top of the screen. */
+  readAt: number;
+  /** Width of the text column, % of the frame: narrower means less eye movement side to side. */
+  width: number;
 };
 
 export const WPM_MIN = 80;
@@ -33,7 +37,7 @@ export const SPEED_PRESETS = [
   { label: "Brisk", wpm: 170 },
 ] as const;
 
-const DEFAULTS: PrompterSettings = { fontSize: 38, wpm: 145, opacity: 60, align: "center", mirrorText: false };
+const DEFAULTS: PrompterSettings = { fontSize: 38, wpm: 145, opacity: 60, align: "center", mirrorText: false, readAt: 26, width: 86 };
 const KEY = "renom.prompter.v1";
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
@@ -47,6 +51,8 @@ function sanitize(raw: Partial<PrompterSettings> | null | undefined): PrompterSe
     opacity: clamp(Math.round(num(r.opacity, DEFAULTS.opacity)), 0, 100),
     align: r.align === "left" ? "left" : "center",
     mirrorText: r.mirrorText === true,
+    readAt: clamp(Math.round(num(r.readAt, DEFAULTS.readAt)), 4, 50),
+    width: clamp(Math.round(num(r.width, DEFAULTS.width)), 40, 100),
   };
 }
 
@@ -110,6 +116,16 @@ export function PrompterSettingsPanel({ settings, update }: { settings: Prompter
         </div>
       </div>
       <div>
+        <FieldLabel hint={<span className="tnum">{settings.readAt <= 10 ? "At the top" : `${settings.readAt}% down`}</span>}>Reading line</FieldLabel>
+        <Slider value={[settings.readAt]} min={4} max={50} onValueChange={([v]) => update({ readAt: v })} aria-label="Reading line height" />
+        <p className="mt-1.5 text-[11px] text-muted-foreground">Slide left to move the line up, right under a camera on top of your screen.</p>
+      </div>
+      <div>
+        <FieldLabel hint={<span className="tnum">{settings.width}%</span>}>Text width</FieldLabel>
+        <Slider value={[settings.width]} min={40} max={100} onValueChange={([v]) => update({ width: v })} aria-label="Text width" />
+        <p className="mt-1.5 text-[11px] text-muted-foreground">Narrower keeps your eyes still, so you don’t look like you’re reading.</p>
+      </div>
+      <div>
         <FieldLabel hint={<span className="tnum">{settings.opacity}%</span>}>Backdrop</FieldLabel>
         <Slider value={[settings.opacity]} min={0} max={100} onValueChange={([v]) => update({ opacity: v })} aria-label="Backdrop darkness" />
       </div>
@@ -171,8 +187,6 @@ export type TeleprompterHandle = {
 
 const countWords = (s: string) => s.split(/\s+/).filter(Boolean).length;
 
-/** Where the reading line sits, as a share of the prompter's height: high, close to the lens. */
-const READ_AT = 0.26;
 const LINE_HEIGHT = 1.4;
 
 function isTyping(el: Element | null) {
@@ -216,7 +230,8 @@ export function Teleprompter({
 
   const fontPx = settings.fontSize * (vertical ? 0.62 : 0.8);
   const linePx = fontPx * LINE_HEIGHT;
-  const lineY = Math.round(box.h * READ_AT);
+  // The reading line: high by default, close to the lens; the advisor can raise it to the very top.
+  const lineY = Math.max(Math.round(linePx * 0.2), Math.round(box.h * (settings.readAt / 100)));
   // Scrolling is measured in words, so pace stays true whatever the text size or frame.
   const pxPerWord = box.end > 0 ? box.end / totalWords : 0;
   const atEnd = pos >= totalWords;
@@ -380,7 +395,7 @@ export function Teleprompter({
       ref={viewportRef}
       role="region"
       aria-label="Teleprompter"
-      className="absolute inset-x-0 top-0 h-[50%] cursor-pointer touch-none overflow-hidden select-none"
+      className="absolute inset-x-0 top-0 h-[var(--prompter-h,50%)] cursor-pointer touch-none overflow-hidden select-none"
       style={{ background: `rgba(6,16,31,${settings.opacity / 100})` }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -392,8 +407,10 @@ export function Teleprompter({
         <div className="h-full" style={{ transform: settings.mirrorText ? "scaleX(-1)" : undefined }}>
           <div
             ref={textRef}
-            className={cn("relative px-[7%] font-medium text-white will-change-transform", settings.align === "center" ? "text-center" : "text-left")}
+            className={cn("relative mx-auto font-medium text-white will-change-transform", settings.align === "center" ? "text-center" : "text-left")}
             style={{
+              width: `${settings.width}%`,
+              paddingInline: settings.width >= 90 ? "4%" : "2%",
               fontSize: fontPx,
               lineHeight: LINE_HEIGHT,
               paddingTop: lineY,

@@ -19,6 +19,12 @@ export interface OverlayOptions {
     position: CaptionPosition;
     /** Highlight color for the active word and key phrases (hex). */
     color: string;
+    /** The advisor's own height for the line: its centre, 0–1 of the frame from the top. Unset: the position preset. */
+    y?: number;
+    /** Letter case (unset: lowercase). */
+    case?: "lower" | "natural" | "upper";
+    /** How the spoken word stands out (unset: color). */
+    highlight?: "color" | "marker" | "pop" | "none";
   };
   /** Name + credentials title near the start of the video. */
   lowerThird: { enabled: boolean; name: string; credentials: string; firm: string };

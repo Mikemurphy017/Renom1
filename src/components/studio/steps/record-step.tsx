@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Settings2, Camera, CameraOff, Check, Clapperboard, Download, Keyboard, ListVideo, LoaderCircle, Minus, Pause, Play, Plus, RotateCcw, Sparkles, Upload, UserRound, Video as VideoIcon } from "lucide-react";
+import { ArrowUpToLine, Minimize2, Settings2, Camera, CameraOff, Check, Clapperboard, Download, Keyboard, ListVideo, LoaderCircle, Minus, Pause, Play, Plus, RotateCcw, Sparkles, Upload, UserRound, Video as VideoIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -107,6 +107,32 @@ export function RecordStep({ video, complete }: StepProps) {
 
   // runtime
   const [playing, setPlaying] = React.useState(false);
+  // "Close to camera": the stage fills the screen with the script at the very top edge,
+  // right under a webcam on top of the monitor, so the eyes stay near the lens.
+  const [nearCam, setNearCam] = React.useState(false);
+  const toggleNearCam = React.useCallback(() => {
+    setNearCam((on) => {
+      const next = !on;
+      try {
+        if (next && !document.fullscreenElement) void document.documentElement.requestFullscreen?.().catch(() => {});
+        if (!next && document.fullscreenElement) void document.exitFullscreen?.().catch(() => {});
+      } catch {
+        /* no fullscreen (iPhone): the stage still covers the page */
+      }
+      return next;
+    });
+  }, []);
+  React.useEffect(() => {
+    if (!nearCam) return;
+    const onFs = () => !document.fullscreenElement && setNearCam(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setNearCam(false);
+    document.addEventListener("fullscreenchange", onFs);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFs);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [nearCam]);
   const [recording, setRecording] = React.useState(false);
   const [elapsed, setElapsed] = React.useState(0);
   // Prompter position, in words from the top; the prompter owns the scroll.
@@ -372,9 +398,13 @@ export function RecordStep({ video, complete }: StepProps) {
       <div className="mx-auto min-w-0 max-w-[1000px] space-y-6">
         {/* Stage */}
         {/* Phones: edge to edge, as tall as the screen allows. */}
-        <div data-prompter-scope className="-mx-4 -mt-2 overflow-hidden border-y border-border bg-[#06101F] shadow-soft sm:mx-0 sm:mt-0 sm:rounded-2xl sm:border">
+        <div data-prompter-scope className={cn("overflow-hidden bg-[#06101F]", nearCam ? "fixed inset-0 z-50 m-0 flex h-dvh w-screen flex-col" : "-mx-4 -mt-2 border-y border-border shadow-soft sm:mx-0 sm:mt-0 sm:rounded-2xl sm:border")}>
           <div
-            className={cn("relative flex h-[calc(100dvh-15.5rem)] min-h-[380px] items-center px-0 py-0 sm:h-[min(62vh,600px)] sm:px-6 sm:py-6", position === "left" ? "justify-start" : position === "right" ? "justify-end" : "justify-center")}
+            className={cn(
+              "relative flex",
+              nearCam ? "min-h-0 flex-1 items-start p-0" : "h-[calc(100dvh-15.5rem)] min-h-[380px] items-center px-0 py-0 sm:h-[min(62vh,600px)] sm:px-6 sm:py-6",
+              position === "left" ? "justify-start" : position === "right" ? "justify-end" : "justify-center"
+            )}
             onDragOver={(e) => {
               if (recording || !e.dataTransfer.types.includes("Files")) return;
               e.preventDefault();
@@ -394,7 +424,10 @@ export function RecordStep({ video, complete }: StepProps) {
                 <div><Upload className="mx-auto size-7 text-[#E8CFA4]" /><p className="mt-2 font-serif text-xl">Drop your video here</p><p className="mt-1 text-[13px] text-white/70">MP4, MOV or WebM, up to {MAX_UPLOAD_LABEL}</p></div>
               </div>
             )}
-            <div className={cn("relative overflow-hidden bg-gradient-to-b from-[#2A3B55] to-[#1A2840] shadow-2xl sm:h-full sm:rounded-md", vertical ? "aspect-[9/16] h-full max-w-full" : "aspect-video w-full sm:w-auto sm:max-w-full")}>
+            <div
+              className={cn("relative overflow-hidden bg-gradient-to-b from-[#2A3B55] to-[#1A2840] shadow-2xl", nearCam ? "h-full" : "sm:h-full sm:rounded-md", vertical ? "aspect-[9/16] h-full max-w-full" : nearCam ? "aspect-video max-h-full max-w-full" : "aspect-video w-full sm:w-auto sm:max-w-full")}
+              style={nearCam ? ({ "--prompter-h": vertical ? "42%" : "55%" } as React.CSSProperties) : undefined}
+            >
               {stream ? (
                 <video ref={videoRef} autoPlay muted playsInline className="absolute inset-0 h-full w-full object-cover" style={{ transform: mirror ? "scaleX(-1)" : undefined }} />
               ) : (
@@ -473,6 +506,16 @@ export function RecordStep({ video, complete }: StepProps) {
               </PopoverTrigger>
               <PopoverContent align="start" side="top" className="max-h-(--radix-popover-content-available-height) w-80 overflow-y-auto">{settingsPanel}</PopoverContent>
             </Popover>
+            <Button
+              size="sm"
+              variant="ghost"
+              className={cn("text-white hover:bg-white/10 hover:text-white", nearCam && "bg-white/10")}
+              onClick={toggleNearCam}
+              aria-pressed={nearCam}
+              title={nearCam ? "Back to the page (Esc)" : "Fill the screen with the script at the top edge, right under your camera"}
+            >
+              {nearCam ? <Minimize2 /> : <ArrowUpToLine />} <span className="hidden sm:inline">{nearCam ? "Exit" : "Close to camera"}</span>
+            </Button>
             <Popover>
               <PopoverTrigger asChild>
                 <Button size="icon-sm" variant="ghost" className="hidden text-white hover:bg-white/10 sm:inline-flex" aria-label="Keyboard shortcuts"><Keyboard /></Button>
