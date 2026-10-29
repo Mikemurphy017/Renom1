@@ -46,6 +46,8 @@ export interface Account {
   name: string;
   /** Can open the admin dashboard. */
   admin?: boolean;
+  /** Signed in with a temporary password the admin handed over. */
+  tempPassword?: boolean;
 }
 
 interface Store {

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { usePostingSync } from "@/lib/posting/use-posting";
@@ -25,12 +26,29 @@ function ShellSkeleton() {
   );
 }
 
+/** Shown while the advisor is still on the temporary password the admin gave them. */
+function TempPasswordBanner() {
+  const [done, setDone] = React.useState(false);
+  React.useEffect(() => {
+    const on = () => setDone(true);
+    window.addEventListener("renom:password-set", on);
+    return () => window.removeEventListener("renom:password-set", on);
+  }, []);
+  if (done) return null;
+  return (
+    <div className="border-b border-primary/20 bg-brass-soft px-4 py-2.5 text-center text-[13px]">
+      You’re signed in with a temporary password.{" "}
+      <Link href="/settings#account" className="font-medium text-primary underline underline-offset-2">Choose your own password</Link>
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   // The studio has its own controls along the bottom on phones.
   const inStudio = pathname.startsWith("/studio");
-  const { hydrated, onboarded } = useStore();
+  const { hydrated, onboarded, account } = useStore();
   usePostingSync();
   const [palette, setPalette] = React.useState(false);
   const [newVideo, setNewVideo] = React.useState(false);
@@ -59,6 +77,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen flex-col">
         {/* In the studio, phones get the studio header only. */}
         <Navbar className={cn(inStudio && "hidden md:block")} />
+        {account?.tempPassword && <TempPasswordBanner />}
         <main className={cn("flex-1", !inStudio && "pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0")}>{hydrated && !needsSetup ? children : <ShellSkeleton />}</main>
       </div>
       {!inStudio && <TabBar />}

@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/admin";
 import { resetLink, sendResetEmail } from "@/lib/auth/reset-email";
-import { AuthError, createResetToken, deleteUser, setDisabled, signOutEverywhere, userById } from "@/lib/auth/server";
+import { signInUrl } from "@/lib/auth/workspace";
+import { AuthError, createResetToken, deleteUser, setDisabled, setTempPassword, signOutEverywhere, userById } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
 const ADMIN_RESET_MINUTES = 24 * 60;
 
-/** Account actions: reset link, disable/enable, sign out everywhere, delete. */
+/** Account actions: reset link, new temporary password, disable/enable, sign out everywhere, delete. */
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
@@ -25,6 +26,12 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
           return false;
         });
         return NextResponse.json({ ok: true, emailed, link: resetLink(request, made.token) });
+      }
+      case "password": {
+        // A new temporary password to copy and send; the old one stops working.
+        if (self) throw new AuthError("Change your own password in Settings.", 409);
+        const password = await setTempPassword(id);
+        return NextResponse.json({ ok: true, password, signInUrl: signInUrl(request) });
       }
       case "disable":
       case "enable":

@@ -27,6 +27,8 @@ export interface User {
   email: string;
   name: string;
   createdAt: string;
+  /** Signed in with a password the admin set up for them: they're asked to choose their own. */
+  tempPassword?: boolean;
 }
 interface StoredUser extends User {
   salt: string;
@@ -37,6 +39,8 @@ interface StoredUser extends User {
   sessionsValidAfter?: number;
   /** Reset links issued before this (ms) no longer work. */
   passwordChangedAt?: number;
+  /** The password is one the admin set up and handed over; cleared when they choose their own. */
+  tempPassword?: boolean;
 }
 interface Session {
   userId: string;
@@ -161,7 +165,7 @@ export async function createUser(input: { email: string; password: string; name:
   return publicUser(user);
 }
 
-const publicUser = (u: StoredUser): User => ({ id: u.id, email: u.email, name: u.name, createdAt: u.createdAt });
+const publicUser = (u: StoredUser): User => ({ id: u.id, email: u.email, name: u.name, createdAt: u.createdAt, ...(u.tempPassword ? { tempPassword: true } : {}) });
 
 export async function verifyPassword(emailRaw: string, password: string): Promise<User | null> {
   const u = await getJSON<StoredUser>(userKey(emailRaw));
@@ -194,7 +198,8 @@ export async function changePassword(user: User, current: string, next: string) 
   checkNewPassword(next);
   const u = await getJSON<StoredUser>(userKey(user.email));
   if (!u) throw new AuthError("Account not found.", 404);
-  await putJSON(userKey(user.email), { ...u, ...(await hashPassword(next)), passwordChangedAt: Date.now() });
+  await putJSON(userKey(user.email), { ...u, ...(await hashPassword(next)), passwordChangedAt: Date.now(), tempPassword: false });
+  cache.clear();
 }
 
 // ── password reset ───────────────────────────────────────────────────────────
@@ -241,7 +246,7 @@ export async function resetPassword(token: string, next: string): Promise<User> 
   checkNewPassword(next);
   const now = Date.now();
   await putJSON(resetKey(token), { ...ok.r, usedAt: now } satisfies Reset);
-  await putJSON(userKey(ok.u.email), { ...ok.u, ...(await hashPassword(next)), passwordChangedAt: now, sessionsValidAfter: now });
+  await putJSON(userKey(ok.u.email), { ...ok.u, ...(await hashPassword(next)), passwordChangedAt: now, sessionsValidAfter: now, tempPassword: false });
   cache.clear();
   return publicUser(ok.u);
 }
@@ -338,6 +343,41 @@ export async function deleteUser(id: string) {
   delete users[id];
   await putJSON(INDEX, { ids: index.ids.filter((x) => x !== id), users } satisfies Index);
   cache.clear();
+}
+
+// ── client accounts the admin sets up ─────────────────────────────────────────
+
+/** A password that's easy to read out and type: three groups of four, no look-alike characters (e.g. "k7mp-x3vr-q9tw"). */
+export function tempPassword() {
+  const chars = "abcdefghjkmnpqrstuvwxyz23456789";
+  const bytes = randomBytes(12);
+  const s = [...bytes].map((b) => chars[b % chars.length]).join("");
+  return `${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8, 12)}`;
+}
+
+/** Creates an account for a client, whatever the sign-up setting, with a temporary password to hand over. */
+export async function createClientAccount(input: { email: string; name: string }): Promise<{ user: User; password: string }> {
+  const email = normEmail(input.email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) throw new AuthError("Enter a valid email address.");
+  const name = input.name.trim().slice(0, 120);
+  if (!name) throw new AuthError("Enter the client’s name.");
+  if (await objects().stat(userKey(email))) throw new AuthError("There’s already an account with that email. Find it in the list to edit its workspace.", 409);
+  const password = tempPassword();
+  const now = new Date().toISOString();
+  const user: StoredUser = { id: `u${randomBytes(9).toString("hex")}`, email, name, createdAt: now, tempPassword: true, ...(await hashPassword(password)) };
+  await putJSON(userKey(email), user);
+  await indexUser(user);
+  return { user: publicUser(user), password };
+}
+
+/** A fresh temporary password for an account (signs it out everywhere). */
+export async function setTempPassword(id: string): Promise<string> {
+  const u = await storedById(id);
+  const password = tempPassword();
+  const now = Date.now();
+  await putJSON(userKey(u.email), { ...u, ...(await hashPassword(password)), passwordChangedAt: now, sessionsValidAfter: now, tempPassword: true });
+  cache.clear();
+  return password;
 }
 
 // ── invites ──────────────────────────────────────────────────────────────────

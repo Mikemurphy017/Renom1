@@ -14,6 +14,11 @@ export function AccountSection() {
   const [current, setCurrent] = React.useState("");
   const [next, setNext] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  // On a temporary password from the admin: the form is open, ready to choose their own.
+  const temp = !!account?.tempPassword;
+  React.useEffect(() => {
+    if (temp) setOpen(true);
+  }, [temp]);
 
   const change = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +28,7 @@ export function AccountSection() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body.ok) throw new Error(body.error || "Couldn’t change the password.");
       toast.success("Password changed");
+      window.dispatchEvent(new Event("renom:password-set"));
       setOpen(false);
       setCurrent("");
       setNext("");
@@ -50,7 +56,7 @@ export function AccountSection() {
       {open && (
         <form onSubmit={change} className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
           <label className="block text-[13px] font-medium">
-            Current password
+            {temp ? "Temporary password" : "Current password"}
             <Input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required className="mt-1.5" />
           </label>
           <label className="block text-[13px] font-medium">
