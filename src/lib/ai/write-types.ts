@@ -1,7 +1,8 @@
 import type { PlatformId, Script, VideoFormat } from "../types";
 import type { VoiceProfile } from "./voice";
 import type { WriterId } from "./writers";
-import type { CaptionsOutput, CoversOutput, IdeasOutput, ScriptOutput } from "./schemas";
+import type { CaptionsOutput, CoversOutput, IdeasOutput, PostOutput, ScriptOutput } from "./schemas";
+import type { PostCopy, PostKind, PostPlatform } from "../types";
 
 /** Requests the browser sends to /api/write. Revisions pass `current` + `instruction`. */
 export type WriteRequest =
@@ -39,15 +40,26 @@ export type WriteRequest =
       instruction?: string;
     }
   | {
+      task: "post";
+      profile: VoiceProfile;
+      topic: string;
+      kind: PostKind;
+      platforms: PostPlatform[];
+      /** How the advisor's recent posts open, so this one doesn't repeat them. */
+      others?: string[];
+      current?: PostCopy[];
+      instruction?: string;
+    }
+  | {
       task: "covers";
       profile: VoiceProfile;
       video: { title: string; format: VideoFormat; script?: Script; outline: string[] };
       instruction?: string;
     };
 
-export type WriteResult<T extends WriteRequest["task"]> = T extends "ideas" ? IdeasOutput : T extends "script" ? ScriptOutput : T extends "captions" ? CaptionsOutput : CoversOutput;
+export type WriteResult<T extends WriteRequest["task"]> = T extends "ideas" ? IdeasOutput : T extends "script" ? ScriptOutput : T extends "captions" ? CaptionsOutput : T extends "post" ? PostOutput : CoversOutput;
 
 export type WriteEvent =
   | { type: "status"; text: string }
-  | { type: "result"; data: IdeasOutput | ScriptOutput | CaptionsOutput | CoversOutput; source: "claude" | "sample" }
+  | { type: "result"; data: IdeasOutput | ScriptOutput | CaptionsOutput | CoversOutput | PostOutput; source: "claude" | "sample" }
   | { type: "error"; message: string };

@@ -150,6 +150,49 @@ export interface Platform {
   handle?: string;
 }
 
+/** A social post that isn't a video: words only, or words with a picture. */
+export type PostKind = "text" | "image";
+export type PostAspect = "1:1" | "4:5" | "16:9";
+/** Where text and image posts can go (TikTok and YouTube take video only). */
+export const POST_PLATFORMS = ["linkedin", "facebook", "instagram", "x"] as const satisfies readonly PlatformId[];
+export type PostPlatform = (typeof POST_PLATFORMS)[number];
+
+export interface PostCopy {
+  platform: PostPlatform;
+  /** The post itself, without hashtags or disclosure (added when it goes out). */
+  text: string;
+  hashtags: string[];
+}
+
+export interface PostImage {
+  /** Media id. */
+  id: string;
+  url: string;
+  source: "upload" | "ai";
+  /** The scene asked for, for AI images. */
+  scene?: string;
+  aspect?: PostAspect;
+}
+
+export interface PostDraft {
+  id: string;
+  topic: string;
+  kind: PostKind;
+  platforms: PostPlatform[];
+  copy: PostCopy[];
+  /** The chosen picture (image posts). */
+  image?: PostImage;
+  /** Pictures made or uploaded for this post, newest first, to pick from. */
+  images?: PostImage[];
+  /** Claude's suggestion for the picture. */
+  imageIdea?: string;
+  status: "draft" | "scheduled" | "published";
+  scheduledFor?: string;
+  publishedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AdvisorProfile {
   name: string;
   credentials: string;

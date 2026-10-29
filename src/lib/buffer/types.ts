@@ -157,6 +157,8 @@ export interface CreateBufferPostRequest {
   mode: BufferMode;
   dueAt?: string;
   videoUrl?: string;
+  /** A picture for an image post (a public https URL Buffer fetches). No video and no image: a text post. */
+  imageUrl?: string;
   /** Cover frame, as milliseconds into the video (Instagram, TikTok and Pinterest only). */
   thumbnailOffsetMs?: number;
   title?: string;

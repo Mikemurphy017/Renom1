@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import type { AdvisorProfile, ComplianceStatus, PhotoSetItem, StageId, Video } from "./types";
+import type { AdvisorProfile, ComplianceStatus, PhotoSetItem, PostDraft, StageId, Video } from "./types";
 import type { ReviewComment, ReviewItem } from "./compliance";
 import { EMPTY_PROFILE } from "./profile";
 import { clearDrafts, exportDrafts, importDrafts, legacyDrafts, onDraftsChange } from "./drafts";
@@ -26,6 +26,8 @@ interface Persisted {
   reviewer: string;
   profile: AdvisorProfile;
   team: TeamMember[];
+  /** Text and image posts. */
+  posts?: PostDraft[];
 }
 
 const KEY = "renom.state.v1";
@@ -38,6 +40,7 @@ const INITIAL: Persisted = {
   reviewer: "",
   profile: EMPTY_PROFILE,
   team: [],
+  posts: [],
 };
 
 export interface Account {
@@ -84,6 +87,10 @@ interface Store {
   editPhotoSet: (fn: (set: PhotoSetItem[]) => PhotoSetItem[]) => void;
   team: TeamMember[];
   setTeam: (t: TeamMember[]) => void;
+  posts: PostDraft[];
+  addPost: (p: Pick<PostDraft, "kind"> & Partial<PostDraft>) => PostDraft;
+  updatePost: (id: string, patch: Partial<PostDraft> | ((p: PostDraft) => Partial<PostDraft>)) => void;
+  deletePost: (id: string) => void;
 }
 
 const StoreContext = React.createContext<Store | null>(null);
@@ -292,6 +299,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       editPhotoSet: (fn) => set((s) => ({ profile: { ...s.profile, photoSet: fn(s.profile.photoSet ?? []) } })),
       team: state.team,
       setTeam: (team) => set(() => ({ team })),
+      posts: state.posts ?? [],
+      addPost: (partial) => {
+        const t = now();
+        const post: PostDraft = { id: `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, topic: "", platforms: ["linkedin", "facebook"], copy: [], status: "draft", createdAt: t, updatedAt: t, ...partial };
+        set((s) => ({ posts: [post, ...(s.posts ?? [])] }));
+        return post;
+      },
+      updatePost: (id, patch) => set((s) => ({ posts: (s.posts ?? []).map((p) => (p.id === id ? { ...p, ...(typeof patch === "function" ? patch(p) : patch), updatedAt: now() } : p)) })),
+      deletePost: (id) => set((s) => ({ posts: (s.posts ?? []).filter((p) => p.id !== id) })),
     };
   }, [state, hydrated, account, signOut, saveState]);
 

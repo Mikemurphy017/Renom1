@@ -136,9 +136,13 @@ const savePosts = (posts: StoredPost[]) => putJSON(POSTS, { posts: posts.slice(0
 const forUser = ({ userId: _u, ...p }: StoredPost): SocialPost => p;
 
 export interface PublishInput {
+  /** The video, or the text/image post, this belongs to. */
   videoId: string;
   title: string;
-  videoUrl: string;
+  /** A video post; leave out for a text or image post. */
+  videoUrl?: string;
+  /** An image post's picture. */
+  imageUrl?: string;
   /** One per channel: which of our platforms' captions goes to it. */
   posts: { channelId: string; platform: PlatformId; text: string; title?: string }[];
   disclosureVersion: string;
@@ -165,7 +169,7 @@ export async function publish(user: User, i: PublishInput) {
       errors.push({ platform: p.platform, channel: p.channelId, error: "That channel isn’t in your Buffer." });
       continue;
     }
-    const r = await createBufferPost({ channelId: ch.id, service: SERVICE_OF[p.platform], text: p.text, mode: i.scheduleAt ? "schedule" : "now", dueAt: i.scheduleAt, videoUrl: i.videoUrl, title: p.title || i.title, thumbnailOffsetMs: i.thumbnailOffsetMs }, token);
+    const r = await createBufferPost({ channelId: ch.id, service: SERVICE_OF[p.platform], text: p.text, mode: i.scheduleAt ? "schedule" : "now", dueAt: i.scheduleAt, videoUrl: i.videoUrl, imageUrl: i.imageUrl, title: p.title || i.title, thumbnailOffsetMs: i.thumbnailOffsetMs }, token);
     if (!r.ok) {
       errors.push({ platform: p.platform, channel: ch.name, error: r.error });
       continue;

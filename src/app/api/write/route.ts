@@ -11,12 +11,13 @@ const STATUS: Record<WriteRequest["task"], string[]> = {
   script: ["Reading your profile…", "Finding the hook…", "Writing for the ear…", "Tightening every line…", "Checking compliance language…"],
   captions: ["Reading the script…", "Finding the first line…", "Writing for each platform…", "Writing the taglines…", "Fitting platform limits…"],
   covers: ["Reading the script…", "Finding the stake…", "Cutting it to five words…"],
+  post: ["Reading your profile…", "Finding the first line…", "Writing for each platform…", "Picturing the image…"],
 };
 
 function validate(body: unknown): WriteRequest | string {
   const b = body as Partial<WriteRequest>;
   if (!b || typeof b !== "object") return "Invalid request";
-  if (!b.task || !["ideas", "script", "captions", "covers"].includes(b.task)) return "Unknown task";
+  if (!b.task || !["ideas", "script", "captions", "covers", "post"].includes(b.task)) return "Unknown task";
   if (!b.profile || typeof b.profile !== "object") return "Missing profile";
   if ((b.task === "script" || b.task === "captions") && "writer" in b && b.writer !== undefined && !WRITERS.some((w) => w.id === b.writer)) return "Unknown writer";
   if (JSON.stringify(b).length > 120_000) return "Request too large";

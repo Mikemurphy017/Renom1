@@ -6,11 +6,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useStartVideo } from "./use-start-video";
+import { useStartPost } from "@/components/posts/posts-list";
 import type { VideoFormat } from "@/lib/types";
 import { BRAND } from "@/lib/brand";
 
 export function NewVideoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const start = useStartVideo();
+  const startPost = useStartPost();
   const [topic, setTopic] = React.useState("");
   const [format, setFormat] = React.useState<VideoFormat>("short");
 
@@ -49,6 +51,11 @@ export function NewVideoDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           <Button className="rounded-full px-5" onClick={go}>
             Start <ArrowRight />
           </Button>
+        </div>
+        <div className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-4 text-[13px] text-muted-foreground">
+          Not filming today?
+          <button type="button" className="cursor-pointer font-medium text-primary underline-offset-2 hover:underline" onClick={() => { onOpenChange(false); startPost("text", topic); setTopic(""); }}>Write a text post</button>
+          <button type="button" className="cursor-pointer font-medium text-primary underline-offset-2 hover:underline" onClick={() => { onOpenChange(false); startPost("image", topic); setTopic(""); }}>Text + image post</button>
         </div>
       </DialogContent>
     </Dialog>

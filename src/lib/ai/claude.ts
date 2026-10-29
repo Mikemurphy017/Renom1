@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { HOUSE_VOICE, advisorBlock } from "./voice";
 import { getWriter } from "./writers";
-import { CaptionsSchema, CoversSchema, IdeasSchema, ScriptSchema } from "./schemas";
+import { CaptionsSchema, CoversSchema, IdeasSchema, PostSchema, ScriptSchema } from "./schemas";
 import type { WriteRequest, WriteResult } from "./write-types";
 import { originalIdeas, repeatsOpening } from "./originality";
 import { ANGLES } from "./angles";
@@ -92,6 +92,20 @@ Where a link belongs, use the placeholder {{BOOKING_LINK}}. Don't add disclosure
 Also write three taglines for the video: standalone one-liners (at most 12 words) the advisor can use as a post's opening line, a pinned comment, on-screen text or a headline. Each takes a different angle, all in your voice.${revise(req.current, req.instruction)}`;
     }
 
+    case "post": {
+      const guide: Record<string, string> = {
+        linkedin: "LinkedIn: 120 to 220 words in short paragraphs (one to three sentences each, blank line between). The first line must earn the \"see more\" click on its own. Up to 5 hashtags.",
+        facebook: "Facebook: the same idea, warmer and shorter (60 to 120 words). Up to 3 hashtags.",
+        instagram: "Instagram: a caption of 40 to 120 words that works under a photo. Strong first line, short lines, a gentle prompt to save or share. Up to 8 hashtags.",
+        x: "X: one to three tight sentences, at most 230 characters. At most 2 hashtags.",
+      };
+      return `Write a social post${req.kind === "image" ? " that will go out with a photo of the advisor" : " (words only, no picture)"} about: "${req.topic}".
+Write it natively for each of these platforms:
+${req.platforms.map((p) => `- ${guide[p]}`).join("\n")}
+It's a post in its own right, not a caption for a video: it gives the reader one useful idea, in the advisor's voice, and ends with a natural next step. Where a link to book a call belongs, use the placeholder {{BOOKING_LINK}}. Don't add disclosures — the app appends them.${req.others?.length ? `\nThe advisor's recent posts open like this; this one must open differently and make its own point:\n${req.others.map((o) => `- ${o}`).join("\n")}` : ""}
+Also describe the photo that would carry it (imageScene): the advisor in a real, professional moment that fits the post (presenting to clients in a boardroom, at a kitchen table with a couple, on a call at their desk, walking through the city), so it can be generated from their headshots. No readable words or numbers in the picture.${revise(req.current, req.instruction)}`;
+    }
+
     case "covers":
       return `Write the words for this video's thumbnails, creator-style (think the best finance YouTubers, not a company intranet). The advisor's face sits beside the words, huge and expressive, so the words carry the curiosity and the face carries the emotion.
 Video: "${req.video.title}" (made as ${req.video.format === "short" ? "short-form vertical" : "long-form horizontal"}; write both shapes anyway)
@@ -119,7 +133,7 @@ function descBudget(id: string, limit: number) {
   return id === "x" ? 200 : Math.min(limit, 3000) - 650;
 }
 
-const SCHEMAS = { ideas: IdeasSchema, script: ScriptSchema, captions: CaptionsSchema, covers: CoversSchema } as const;
+const SCHEMAS = { ideas: IdeasSchema, script: ScriptSchema, captions: CaptionsSchema, covers: CoversSchema, post: PostSchema } as const;
 
 /** Ideas that repeat nothing the advisor has or was offered: repeats are dropped and Claude is asked again (twice at most). */
 async function writeIdeas(req: Extract<WriteRequest, { task: "ideas" }>) {

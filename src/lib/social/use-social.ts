@@ -87,6 +87,24 @@ export async function publishVideo(body: PublishBody) {
   );
 }
 
+export interface PublishPostBody {
+  postId: string;
+  title: string;
+  /** Media id of the picture (image posts). */
+  imageId?: string;
+  posts: { channelId: string; platform: PlatformId; text: string }[];
+  disclosureVersion: string;
+  scheduleAt?: string;
+}
+
+/** A text or image post to the advisor's own channels. */
+export async function publishPost(body: PublishPostBody) {
+  return json<{ posts: SocialPost[]; errors: { platform: PlatformId; channel: string; error: string }[] }>(
+    await fetch("/api/social/posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+    "Couldn’t post it."
+  );
+}
+
 export async function cancelScheduled(id: string) {
   return (await json<{ post: SocialPost }>(await fetch(`/api/social/posts?id=${encodeURIComponent(id)}`, { method: "DELETE" }), "Couldn’t cancel it.")).post;
 }

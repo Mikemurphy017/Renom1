@@ -50,7 +50,24 @@ export const CoversSchema = z.object({
   points: z.array(z.string()).describe("Exactly three talking points from the video for a checklist cover, at most 5 words each"),
 });
 
+export const POST_PLATFORM_VALUES = ["linkedin", "facebook", "instagram", "x"] as const;
+
+export const PostSchema = z.object({
+  posts: z.array(
+    z.object({
+      platform: z.enum(POST_PLATFORM_VALUES),
+      text: z.string().describe("The post, without hashtags and without any disclosure"),
+      hashtags: z.array(z.string()).describe("Hashtags without the # sign"),
+    })
+  ),
+  imageScene: z
+    .string()
+    .describe("A photo that would carry this post, featuring the advisor: setting, what they're doing, who's with them, framing. Realistic and professional, no readable text in the picture. One or two sentences."),
+  note: z.string().describe("One short sentence to the advisor"),
+});
+
 export type IdeasOutput = z.infer<typeof IdeasSchema>;
 export type ScriptOutput = z.infer<typeof ScriptSchema>;
 export type CaptionsOutput = z.infer<typeof CaptionsSchema>;
 export type CoversOutput = z.infer<typeof CoversSchema>;
+export type PostOutput = z.infer<typeof PostSchema>;

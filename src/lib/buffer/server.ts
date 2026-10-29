@@ -119,6 +119,12 @@ export async function getBufferStatus(): Promise<BufferStatus> {
 const YOUTUBE_CATEGORY = "27";
 
 function metadataFor(req: CreateBufferPostRequest) {
+  // Text and image posts go out as ordinary feed posts.
+  if (!req.videoUrl) {
+    if (req.service === "instagram") return { instagram: { type: "post", shouldShareToFeed: true } };
+    if (req.service === "facebook") return { facebook: { type: "post" } };
+    return undefined;
+  }
   switch (req.service) {
     case "youtube":
       // YouTube requires a category on every upload; "27" is Education, the fit for advisors' videos.
@@ -151,7 +157,7 @@ export async function createBufferPost(req: CreateBufferPostRequest, as?: string
     text: req.text,
     schedulingType: "automatic",
     mode: req.mode === "now" ? "shareNow" : req.mode === "schedule" ? "customScheduled" : "addToQueue",
-    assets: req.videoUrl ? [{ video: { url: req.videoUrl, metadata: videoMetadataFor(req) } }] : [],
+    assets: req.videoUrl ? [{ video: { url: req.videoUrl, metadata: videoMetadataFor(req) } }] : req.imageUrl ? [{ image: { url: req.imageUrl } }] : [],
     source: "renom",
   };
   if (req.mode === "schedule") input.dueAt = req.dueAt;

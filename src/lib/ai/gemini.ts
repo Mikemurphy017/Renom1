@@ -22,7 +22,7 @@ export class GeminiError extends Error {
 type Part = { text?: string; inlineData?: { mimeType?: string; data?: string }; inline_data?: { mime_type?: string; data?: string } };
 
 /** One image from reference photos (one or several of the same person) and a prompt. */
-export async function editImage(o: { image?: Uint8Array; mimeType?: string; images?: { bytes: Uint8Array; mimeType: string }[]; prompt: string; aspect: "16:9" | "9:16" | "3:4" }): Promise<{ bytes: Uint8Array; mimeType: string }> {
+export async function editImage(o: { image?: Uint8Array; mimeType?: string; images?: { bytes: Uint8Array; mimeType: string }[]; prompt: string; aspect: "16:9" | "9:16" | "3:4" | "1:1" | "4:5" }): Promise<{ bytes: Uint8Array; mimeType: string }> {
   const refs = o.images ?? (o.image ? [{ bytes: o.image, mimeType: o.mimeType ?? "image/jpeg" }] : []);
   if (!key()) throw new GeminiError("AI scenes aren’t set up for this studio yet.", 503);
   let res: Response;
@@ -154,6 +154,31 @@ export function clonePrompt(look: CloneLook, count: number) {
     "Framing: chest-up, the person centered and facing the camera, the whole head in frame with clear space above the hair (at least 12% of the image height). Never crop the top of the head or the chin.",
     "Keep the background simple and softly out of focus so the person stands out; a headline will be placed beside or above them later.",
     "Professional photo-shoot look: soft key light on the face, natural color, crisp detail, shallow depth of field.",
+    "Do not add any text, letters, logos, watermarks or borders.",
+  ].join("\n");
+}
+
+/** Ready-made settings for post photos, like a professional editorial shoot. */
+export const POST_SCENES = [
+  { id: "boardroom", label: "Presenting to clients", brief: "standing at the head of a modern glass-walled boardroom, presenting to four or five attentive clients seated around the table, gesturing toward a large wall screen showing a simple bar chart; the clients are softly out of focus in the foreground" },
+  { id: "couple", label: "With a couple at home", brief: "sitting at a bright kitchen table with a retired couple, reviewing a plan on a tablet together, warm and reassuring" },
+  { id: "desk", label: "At the desk", brief: "at a tidy desk in a bright modern office, on a video call with a laptop open, smiling, natural light from a large window" },
+  { id: "stage", label: "Speaking on stage", brief: "speaking on stage at a small professional seminar with a microphone, an audience in the foreground softly out of focus, a large screen behind" },
+  { id: "coffee", label: "Coffee with a client", brief: "having coffee with a client at a modern café table, listening attentively, relaxed and friendly" },
+  { id: "city", label: "Walking in the city", brief: "walking confidently along a modern city street with glass office buildings, in business attire, candid documentary style" },
+  { id: "whiteboard", label: "At the whiteboard", brief: "explaining an idea at a whiteboard covered in simple arrows and boxes to two colleagues in a bright meeting room" },
+  { id: "handshake", label: "Welcoming a client", brief: "shaking hands with a new client in a modern office reception area, both smiling, warm professional moment" },
+] as const;
+
+/** A photo of the advisor in a scene, for a text-and-image post, like an editorial or stock photo shoot. */
+export function postPhotoPrompt(scene: string, count: number) {
+  return [
+    `Create a new photorealistic photo featuring the person in the reference photo${count > 1 ? "s (all of the same person)" : ""} as the main subject.`,
+    "Keep their identity exactly: same face, facial features, face shape, age, skin tone, eye color, hair (color, length, hairline) and any facial hair or glasses. Do not beautify, slim, de-age, or change their weight or ethnicity.",
+    `The scene: the person is ${scene}.`,
+    "Dress them in polished business attire that suits the scene. Any other people are clearly different people, and are secondary to the main subject.",
+    "It should look like a high-end editorial or corporate photo shoot: natural light, true-to-life color, shallow depth of field, a real moment rather than a posed headshot. The person's face is clearly visible and in focus.",
+    "Any screens, charts, papers, whiteboards or signs show no readable words, numbers or logos.",
     "Do not add any text, letters, logos, watermarks or borders.",
   ].join("\n");
 }
