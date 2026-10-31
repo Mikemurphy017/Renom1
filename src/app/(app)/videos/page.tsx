@@ -1,5 +1,6 @@
 "use client";
 
+import { UploadFinishedButton } from "@/components/layout/upload-finished";
 import * as React from "react";
 import Link from "next/link";
 import { Bookmark, Check, CircleCheck, Clapperboard, Clock, Eye, Lightbulb, ListChecks, MoreHorizontal, Plus, Search, SearchX, Trash2, X } from "lucide-react";
@@ -99,7 +100,10 @@ export default function VideosPage() {
   return (
     <PageContainer className="max-w-[1200px] space-y-8 pt-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="font-serif text-[40px] leading-tight tracking-tight">Videos</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="font-serif text-[40px] leading-tight tracking-tight">Videos</h1>
+          <UploadFinishedButton className="h-9 rounded-full" />
+        </div>
         {videos.length > 0 && <div className="flex w-full items-center gap-2 sm:w-auto">
           <div className="relative flex-1 sm:w-60 sm:flex-none">
             <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />

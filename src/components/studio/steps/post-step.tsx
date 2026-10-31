@@ -219,7 +219,7 @@ export function PostStep({ video }: StepProps) {
             ))}
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3">
-            {copies.length > 0 && <RequestLine items={[`${platforms.length} ${platforms.length === 1 ? "platform" : "platforms"}`, "From your script", "Your voice profile", `Disclosure ${activeDisclosure(profile)?.version ?? "not set"} (auto)`]} source={busy ? null : "claude"} />}
+            {copies.length > 0 && <RequestLine items={[`${platforms.length} ${platforms.length === 1 ? "platform" : "platforms"}`, video.source === "upload" ? "From what you said in the video" : "From your script", "Your voice profile", `Disclosure ${activeDisclosure(profile)?.version ?? "not set"} (auto)`]} source={busy ? null : "claude"} />}
             <Button size="sm" variant="ghost" className="rounded-full" onClick={writeAll} disabled={busy}><RefreshCw className={cn(busy && "animate-spin")} /> Write four new versions</Button>
           </div>
 

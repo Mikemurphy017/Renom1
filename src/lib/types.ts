@@ -61,6 +61,8 @@ export interface Video {
   angle?: string;
   thumbnail?: ThumbnailSpec;
   script?: Script;
+  /** "upload": a finished video the advisor brought in, skipping Idea and Script; its words come from the transcript. */
+  source?: "upload";
   runtimeSec: number;
   platforms: PlatformId[];
   scheduledFor?: string;

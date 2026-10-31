@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { HOUSE_VOICE, advisorBlock } from "./voice";
 import { getWriter } from "./writers";
-import { CaptionsSchema, CoversSchema, IdeasSchema, PostSchema, ScriptSchema } from "./schemas";
+import { CaptionsSchema, CoversSchema, IdeasSchema, PostSchema, ScriptSchema, TranscriptSchema } from "./schemas";
 import type { WriteRequest, WriteResult } from "./write-types";
 import { originalIdeas, repeatsOpening } from "./originality";
 import { ANGLES } from "./angles";
@@ -92,6 +92,17 @@ Where a link belongs, use the placeholder {{BOOKING_LINK}}. Don't add disclosure
 Also write three taglines for the video: standalone one-liners (at most 12 words) the advisor can use as a post's opening line, a pinned comment, on-screen text or a headline. Each takes a different angle, all in your voice.${revise(req.current, req.instruction)}`;
     }
 
+    case "transcript":
+      return `This is the transcript of a ${req.format === "short" ? "short-form vertical" : "long-form horizontal"} video the advisor recorded on their own (no script from us). Captions, covers and social posts will be written from it, so organise it:
+- A title for the video, written as a hook in their voice. It must say what the video is actually about.
+- The subject in a few words, the category, and three or four beats it covers.
+- What they said, split into the opening (hook), the body as paragraphs in order, and the close (cta). Use their own words: don't rewrite, add or reorder anything. You may drop filler words (um, uh, you know) and obvious false starts or repeated takes.
+
+Transcript:
+"""
+${req.transcript.slice(0, 40000)}
+"""`;
+
     case "post": {
       const guide: Record<string, string> = {
         linkedin: "LinkedIn: 120 to 220 words in short paragraphs (one to three sentences each, blank line between). The first line must earn the \"see more\" click on its own. Up to 5 hashtags.",
@@ -133,7 +144,7 @@ function descBudget(id: string, limit: number) {
   return id === "x" ? 200 : Math.min(limit, 3000) - 650;
 }
 
-const SCHEMAS = { ideas: IdeasSchema, script: ScriptSchema, captions: CaptionsSchema, covers: CoversSchema, post: PostSchema } as const;
+const SCHEMAS = { ideas: IdeasSchema, script: ScriptSchema, captions: CaptionsSchema, covers: CoversSchema, post: PostSchema, transcript: TranscriptSchema } as const;
 
 /** Ideas that repeat nothing the advisor has or was offered: repeats are dropped and Claude is asked again (twice at most). */
 async function writeIdeas(req: Extract<WriteRequest, { task: "ideas" }>) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { UploadFinishedButton } from "@/components/layout/upload-finished";
 import * as React from "react";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Monitor, Smartphone, Sparkles } from "lucide-react";
@@ -85,6 +86,10 @@ export default function HomePage() {
               </Button>
             </div>
           </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
+          Already made a video? Skip the script and go straight to editing:
+          <UploadFinishedButton variant="ghost" className="h-8 rounded-full px-3 text-[13px] text-primary hover:text-primary" label="Upload it" />
         </div>
       </section>
 

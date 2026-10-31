@@ -66,8 +66,20 @@ export const PostSchema = z.object({
   note: z.string().describe("One short sentence to the advisor"),
 });
 
+/** A finished video's transcript, organised so captions, covers and posts can be written from it. */
+export const TranscriptSchema = z.object({
+  title: z.string().describe("The video title, written as a hook in the advisor's voice"),
+  subject: z.string().describe('The subject in one to four words, e.g. "Roth conversions"'),
+  category: z.enum(CATEGORY_VALUES),
+  outline: z.array(z.string()).describe("Three or four beats the video covers, one line each"),
+  hook: z.string().describe("The opening, in the speaker's own words"),
+  body: z.array(z.string()).describe("The rest of what they said, in their own words, as paragraphs in order"),
+  cta: z.string().describe("The close, in their own words (empty if there isn't one)"),
+});
+
 export type IdeasOutput = z.infer<typeof IdeasSchema>;
 export type ScriptOutput = z.infer<typeof ScriptSchema>;
 export type CaptionsOutput = z.infer<typeof CaptionsSchema>;
 export type CoversOutput = z.infer<typeof CoversSchema>;
 export type PostOutput = z.infer<typeof PostSchema>;
+export type TranscriptOutput = z.infer<typeof TranscriptSchema>;

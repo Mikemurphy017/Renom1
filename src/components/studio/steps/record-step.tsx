@@ -19,6 +19,7 @@ import type { Script, Video } from "@/lib/types";
 import { cn, fmtDuration } from "@/lib/utils";
 import { nearestQuality, QUALITY_OPTIONS, recordSize, useCapture, videoBitrate, type CaptureQuality, type QualityId } from "@/lib/media/use-capture";
 import { getTake, saveTake, takeExtension } from "@/lib/media/takes";
+import { readVideoMeta, videoType } from "@/lib/media/video-file";
 import { peekDraft } from "@/lib/drafts";
 import { analyzeTake, persistTake, resetPipeline } from "@/lib/video/client";
 import { defaultOverlays } from "@/lib/video/edit-model";
@@ -49,33 +50,6 @@ function MicMeter({ level, live, clippedAt }: { level: number; live: boolean; cl
       )}
     </div>
   );
-}
-/** A video file's type, from the browser or its name (some systems leave MOV files untyped). */
-function videoType(f: File) {
-  const t = f.type.split(";")[0].trim().toLowerCase();
-  if (t) return t === "video/x-m4v" ? "video/mp4" : t;
-  const ext = f.name.toLowerCase().split(".").pop();
-  return ext === "mov" ? "video/quicktime" : ext === "webm" ? "video/webm" : ext === "mp4" || ext === "m4v" ? "video/mp4" : "";
-}
-
-/** Length and size of a video file, when this browser can read it (some MOV files it can't; the edit still can). */
-function readVideoMeta(f: File): Promise<{ durationSec: number; width: number; height: number } | null> {
-  return new Promise((resolve) => {
-    const v = document.createElement("video");
-    const url = URL.createObjectURL(f);
-    const done = (r: { durationSec: number; width: number; height: number } | null) => {
-      clearTimeout(t);
-      URL.revokeObjectURL(url);
-      v.removeAttribute("src");
-      resolve(r);
-    };
-    const t = setTimeout(() => done(null), 10_000);
-    v.preload = "metadata";
-    v.muted = true;
-    v.onloadedmetadata = () => done(v.videoWidth ? { durationSec: Number.isFinite(v.duration) ? Math.round(v.duration) : 0, width: v.videoWidth, height: v.videoHeight } : null);
-    v.onerror = () => done(null);
-    v.src = url;
-  });
 }
 
 export function RecordStep({ video, complete }: StepProps) {

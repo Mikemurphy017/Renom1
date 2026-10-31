@@ -1,5 +1,6 @@
 "use client";
 
+import { UploadFinishedButton } from "@/components/layout/upload-finished";
 import * as React from "react";
 import { ArrowRight, Monitor, Smartphone } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -53,6 +54,10 @@ export function NewVideoDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           </Button>
         </div>
         <div className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-4 text-[13px] text-muted-foreground">
+          Already made a video?
+          <UploadFinishedButton variant="ghost" className="h-7 rounded-full px-2 text-[13px] font-medium text-primary hover:text-primary" label="Upload it for editing" onPicked={() => onOpenChange(false)} />
+        </div>
+        <div className="-mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
           Not filming today?
           <button type="button" className="cursor-pointer font-medium text-primary underline-offset-2 hover:underline" onClick={() => { onOpenChange(false); startPost("text", topic); setTopic(""); }}>Write a text post</button>
           <button type="button" className="cursor-pointer font-medium text-primary underline-offset-2 hover:underline" onClick={() => { onOpenChange(false); startPost("image", topic); setTopic(""); }}>Text + image post</button>

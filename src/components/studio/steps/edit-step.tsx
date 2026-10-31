@@ -14,7 +14,8 @@ import { EmptyState } from "@/components/shared/page";
 import { peekDraft, useDraft } from "@/lib/drafts";
 import { getTake, subscribeTakes } from "@/lib/media/takes";
 import { generateScript } from "@/lib/ai/content";
-import { useStore } from "@/lib/store";
+import { useStore, voiceProfileOf } from "@/lib/store";
+import { scriptFromTranscript } from "@/lib/video/from-transcript";
 import { BRAND } from "@/lib/brand";
 import type { Video } from "@/lib/types";
 import { cn, fmtDuration } from "@/lib/utils";
@@ -27,6 +28,8 @@ import { DEFAULT_CTA, bookingCta, bookingOn, isBookingCta } from "@/lib/booking"
 import { getStyle, normalizeOverlays } from "@/lib/video/styles";
 
 const scriptLines = (v: Video) => {
+  // A video brought in finished has no script: its words come from the voice alone.
+  if (!v.script && v.source === "upload") return undefined;
   const s = v.script ?? generateScript(v.title, v.format);
   return [s.hook, ...s.body, s.cta];
 };
@@ -62,6 +65,17 @@ export function EditStep(props: StepProps) {
   React.useEffect(() => {
     if (doneJob && doneJob !== video.analysisJobId) updateVideo(video.id, { analysisJobId: doneJob });
   }, [doneJob, video.id, video.analysisJobId, updateVideo]);
+  // A finished video brought in without a script: its transcript becomes the title, outline and script.
+  const reading = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const r = analysis?.phase === "done" ? analysis.result : undefined;
+    if (!r || video.source !== "upload" || video.script || reading.current === r.jobId || r.transcript.length < 3) return;
+    reading.current = r.jobId;
+    void scriptFromTranscript(r, voiceProfileOf(profile), video.format).then((patch) => {
+      updateVideo(video.id, patch);
+      toast.success("Got the words from your video", { description: `“${patch.title}”. Captions and posts will be written from what you said.` });
+    });
+  }, [analysis, video.source, video.script, video.id, video.format, profile, updateVideo]);
   if (!take) {
     return (
       <div className="py-16">
