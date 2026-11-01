@@ -213,7 +213,11 @@ export const FONT_FACES: { family: string; file: string; weight: number; italic?
 
 export function extrasFor(style: StyleId, prev?: Partial<StyleExtras>): StyleExtras {
   const d = getStyle(style).defaults;
-  return { motion: d.motion, keywordCards: d.keywordCards, broll: d.broll, sfx: d.sfx, music: d.music, musicVolume: 0.5, brollMedia: prev?.brollMedia ?? [] };
+  const s = getStyle(style);
+  // Graphics come with every style but the plainest; the bold ones get more of them.
+  const graphics = style !== "minimal";
+  const graphicsAmount = s.category === "Bold" ? "rich" : "light";
+  return { motion: d.motion, keywordCards: d.keywordCards, broll: d.broll, sfx: d.sfx, music: d.music, musicVolume: 0.5, brollMedia: prev?.brollMedia ?? [], graphics, graphicsAmount, graphicKinds: prev?.graphicKinds };
 }
 
 /** Bring any saved look (including ones from before styles) up to date. */

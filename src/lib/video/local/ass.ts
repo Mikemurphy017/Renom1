@@ -1,5 +1,6 @@
 import type { OverlayOptions } from "../types";
 import { applyCase, captionCase, captionHighlight, captionY, inkFor } from "../caption-look";
+import { FULL_SCREEN, graphicStyles, graphicsEvents, type Graphic } from "./graphics";
 import { getStyle, type StyleDef } from "../styles";
 
 /**
@@ -30,14 +31,14 @@ export const assColor = (hex: string, alpha = 0) => {
   const h = /^#?([0-9a-f]{6})$/i.exec(hex)?.[1] ?? "FFFFFF";
   return `&H${alpha.toString(16).padStart(2, "0")}${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}&`.toUpperCase();
 };
-const ts = (s: number) => {
+export const ts = (s: number) => {
   const cs = Math.max(0, Math.round(s * 100));
   const h = Math.floor(cs / 360000);
   const m = Math.floor((cs % 360000) / 6000);
   const sec = Math.floor((cs % 6000) / 100);
   return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}.${String(cs % 100).padStart(2, "0")}`;
 };
-const esc = (s: string) => s.replace(/\\/g, "＼").replace(/[{}]/g, "").replace(/\n/g, " ");
+export const esc = (s: string) => s.replace(/\\/g, "＼").replace(/[{}]/g, "").replace(/\n/g, " ");
 export const normWord = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{N}$%]/gu, "");
 
 interface Look {
@@ -49,7 +50,7 @@ interface Look {
   accent: string;
 }
 
-export function buildAss(o: { W: number; H: number; outDur: number; words: TimedWord[]; keyWords: Set<string>; beats: Beat[]; overlays: OverlayOptions }) {
+export function buildAss(o: { W: number; H: number; outDur: number; words: TimedWord[]; keyWords: Set<string>; beats: Beat[]; graphics?: Graphic[]; overlays: OverlayOptions }) {
   const { W, H, overlays: ov } = o;
   const vertical = H > W;
   const st = getStyle(ov.captions.style);
@@ -81,6 +82,7 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
     `Style: Big,Anton,${l.base * 2},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,6,0,5,40,40,0,1`,
     `Style: Chip,Montserrat ExtraBold,${Math.round(l.base * 0.55)},${assColor(NAVY)},${assColor(NAVY)},${assColor(accent)},${assColor(accent)},0,0,0,0,100,100,0,0,3,14,0,8,60,60,${Math.round(H * 0.09)},1`,
     `Style: Box,Montserrat ExtraBold,10,${assColor(NAVY)},${assColor(NAVY)},${assColor(NAVY)},${assColor(NAVY)},0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1`,
+    ...graphicStyles(),
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -90,6 +92,8 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
   const ec = ov.endCard;
   const endCardAt = ec.enabled && o.outDur >= 6 && (ec.headline.trim() || ec.cta.trim()) ? o.outDur - 3 : Infinity;
   const cap = ov.captions;
+
+  const fullWindows = (o.graphics ?? []).filter((g) => FULL_SCREEN.includes(g.kind)).map((g) => ({ a: g.at, b: g.at + g.dur }));
 
   // ── captions ──
   // Up to 3 words on screen (5 on horizontal), the spoken word lit and slightly
@@ -130,7 +134,9 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
             return o.keyWords.has(normWord(x.text)) ? `{\\c${hl}}${t}{\\r}` : t;
           })
           .join(" ");
-        ev(1, a, b, "Cap", `{${capPos}}${text}`);
+        // Under a full-screen graphic the card carries the point; captions pick up again after it.
+        const covered = fullWindows.find((w) => a >= w.a - 0.05 && a < w.b);
+        if (!covered) ev(1, a, Math.min(b, fullWindows.find((w) => w.a > a)?.a ?? b), "Cap", `{${capPos}}${text}`);
       });
     });
   }
@@ -177,5 +183,7 @@ export function buildAss(o: { W: number; H: number; outDur: number; words: Timed
     ev(5, endCardAt, o.outDur, "Box", `{\\fad(300,0)\\pos(0,0)\\1a&H1A&\\p1}m 0 0 l ${W} 0 ${W} ${H} 0 ${H}{\\p0}`);
     ev(6, endCardAt, o.outDur, "Card", `{\\fad(300,0)}${esc(ec.headline.trim())}${ec.cta.trim() ? `\\N{\\fnMontserrat SemiBold\\fs${vertical ? 44 : 40}\\c${assColor(accent)}}${esc(ec.cta.trim())}` : ""}`);
   }
+  // ── motion graphics ──
+  if (o.graphics?.length) lines.push(...graphicsEvents(o.graphics, { W, H, vertical, accent: /^#?f{6}$/i.test(accent) ? "#3CF2B4" : accent }));
   return lines.join("\n") + "\n";
 }

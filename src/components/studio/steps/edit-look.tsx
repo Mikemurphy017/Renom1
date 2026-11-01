@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { CalendarDays, Check, Film, Music2, Pause, Play, Sparkles, Volume2, Wand2, ZoomIn } from "lucide-react";
+import { ChartColumnBig, CalendarDays, Check, Film, Music2, Pause, Play, Sparkles, Volume2, Wand2, ZoomIn } from "lucide-react";
+import { GRAPHIC_KINDS, GRAPHIC_LABELS, type GraphicKind } from "@/lib/video/graphic-kinds";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -149,6 +150,8 @@ export function LookPanel({
           disabled={!brollItems.length && !stockFootage}
           onChange={(v) => setExtras({ broll: v, brollMedia: brollItems.map((x) => x.id) })}
         />
+        <Row icon={ChartColumnBig} label="Motion graphics" hint="Charts, checklists, timelines, color cutaways and more, built from what you say" checked={!!ex.graphics} onChange={(v) => setExtras({ graphics: v })} />
+        {ex.graphics && <GraphicsPicker value={ex} onChange={setExtras} />}
         <Row icon={Wand2} label="Sound effects" hint="A soft whoosh or pop on each moment" checked={ex.sfx} onChange={(v) => setExtras({ sfx: v })} />
         <MusicPicker value={ex} onChange={setExtras} tracks={tracks} />
         <Link href="/settings#library" className="block text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">Add your own b-roll and music</Link>
@@ -215,6 +218,41 @@ function MusicPicker({ value, onChange, tracks }: { value: StyleExtras; onChange
         </div>
       )}
       <p className="text-[11px] text-muted-foreground">Music dips automatically while you talk.</p>
+    </div>
+  );
+}
+
+/** How many graphics, and which kinds. */
+function GraphicsPicker({ value, onChange }: { value: StyleExtras; onChange: (patch: Partial<StyleExtras>) => void }) {
+  const on = value.graphicKinds?.length ? value.graphicKinds : [...GRAPHIC_KINDS];
+  const toggle = (k: GraphicKind) => {
+    const next = on.includes(k) ? on.filter((x) => x !== k) : [...on, k];
+    if (next.length) onChange({ graphicKinds: next.length === GRAPHIC_KINDS.length ? undefined : next });
+  };
+  return (
+    <div className="ml-5.5 space-y-2.5 rounded-xl bg-muted/50 p-3">
+      <div className="flex items-center gap-2">
+        <span className="text-[12px] text-muted-foreground">How many</span>
+        <ToggleGroup type="single" value={value.graphicsAmount ?? "light"} onValueChange={(v) => v && onChange({ graphicsAmount: v as "light" | "rich" })} className="ml-auto">
+          <ToggleGroupItem value="light" className="text-[12px]">A few</ToggleGroupItem>
+          <ToggleGroupItem value="rich" className="text-[12px]">Lots</ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {GRAPHIC_KINDS.map((k) => (
+          <button
+            key={k}
+            type="button"
+            title={GRAPHIC_LABELS[k].hint}
+            onClick={() => toggle(k)}
+            aria-pressed={on.includes(k)}
+            className={cn("cursor-pointer rounded-full border px-2.5 py-0.5 text-[11px] transition-colors", on.includes(k) ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:text-foreground")}
+          >
+            {GRAPHIC_LABELS[k].label}
+          </button>
+        ))}
+      </div>
+      <p className="text-[11px] leading-snug text-muted-foreground">Planned from what you say when you finish the edit; every figure on screen is one you said.</p>
     </div>
   );
 }

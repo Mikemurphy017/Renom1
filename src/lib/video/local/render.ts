@@ -3,6 +3,8 @@ import path from "node:path";
 import { runFfmpeg } from "./ffmpeg";
 import { buildAss, normWord, type Beat, type TimedWord } from "./ass";
 import { pickBeats } from "./beats";
+import { pickGraphics } from "./graphics-pick";
+import { GRAPHIC_KINDS, type Graphic } from "./graphics";
 import { footageFor } from "./broll";
 import { musicBed, sfx, type SfxKind } from "./audio-beds";
 import { objects } from "@/lib/storage/objects";
@@ -148,9 +150,17 @@ export async function renderVideo(r: RenderInput): Promise<{ durationSec: number
   r.onProgress?.(0.02);
   const endCardAt = ov.endCard.enabled && outDur >= 6 ? outDur - 3 : outDur;
   // Moments never run into the end card.
-  const beats: Beat[] = (wantsBeats ? await pickBeats(words, outDur, ex.broll) : [])
+  const [rawBeats, graphics] = await Promise.all([
+    wantsBeats ? pickBeats(words, outDur, ex.broll) : Promise.resolve([] as Beat[]),
+    ex.graphics ? pickGraphics(words, outDur, { kinds: ex.graphicKinds?.length ? ex.graphicKinds : [...GRAPHIC_KINDS], amount: ex.graphicsAmount ?? "light", endAt: endCardAt }) : Promise.resolve([] as Graphic[]),
+  ]);
+  // Moments make way for the graphics: no zoom, card or cutaway while one is up.
+  const underGraphic = (a: number, b: number) => graphics.some((g) => a < g.at + g.dur + 0.3 && b > g.at - 0.3);
+  const beats: Beat[] = rawBeats
     .filter((b) => endCardAt - b.at >= 0.8)
-    .map((b) => ({ ...b, dur: Math.min(b.dur, endCardAt - b.at) }));
+    .map((b) => ({ ...b, dur: Math.min(b.dur, endCardAt - b.at) }))
+    .filter((b) => !underGraphic(b.at, b.at + b.dur));
+  if (graphics.length) console.info(`[video] ${graphics.length} graphics`, graphics.map((g) => `${g.at.toFixed(1)}s ${g.kind}${g.title ? ` "${g.title}"` : ""}`).join(" · "));
   console.info(`[video] ${st.name}: ${beats.length} moments`, beats.map((b) => `${b.at.toFixed(1)}s ${b.keyword}${b.broll ? ` (b-roll: ${b.query})` : ""}`).join(" · "));
   const keyWords = new Set<string>([...(ov.keyPhrases ? r.keyPhrases : []), ...beats.map((b) => b.keyword)].flatMap((k) => k.split(/\s+/).map(normWord)).filter(Boolean));
   const clips = ex.broll ? await footageFor(beats, ex.brollMedia, r.aspect, r.workDir) : new Map();
@@ -159,7 +169,7 @@ export async function renderVideo(r: RenderInput): Promise<{ durationSec: number
   // Overlays are laid out on the 1080p frame; libass scales them (fonts, borders,
   // positions) to the real frame, so a 4K render looks the same, only sharper.
   const [LW, LH] = OUTPUT_SIZE[r.aspect];
-  await fs.writeFile(assFile, buildAss({ W: LW, H: LH, outDur, words, keyWords, beats, overlays: ov }));
+  await fs.writeFile(assFile, buildAss({ W: LW, H: LH, outDur, words, keyWords, beats, graphics, overlays: ov }));
 
   // The sound is mixed in its own (quick, audio-only) pass first. In one graph
   // with the picture, ffmpeg would hold ~3 s of decoded frames while loudnorm
@@ -181,6 +191,14 @@ export async function renderVideo(r: RenderInput): Promise<{ durationSec: number
       if (!file) continue;
       aArgs.push("-i", file);
       sfxEvents.push({ at: Math.max(0, b.at - (kind === "whoosh" ? 0.18 : 0.02)), kind, input: nextA++ });
+    }
+    // A whoosh as each graphic comes in, a pop for the small ones.
+    for (const g of graphics.slice(0, 10)) {
+      const kind: SfxKind = g.kind === "callout" || g.kind === "stat" ? "pop" : "whoosh";
+      const file = await sfx(kind).catch(() => null);
+      if (!file) continue;
+      aArgs.push("-i", file);
+      sfxEvents.push({ at: Math.max(0, g.at - (kind === "whoosh" ? 0.12 : 0)), kind, input: nextA++ });
     }
   }
 

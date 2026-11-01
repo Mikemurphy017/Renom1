@@ -1,5 +1,6 @@
 import type { CaptionPosition, ProcessRequest, StyleExtras } from "./types";
 import { LEGACY_STYLE, STYLE_IDS, normalizeOverlays } from "./styles";
+import { GRAPHIC_KINDS } from "./graphic-kinds";
 
 /** Server-side checks for POST /api/video/process. Returns the request or an error string. */
 const STYLES: string[] = [...STYLE_IDS, ...Object.keys(LEGACY_STYLE)];
@@ -39,6 +40,8 @@ export function validateProcessRequest(body: unknown): ProcessRequest | string {
     if (x !== undefined) {
       if (![x.motion, x.keywordCards, x.broll, x.sfx].every(isBool) || typeof x.music !== "string" || !MUSIC.test(x.music) || !isNum(x.musicVolume) || x.musicVolume < 0 || x.musicVolume > 1)
         errors.push("style extras are invalid");
+      if ((x.graphics !== undefined && !isBool(x.graphics)) || (x.graphicsAmount !== undefined && x.graphicsAmount !== "light" && x.graphicsAmount !== "rich") || (x.graphicKinds !== undefined && (!Array.isArray(x.graphicKinds) || !x.graphicKinds.every((k) => (GRAPHIC_KINDS as readonly string[]).includes(k)))))
+        errors.push("graphics options are invalid");
       if (!Array.isArray(x.brollMedia) || x.brollMedia.length > 50 || !x.brollMedia.every((id) => typeof id === "string" && /^img[a-f0-9]{18}$/.test(id))) errors.push("b-roll media are invalid");
     }
   }

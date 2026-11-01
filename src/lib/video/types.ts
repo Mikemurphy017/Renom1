@@ -6,6 +6,7 @@
 export type ProcessorId = "local" | "mock" | "mirage";
 
 import type { MusicMood, StyleId } from "./styles";
+import type { GraphicKind } from "./graphic-kinds";
 
 /** The edit style (see styles.ts). Older saves used "classic" | "bold" | "minimal". */
 export type CaptionStyle = StyleId;
@@ -51,6 +52,12 @@ export interface StyleExtras {
   musicVolume: number;
   /** Library media ids the advisor allowed as b-roll for this video. */
   brollMedia: string[];
+  /** Motion graphics (charts, checklists, timelines, section and quote cards, count-ups, icons), planned from what's said. */
+  graphics?: boolean;
+  /** How many: a few, or one every several seconds. */
+  graphicsAmount?: "light" | "rich";
+  /** Which kinds may be used (unset: all). */
+  graphicKinds?: GraphicKind[];
 }
 
 /** What the AI edit is allowed to remove, plus audio cleanup. */
