@@ -1,8 +1,11 @@
 /**
- * The AI photo set: the advisor in a range of expressions, outfits and
- * settings, made from their headshots, for covers. Each look is one image.
+ * The AI photo set: the advisor in the kinds of photos a financial advisor
+ * actually uses for content (professional headshots, at work with clients,
+ * measured on-camera expressions, a little lifestyle), made from their
+ * headshots, for covers and posts. Each look is one image. Polished and
+ * credible throughout: expressive where it helps a cover, never goofy.
  */
-export type CloneGroup = "Reactions" | "Gestures & props" | "Professional" | "Lifestyle";
+export type CloneGroup = "Headshots" | "At work" | "Expressions" | "Lifestyle";
 
 export interface CloneLook {
   id: string;
@@ -11,38 +14,38 @@ export interface CloneLook {
   brief: string;
 }
 
-export const CLONE_GROUPS: CloneGroup[] = ["Reactions", "Gestures & props", "Professional", "Lifestyle"];
+export const CLONE_GROUPS: CloneGroup[] = ["Headshots", "At work", "Expressions", "Lifestyle"];
 
 export const CLONE_LOOKS: CloneLook[] = [
-  // ── Reactions: big, readable faces for creator-style covers ──
-  { id: "shocked", label: "Shocked", group: "Reactions", brief: "genuinely shocked, eyes wide and mouth open, one hand raised to the cheek, a big readable reaction for a YouTube thumbnail; navy suit and white shirt, no tie; a bright modern office, softly blurred" },
-  { id: "excited", label: "Excited", group: "Reactions", brief: "excited and delighted, a huge open smile, eyebrows up, leaning slightly toward the camera; light blue button-down shirt; a home office with bookshelves, softly blurred" },
-  { id: "worried", label: "Worried", group: "Reactions", brief: "worried and concerned, brows pulled together, grimacing slightly, as if warning the viewer about a costly mistake; charcoal suit and tie; a calm conference room, softly blurred" },
-  { id: "skeptical", label: "Skeptical", group: "Reactions", brief: "skeptical, one eyebrow raised high, lips pressed, a 'really?' look straight into the camera; dark suit and open-collar shirt; a plain dark charcoal backdrop with a soft rim light" },
-  { id: "facepalm", label: "Facepalm", group: "Reactions", brief: "a playful facepalm, one hand on the forehead, eyes still visible and looking at the camera, an 'oh no' expression; a navy quarter-zip sweater over a collared shirt; outdoors with golden-hour light and blurred greenery" },
-  { id: "mind-blown", label: "Mind blown", group: "Reactions", brief: "a 'mind blown' reaction, both hands near the temples spreading outward, mouth open in amazement, eyes on the camera; a charcoal crewneck sweater; a plain, softly lit studio backdrop in deep blue" },
+  // ── Headshots: the core of the set, like a professional photo shoot ──
+  { id: "studio-classic", label: "Classic studio", group: "Headshots", brief: "a classic professional headshot, a warm, confident closed-mouth smile, shoulders angled slightly; a tailored navy suit, white shirt and a subtle tie; a seamless medium-gray studio backdrop with soft, even lighting" },
+  { id: "office-smile", label: "Office, smiling", group: "Headshots", brief: "a friendly, approachable professional headshot with a natural open smile; a charcoal suit and light blue shirt, no tie; a bright modern office with glass and wood, softly blurred" },
+  { id: "confident", label: "Arms crossed", group: "Headshots", brief: "a confident executive portrait, arms loosely crossed, a calm, assured smile; a navy suit over a crisp white open-collar shirt; a modern office corridor with soft window light, softly blurred" },
+  { id: "window-light", label: "Window light", group: "Headshots", brief: "an editorial portrait by a large window, soft natural side light, a thoughtful, warm expression; a gray blazer over a fine-knit sweater; a light, airy office, softly blurred" },
+  { id: "dark-backdrop", label: "Dark backdrop", group: "Headshots", brief: "a premium portrait on a deep navy backdrop with a soft rim light, a composed, trustworthy half-smile; a charcoal suit and white shirt" },
+  { id: "seated", label: "Seated", group: "Headshots", brief: "seated, leaning forward slightly with forearms on the knees, hands loosely together, a warm, engaged smile; a navy blazer and open-collar shirt; a tasteful office lounge, softly blurred" },
+  { id: "outdoor-business", label: "Outdoors", group: "Headshots", brief: "an outdoor business portrait, a relaxed, confident smile; a tailored suit, no tie; modern office buildings and greenery behind, softly blurred in daylight" },
+  { id: "skyline", label: "City skyline", group: "Headshots", brief: "standing with an assured, calm smile, hands in pockets; a tailored navy suit, no tie; floor-to-ceiling windows behind with a city skyline at dusk, softly blurred" },
 
-  // ── Gestures & props: point at the words, hold up the idea ──
-  { id: "pointing", label: "Pointing", group: "Gestures & props", brief: "confident and energetic, pointing to the side of the frame with one arm extended (towards empty space where words will go), an engaged smile; crisp white shirt, sleeves rolled; a plain, softly lit studio backdrop" },
-  { id: "pointing-up", label: "Pointing up", group: "Gestures & props", brief: "pointing straight up above their head with one finger, an 'look at this' expression with raised eyebrows, mouth slightly open; navy blazer over a white T-shirt; a plain light gray studio backdrop" },
-  { id: "thumbs-up", label: "Thumbs up", group: "Gestures & props", brief: "a big genuine smile and a thumbs up toward the camera; light gray suit, open collar; a bright modern office with plants, softly blurred" },
-  { id: "stop-hand", label: "Stop sign", group: "Gestures & props", brief: "holding one palm out toward the camera like a 'stop, don't do this' sign, a serious warning expression; navy suit and tie; a plain dark backdrop with soft rim light" },
-  { id: "tablet-chart", label: "With a chart", group: "Gestures & props", brief: "holding up a tablet facing the camera that shows a simple clean rising line chart (no readable numbers or words), looking at the camera with an impressed smile; a light blue shirt and navy vest; a home office, softly blurred" },
-  { id: "calculator", label: "With a calculator", group: "Gestures & props", brief: "holding a calculator up beside their face, a concentrated, slightly surprised look as if they just ran the numbers; rolled-up sleeves on a white shirt; a desk with papers in a warm study, softly blurred" },
+  // ── At work: the advisor doing the job ──
+  { id: "client-meeting", label: "With clients", group: "At work", brief: "sitting across a table from a couple in their sixties (shown from behind and softly blurred at the edge of the frame), listening attentively with a reassuring smile, a folder of documents on the table; business attire; a warm, modern office" },
+  { id: "reviewing", label: "Reviewing a plan", group: "At work", brief: "at a desk reviewing printed financial documents with a pen in hand, looking up at the camera with a calm, focused expression; shirt and tie, sleeves neat; a tidy office with warm lighting" },
+  { id: "laptop", label: "At the laptop", group: "At work", brief: "at a desk with a laptop open, turned toward the camera mid-conversation, a friendly professional expression; a light blue shirt and navy blazer; a bright home office with a bookshelf, softly blurred" },
+  { id: "boardroom", label: "Boardroom", group: "At work", brief: "composed and trustworthy, a calm closed-mouth smile, hands resting together on a conference table; a charcoal suit and tie; a modern boardroom with large windows, softly blurred" },
+  { id: "whiteboard", label: "Explaining", group: "At work", brief: "standing beside a whiteboard with a simple hand-drawn upward line and a few boxes (no readable words), holding a marker, turned toward the camera explaining with a friendly, confident expression; white shirt, sleeves rolled; a bright meeting room" },
+  { id: "podium", label: "Speaking", group: "At work", brief: "speaking at a small professional seminar, one hand gesturing naturally, an engaged, confident expression; a dark suit; soft stage lighting and a blurred audience behind" },
 
-  // ── Professional: credible and calm, for more formal topics ──
-  { id: "confident", label: "Confident", group: "Professional", brief: "confident and warm, arms crossed, a knowing half-smile straight into the camera; a casual sweater; a light, clean kitchen at home with morning light, softly blurred" },
-  { id: "thinking", label: "Thinking", group: "Professional", brief: "thinking hard, hand at the chin, eyes looking up and to the side, slightly squinting; a textured blazer with an open-collar shirt; a cozy study with a brass desk lamp, softly blurred" },
-  { id: "boardroom", label: "Boardroom", group: "Professional", brief: "composed and trustworthy, a calm closed-mouth smile, hands resting together on a conference table; charcoal suit and tie; a modern boardroom with large windows, softly blurred" },
-  { id: "skyline", label: "City skyline", group: "Professional", brief: "standing with a relaxed, assured smile, hands in pockets; a tailored navy suit, no tie; floor-to-ceiling windows behind them with a city skyline at dusk, softly blurred" },
-  { id: "whiteboard", label: "Whiteboard", group: "Professional", brief: "turned toward the camera beside a whiteboard with a simple hand-drawn upward arrow and a few boxes (no readable words), holding a marker, explaining with a friendly expression; white shirt, sleeves rolled; a bright office" },
-  { id: "podium", label: "On stage", group: "Professional", brief: "speaking on a stage at a small conference, one hand gesturing, an engaged confident expression; dark suit; stage lights and a blurred audience behind" },
+  // ── Expressions: readable on a cover, still professional ──
+  { id: "thinking", label: "Thoughtful", group: "Expressions", brief: "thoughtful, one hand lightly at the chin, eyes toward the camera with a considered expression, as if weighing a decision; a textured blazer and open-collar shirt; a study with bookshelves, softly blurred" },
+  { id: "concerned", label: "Concerned", group: "Expressions", brief: "a serious, concerned expression, brows slightly drawn, looking straight at the camera as if flagging a costly mistake, measured and credible; a charcoal suit and tie; a calm office, softly blurred" },
+  { id: "explaining", label: "Explaining", group: "Expressions", brief: "mid-explanation with both hands open in front of the chest, an engaged, friendly expression, eyebrows slightly raised; a navy suit, no tie; a plain, softly lit light-gray backdrop" },
+  { id: "pointing", label: "Pointing aside", group: "Expressions", brief: "gesturing with an open hand toward the side of the frame (toward empty space where words will go), a confident, inviting smile; a white shirt and navy vest; a plain, softly lit studio backdrop" },
+  { id: "reassuring", label: "Reassuring", group: "Expressions", brief: "a warm, reassuring smile with a slight nod, as if saying 'you're going to be fine'; a soft gray suit and light shirt; a bright office with plants, softly blurred" },
+  { id: "eyebrow", label: "Here's the thing", group: "Expressions", brief: "a knowing look with one eyebrow subtly raised and a slight smile, as if about to share an insight, poised and professional; a dark suit and open collar; a plain dark charcoal backdrop with a soft rim light" },
 
-  // ── Lifestyle: approachable and human ──
-  { id: "coffee", label: "Coffee shop", group: "Lifestyle", brief: "relaxed and friendly, laughing lightly, holding a coffee cup; a casual button-down shirt; a bright coffee shop with warm light, softly blurred" },
-  { id: "laughing", label: "Laughing", group: "Lifestyle", brief: "laughing genuinely, head tilted back slightly, eyes still toward the camera; a casual quarter-zip; a sunny living room with a sofa, softly blurred" },
-  { id: "golf", label: "Golf course", group: "Lifestyle", brief: "smiling in golf attire (polo shirt), holding a golf club over the shoulder; a green golf course on a sunny day, softly blurred" },
-  { id: "marina", label: "Marina", group: "Lifestyle", brief: "relaxed and happy, sunglasses pushed up on the head, a linen shirt; a marina with sailboats at golden hour, softly blurred" },
-  { id: "walking", label: "City walk", group: "Lifestyle", brief: "walking toward the camera on a city sidewalk with a warm smile, a light overcoat over a sweater; a downtown street, softly blurred with bokeh" },
-  { id: "family-kitchen", label: "At home", group: "Lifestyle", brief: "leaning on a kitchen island at home with a warm, approachable smile, a mug nearby; a casual sweater; a bright modern kitchen with morning light, softly blurred" },
+  // ── Lifestyle: approachable, still polished ──
+  { id: "walking", label: "City walk", group: "Lifestyle", brief: "walking toward the camera on a city sidewalk with a warm smile, a tailored overcoat over a suit; a downtown street, softly blurred with bokeh" },
+  { id: "coffee", label: "Coffee meeting", group: "Lifestyle", brief: "at a café table with a coffee cup, smiling warmly toward the camera as if meeting a client; a smart-casual blazer and shirt; a bright, upscale café, softly blurred" },
+  { id: "home-office", label: "Home office", group: "Lifestyle", brief: "leaning on the edge of a desk in a tasteful home office, a relaxed, approachable smile; a quarter-zip sweater over a collared shirt; bookshelves and warm morning light, softly blurred" },
+  { id: "golf", label: "Golf course", group: "Lifestyle", brief: "a relaxed, genuine smile in a polo shirt, standing on a golf course with a club resting at the side; a sunny day, softly blurred greens" },
 ];

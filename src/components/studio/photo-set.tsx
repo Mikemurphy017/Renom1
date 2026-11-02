@@ -22,7 +22,7 @@ export function useAiPhotosAvailable() {
 }
 
 const STYLES: { id: CoverPhotos; title: string; body: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: "ai", title: "AI photo set", body: "Gemini turns your headshots into a set of photos of you (smiling, surprised, concerned; different outfits and settings) and the covers are built from them.", icon: Sparkles },
+  { id: "ai", title: "AI photo set", body: "Gemini turns your headshots into a professional photo set of you (headshots, with clients, thoughtful, concerned, reassuring; different outfits and settings) and the covers are built from them.", icon: Sparkles },
   { id: "real", title: "Real photos only", body: "Frames from your video and the headshots you upload. No AI-made pictures of you.", icon: Camera },
   { id: "none", title: "No photo", body: "Your words, colors and graphics only. A clean, institutional look with no face on the cover.", icon: Type },
 ];
@@ -104,7 +104,7 @@ export function PhotoSetPanel({ onContinue, onSkip, compact }: { onContinue?: ()
           <div className="eyebrow">Before your covers</div>
           <h2 className="mt-1 font-serif text-2xl">Your AI photo set</h2>
           <p className="mt-1.5 max-w-2xl text-[14px] text-muted-foreground">
-            Gemini makes up to {PHOTO_LOOKS.length} new photos of you from your headshots: big reactions, gestures and props, professional settings and lifestyle shots, so every cover doesn’t use the same picture. Make the whole set or just the groups you want; every video uses it.
+            Gemini makes up to {PHOTO_LOOKS.length} new photos of you from your headshots, like a professional photo shoot: headshots, at work with clients, on-camera expressions and a few lifestyle shots, so every cover doesn’t use the same picture. Make the whole set or just the groups you want; every video uses it.
           </p>
         </div>
       )}
@@ -160,7 +160,12 @@ export function PhotoSetPanel({ onContinue, onSkip, compact }: { onContinue?: ()
 
       {older.length > 0 && (
         <section className="space-y-2.5">
-          <h3 className="text-[13px] font-semibold">Earlier photos</h3>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-[13px] font-semibold">Earlier photos <span className="font-normal text-muted-foreground">· from looks no longer in the set; covers still use them until you remove them</span></h3>
+            <Button size="sm" variant="ghost" className="h-7 shrink-0 rounded-full text-[12px]" onClick={() => older.forEach((p) => ps.remove(p.id))}>
+              <X className="size-3.5" /> Remove these {older.length}
+            </Button>
+          </div>
           <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-6">
             {older.map((p) => (
               <div key={p.id} className="group relative">

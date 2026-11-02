@@ -146,12 +146,14 @@ export function clonePrompt(look: CloneLook, count: number) {
   return [
     `Create a new photorealistic portrait photo of the person in the reference photo${count > 1 ? "s (all of the same person)" : ""}.`,
     "Keep their identity exactly: same face, facial features, face shape, age, skin tone, eye color, hair (color, length, hairline) and any facial hair or glasses. Do not beautify, slim, de-age, or change their weight or ethnicity.",
+    "This person is a financial advisor and the photo is for their professional content, so it must look polished, credible and trustworthy: the kind of image a wealth-management firm would put on its website or a magazine profile. Nothing silly, goofy, cartoonish or exaggerated.",
     `Expression, outfit and setting: ${look.brief}.`,
-    look.group === "Reactions" || look.group === "Gestures & props"
-      ? "The expression should be big and readable at phone size, like a creator's YouTube thumbnail, while still looking like a real photo of this person."
-      : "Keep it natural and credible: a real, polished photo of this person, the kind used on a professional profile or magazine feature.",
+    look.group === "Expressions"
+      ? "The expression should read clearly at phone size, but stay measured and natural: the way a composed professional looks on camera, never a caricature."
+      : "Keep it natural and credible: a real, polished photo of this person, as if from a professional photo shoot.",
+    "Well-fitted, conservative business attire unless the brief says otherwise; neat, natural grooming.",
     "Any props, charts, screens or whiteboards show no readable words or numbers.",
-    "Framing: chest-up, the person centered and facing the camera, the whole head in frame with clear space above the hair (at least 12% of the image height). Never crop the top of the head or the chin.",
+    "Framing: chest-up (waist-up when the scene needs it), the person the clear subject and facing the camera, the whole head in frame with clear space above the hair (at least 12% of the image height). Never crop the top of the head or the chin.",
     "Keep the background simple and softly out of focus so the person stands out; a headline will be placed beside or above them later.",
     "Professional photo-shoot look: soft key light on the face, natural color, crisp detail, shallow depth of field.",
     "Do not add any text, letters, logos, watermarks or borders.",
