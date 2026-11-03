@@ -52,7 +52,7 @@ export interface Account {
   /** Signed in with a temporary password the admin handed over. */
   tempPassword?: boolean;
   /** Plan status: whether one is needed and whether the studio is usable. */
-  billing?: { required: boolean; active: boolean; trialing: boolean; trialVideosUsed: number; trialVideos: number; tier?: "starter" | "pro" | null } | null;
+  billing?: { required: boolean; active: boolean; trialing: boolean; trialVideosUsed: number; trialVideos: number; trialEnd?: string | null; tier?: "starter" | "pro" | null } | null;
 }
 
 interface Store {

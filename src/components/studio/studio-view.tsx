@@ -1,5 +1,6 @@
 "use client";
 
+import { StepTip } from "@/components/guide/guide";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -123,7 +124,10 @@ export function StudioView({ id, step }: { id: string; step: StageId }) {
                 action={<Button className="rounded-full" asChild><Link href={`/studio/${video.id}/${video.stage}`}>Go to {STAGES[stageIndex(video.stage)].label}</Link></Button>}
               />
             ) : (
-              <Step video={video} complete={complete} />
+              <>
+                <StepTip step={step} />
+                <Step video={video} complete={complete} />
+              </>
             )}
           </motion.div>
         </AnimatePresence>

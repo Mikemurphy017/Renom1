@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { handleEvent, verifyWebhook } from "@/lib/billing/server";
+import { storedWebhookSecret } from "@/lib/billing/setup";
 
 export const dynamic = "force-dynamic";
 
 /** Stripe's events (checkout finished, subscription changed or cancelled), signed with STRIPE_WEBHOOK_SECRET. */
 export async function POST(request: Request) {
   const payload = await request.text();
-  if (!verifyWebhook(payload, request.headers.get("stripe-signature"))) return NextResponse.json({ ok: false }, { status: 400 });
+  if (!verifyWebhook(payload, request.headers.get("stripe-signature"), process.env.STRIPE_WEBHOOK_SECRET ? null : await storedWebhookSecret())) return NextResponse.json({ ok: false }, { status: 400 });
   try {
     await handleEvent(JSON.parse(payload));
   } catch (e) {

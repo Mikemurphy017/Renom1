@@ -1,5 +1,6 @@
 "use client";
 
+import { TrialBanner } from "@/components/guide/guide";
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -82,6 +83,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* In the studio, phones get the studio header only. */}
         <Navbar className={cn(inStudio && "hidden md:block")} />
         {account?.tempPassword && <TempPasswordBanner />}
+        {!inStudio && <TrialBanner />}
         <main className={cn("flex-1", !inStudio && "pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0")}>{hydrated && !needsSetup && !needsPlan ? children : <ShellSkeleton />}</main>
       </div>
       {!inStudio && <TabBar />}

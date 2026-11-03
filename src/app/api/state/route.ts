@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   const user = await currentUser(request);
   if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   const [saved, billing] = await Promise.all([loadState(user.id), billingState(user).catch(() => null), ensureIndexed(user).catch(() => {})]);
-  return NextResponse.json({ user: { ...user, admin: isAdmin(user), billing: billing && { required: billing.required, active: billing.active, trialing: billing.trialing, trialVideosUsed: billing.trialVideosUsed, trialVideos: billing.trialVideos, tier: await planTier(user).catch(() => null) } }, state: saved?.state ?? null, drafts: saved?.drafts ?? null, updatedAt: saved?.updatedAt ?? null }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ user: { ...user, admin: isAdmin(user), billing: billing && { required: billing.required, active: billing.active, trialing: billing.trialing, trialVideosUsed: billing.trialVideosUsed, trialVideos: billing.trialVideos, trialEnd: billing.trialEnd, tier: await planTier(user).catch(() => null) } }, state: saved?.state ?? null, drafts: saved?.drafts ?? null, updatedAt: saved?.updatedAt ?? null }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function PUT(request: Request) {

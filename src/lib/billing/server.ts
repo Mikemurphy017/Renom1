@@ -102,7 +102,7 @@ function form(obj: Record<string, unknown>, prefix = "", out = new URLSearchPara
   return out;
 }
 
-async function stripe<T>(method: "GET" | "POST", path: string, body?: Record<string, unknown>): Promise<T> {
+export async function stripe<T>(method: "GET" | "POST", path: string, body?: Record<string, unknown>): Promise<T> {
   if (!stripeConfigured()) throw new BillingError("Billing isn’t set up yet.", 503);
   const qs = method === "GET" && body ? `?${form(body).toString()}` : "";
   let res: Response;
@@ -252,8 +252,8 @@ export async function syncCheckout(user: User, sessionId: string) {
 }
 
 /** Checks Stripe's signature on a webhook (Stripe-Signature: t=…,v1=…), within 5 minutes. */
-export function verifyWebhook(payload: string, header: string | null): boolean {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
+export function verifyWebhook(payload: string, header: string | null, stored?: string | null): boolean {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim() || stored?.trim();
   if (!secret || !header) return false;
   const parts = Object.fromEntries(header.split(",").map((p) => p.split("=") as [string, string]));
   const t = Number(parts.t);

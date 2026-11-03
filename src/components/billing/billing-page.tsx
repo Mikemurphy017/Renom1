@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { ArrowRight, Check, CreditCard, LoaderCircle, Lock, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -107,8 +106,16 @@ export function BillingPage() {
         <p className="mt-2 text-[15px] text-muted-foreground">
           {b.trialing && b.trialEnd ? `Your free trial runs until ${fmtDate(b.trialEnd)}, with up to ${b.trialVideos} finished videos. You won’t be charged before then.` : "Your plan is active."}
         </p>
+        {!onboarded && (
+          <ol className="mx-auto mt-6 max-w-sm space-y-2 text-left text-[14px]">
+            {["Tell us about your practice and how you sound (about 5 minutes)", "Pick an idea; we write the script in your voice", "Record with the teleprompter, or upload a video you’ve made", "The AI edits it; you post it everywhere"].map((t, i) => (
+              <li key={t} className="flex gap-3"><span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brass-soft text-[12px] font-semibold text-primary">{i + 1}</span><span className="pt-0.5">{t}</span></li>
+            ))}
+          </ol>
+        )}
+        {/* A full load, so the studio starts with the new plan. */}
         <Button asChild className="mt-7 rounded-full px-6">
-          <Link href={onboarded ? "/" : "/welcome"}>{onboarded ? "Go to your studio" : "Set up your studio"} <ArrowRight /></Link>
+          <a href={onboarded ? "/" : "/welcome"}>{onboarded ? "Go to your studio" : "Set up your studio"} <ArrowRight /></a>
         </Button>
       </div>
     );
