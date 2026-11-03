@@ -63,7 +63,7 @@ export const annualSavings = (p: Plan) => p.monthly * 12 - p.annual;
 export const monthlyCost = (p: Plan, interval: BillingInterval) => (interval === "year" ? p.annual / 12 : p.monthly);
 
 /** The free trial: a card up front, a few days, and a few finished videos. */
-export const TRIAL_DAYS = 14;
+export const TRIAL_DAYS = 7;
 export const TRIAL_VIDEOS = 3;
 
 export const money = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
