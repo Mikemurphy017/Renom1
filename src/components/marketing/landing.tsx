@@ -15,15 +15,15 @@ import { Logo } from "@/components/layout/logo";
 import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { FlowTabs, RoiCalculator } from "./landing-interactive";
+import { PricingPlans } from "./pricing";
+import { TRIAL_DAYS, TRIAL_VIDEOS } from "@/lib/pricing";
 
 /**
  * The public sales page (signed-out visitors to "/"). Every call to action
- * leads to /signup. Free during early access; pricing after that is still to
- * be decided, and the ROI calculator says it uses a sample price.
+ * leads to /signup, which starts a free trial (card required; see
+ * lib/pricing). The plans and the ROI calculator use the same prices.
  */
 
-/** The price the ROI calculator illustrates with (pricing itself is TBD). */
-const SAMPLE_PRICE = 500;
 const NAME = BRAND.name;
 
 const FEATURES = [
@@ -46,19 +46,6 @@ const REPLACES = [
   ["Remembering the disclosure", "Added to every post automatically"],
 ];
 
-const INCLUDED = [
-  "Unlimited ideas and scripts",
-  "In-browser teleprompter and recording",
-  "Automatic editing with captions, b-roll and music",
-  "All edit styles, including Impact and Ignite",
-  "Cover thumbnails and AI cover scenes",
-  "Phone preview of every post",
-  "Post copy, hashtags and disclosures",
-  "Post or schedule from your own accounts",
-  "Our team posts it for you, or download the MP4",
-  "Approval step and archive",
-  "Works on your laptop and your phone",
-];
 
 /** The under-10-minutes timeline: minutes, step, what happens. */
 const TEN_MINUTES: [string, string, string][] = [
@@ -91,8 +78,12 @@ const FAQ = [
     a: "LinkedIn, Instagram, Facebook, YouTube, TikTok and X. Connect your own Buffer account once (Buffer’s free plan covers three channels) and post or schedule each video from your studio. Or have our team post it for you, or download the finished MP4 and upload it anywhere you like.",
   },
   {
-    q: "What happens when early access ends?",
-    a: `${NAME} is free while we're in early access. Pricing after early access is still being decided. We'll tell you well before anything changes, and nothing is ever charged without you choosing a plan.`,
+    q: "How does the free trial work?",
+    a: `Start with a ${TRIAL_DAYS}-day free trial on either plan and make up to ${TRIAL_VIDEOS} finished videos. A card is required to start, but you won't be charged until the trial ends, and you can cancel anytime before then from your billing page. Ready sooner? Start your plan early with one click.`,
+  },
+  {
+    q: "Can I switch plans or cancel?",
+    a: "Yes. Move between Starter and Pro, or between monthly and annual billing, from your billing page. Cancel anytime; you keep access until the end of the period you've paid for.",
   },
   {
     q: "Do I own my videos?",
@@ -100,7 +91,7 @@ const FAQ = [
   },
 ];
 
-function CTA({ className, children = "Start free", variant = "primary" }: { className?: string; children?: React.ReactNode; variant?: "primary" | "light" }) {
+function CTA({ className, children = "Start your free trial", variant = "primary" }: { className?: string; children?: React.ReactNode; variant?: "primary" | "light" }) {
   return (
     <Link
       href="/signup"
@@ -197,7 +188,7 @@ export function Landing() {
           </nav>
           <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
             <Link href="/signin" className="px-2 py-2 text-[14px] whitespace-nowrap text-muted-foreground hover:text-foreground sm:px-3">Sign in</Link>
-            <Link href="/signup" className="inline-flex h-9 items-center rounded-full bg-[#0B1F3A] px-3.5 text-[14px] font-medium whitespace-nowrap sm:px-4 text-white hover:bg-[#16304f] dark:bg-primary dark:text-primary-foreground">Start free</Link>
+            <Link href="/signup" className="inline-flex h-9 items-center rounded-full bg-[#0B1F3A] px-3.5 text-[14px] font-medium whitespace-nowrap sm:px-4 text-white hover:bg-[#16304f] dark:bg-primary dark:text-primary-foreground">Start free trial</Link>
           </div>
         </div>
       </header>
@@ -206,7 +197,7 @@ export function Landing() {
         {/* Hero */}
         <section className="mx-auto max-w-4xl px-4 pt-16 pb-14 text-center sm:px-6 md:pt-24">
           <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-[12px] text-muted-foreground shadow-soft">
-            <span className="size-1.5 rounded-full bg-success" /> Free during early access
+            <span className="size-1.5 rounded-full bg-success" /> {TRIAL_DAYS}-day free trial
           </div>
           <h1 className="font-serif text-[44px] leading-[1.03] tracking-tight sm:text-[64px] lg:text-[76px]">
             The advisor people trust most is the one <em className="text-primary italic">they’ve already met.</em>
@@ -215,10 +206,10 @@ export function Landing() {
             Video lets prospects meet you before the first meeting. {NAME} writes the script in your voice, puts it on a teleprompter in your browser, edits your take and hands you a polished video built to attract high-net-worth prospects, <span className="font-medium text-foreground">in under 10 minutes</span>.
           </p>
           <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
-            <CTA>Start free</CTA>
+            <CTA>Start your free trial</CTA>
             <a href="#how" className="inline-flex h-12 items-center justify-center rounded-full border border-border bg-card px-7 text-[15px] font-medium hover:bg-accent">See how it works</a>
           </div>
-          <p className="mt-4 text-[13px] text-muted-foreground">No credit card. Pricing after early access: TBD.</p>
+          <p className="mt-4 text-[13px] text-muted-foreground">{TRIAL_DAYS} days free, up to {TRIAL_VIDEOS} videos. Cancel anytime.</p>
         </section>
 
         {/* Under 10 minutes */}
@@ -283,7 +274,7 @@ export function Landing() {
               <p className="mt-4 text-[16px] leading-relaxed text-[#AAB4C4]">No juggling a writer, a videographer, an editor, a designer and a scheduling tool. Every step lives in one studio, and each one feeds the next.</p>
             </div>
             <FlowTabs />
-            <div className="mt-10 text-center"><CTA>Start free</CTA></div>
+            <div className="mt-10 text-center"><CTA>Start your free trial</CTA></div>
           </div>
         </section>
 
@@ -336,50 +327,13 @@ export function Landing() {
           <div className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
             <div className="mx-auto max-w-2xl text-center">
               <Eyebrow>Pricing</Eyebrow>
-              <H2 accent="free for now.">Everything included,</H2>
+              <H2 accent="a full video team.">Less than the cost of</H2>
               <p className="mt-4 text-[16px] leading-relaxed text-muted-foreground">
-                We’re opening {NAME} to a small group of advisors first. Use all of it, free, and help shape what comes next.
+                Scripts, filming, editing, covers and posting in one studio. Pick a plan and try it free.
               </p>
             </div>
-            <div className="mx-auto mt-12 grid max-w-4xl gap-4 md:grid-cols-[1.15fr_1fr]">
-              <div className="rounded-3xl border-2 border-primary bg-card p-7 shadow-soft sm:p-9">
-                <div className="flex items-center justify-between">
-                  <div className="text-[15px] font-medium">{NAME} Studio</div>
-                  <span className="rounded-full bg-success-soft px-2.5 py-1 text-[12px] font-medium text-success">Early access</span>
-                </div>
-                <div className="mt-6 flex items-end gap-3">
-                  <span className="font-serif text-[60px] leading-none">$0</span>
-                  <span className="pb-2 text-[15px] text-muted-foreground">/ month during early access</span>
-                </div>
-                <p className="mt-2 text-[13px] text-muted-foreground">Pricing after early access: TBD. Nothing is charged unless you choose a plan.</p>
-                <ul className="mt-7 grid gap-2.5 sm:grid-cols-1">
-                  {INCLUDED.map((i) => (
-                    <li key={i} className="flex gap-2.5 text-[14px]"><Check className="mt-0.5 size-4 shrink-0 text-primary" /> {i}</li>
-                  ))}
-                </ul>
-                <CTA className="mt-8 w-full">Start free</CTA>
-                <p className="mt-3 text-center text-[12px] text-muted-foreground">No credit card needed.</p>
-              </div>
-              <div className="rounded-3xl border border-border bg-muted/50 p-7 sm:p-9">
-                <div className="text-[15px] font-medium">The usual way</div>
-                <p className="mt-2 text-[13px] text-muted-foreground">What advisors typically pay for separately to post video every week.</p>
-                <ul className="mt-6 space-y-4">
-                  {[
-                    ["Scriptwriter or copywriter", "Ideas and scripts, every week"],
-                    ["Videographer or studio days", "Filming, lighting, sound"],
-                    ["Video editor", "Cuts, captions, b-roll, music"],
-                    ["Designer and social manager", "Covers, post copy, scheduling"],
-                  ].map(([t, d]) => (
-                    <li key={t} className="flex items-start justify-between gap-4 border-b border-border pb-4 last:border-0">
-                      <div>
-                        <div className="text-[14px] font-medium">{t}</div>
-                        <div className="text-[12px] text-muted-foreground">{d}</div>
-                      </div>
-                      <span className="shrink-0 text-[12px] text-muted-foreground">Included</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            <div className="mt-10">
+              <PricingPlans />
             </div>
           </div>
         </section>
@@ -394,7 +348,7 @@ export function Landing() {
                 Video is how people decide whether they want to meet you. If being seen every week brings in even one new relationship, the studio pays for itself many times over. Put in your own numbers.
               </p>
             </div>
-            <RoiCalculator price={SAMPLE_PRICE} />
+            <RoiCalculator />
           </div>
         </section>
 
@@ -422,7 +376,7 @@ export function Landing() {
         <section className="bg-[#0B1F3A]">
           <div className="mx-auto max-w-6xl px-4 py-20 text-center sm:px-6">
             <H2 light accent="get started?">Ready to</H2>
-            <p className="mx-auto mt-4 max-w-xl text-[16px] text-[#AAB4C4]">Set up your voice in five minutes, pick a script and record your first video. Free during early access.</p>
+            <p className="mx-auto mt-4 max-w-xl text-[16px] text-[#AAB4C4]">Set up your voice in five minutes, pick a script and record your first video. {TRIAL_DAYS} days free.</p>
             <CTA variant="light" className="mt-8">Create your studio</CTA>
           </div>
         </section>
@@ -446,7 +400,7 @@ export function Landing() {
           <div>
             <div className="eyebrow mb-3">Account</div>
             <ul className="space-y-2 text-[14px] text-muted-foreground">
-              <li><Link href="/signup" className="hover:text-foreground">Start free</Link></li>
+              <li><Link href="/signup" className="hover:text-foreground">Start free trial</Link></li>
               <li><Link href="/signin" className="hover:text-foreground">Sign in</Link></li>
               <li><Link href="/privacy" className="hover:text-foreground">Privacy policy</Link></li>
               <li><Link href="/terms" className="hover:text-foreground">Terms of service</Link></li>

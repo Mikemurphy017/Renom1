@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { ArrowRight, Check, Captions, FileText, Lightbulb, MonitorPlay, Send, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { BRAND } from "@/lib/brand";
+import { PLANS, effectiveMonthly, getPlan, money, type BillingInterval, type PlanId } from "@/lib/pricing";
 
 /**
  * The two interactive parts of the sales page: the "one flow" step tabs and
@@ -207,8 +207,6 @@ export function FlowTabs() {
   );
 }
 
-const money = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
-
 /** Numbers typed with commas or a $ sign still count. */
 const parseNum = (v: string) => {
   const n = Number(v.replace(/[^0-9.]/g, ""));
@@ -272,19 +270,22 @@ function Slider({ label, value, min, max, step, onChange, format, minLabel, maxL
   );
 }
 
-/** Renom ROI calculator: first-year fees from new clients against a sample yearly price (pricing is TBD). The visitor's numbers, not ours. */
-export function RoiCalculator({ price }: { price: number }) {
-  const yearly = price * 12;
+/** Renom ROI calculator: first-year fees from new clients against the yearly cost of the chosen plan. The visitor's numbers, not ours. */
+export function RoiCalculator() {
+  const [planId, setPlanId] = React.useState<PlanId>("pro");
+  const [billing, setBilling] = React.useState<BillingInterval>("year");
   const [kind, setKind] = React.useState<"aum" | "flat">("aum");
   const [clients, setClients] = React.useState(1);
   const [assets, setAssets] = React.useState("750,000");
   const [fee, setFee] = React.useState(1);
   const [flatFee, setFlatFee] = React.useState("5,000");
 
+  const plan = getPlan(planId) ?? PLANS[PLANS.length - 1];
+  const yearly = billing === "year" ? plan.annual : plan.monthly * 12;
   const perClient = kind === "aum" ? (parseNum(assets) * fee) / 100 : parseNum(flatFee);
   const revenue = clients * perClient;
-  const investment = yearly;
-  const roi = investment > 0 ? revenue / investment : null;
+  const roi = yearly > 0 ? revenue / yearly : null;
+  const breakEven = perClient > 0 ? Math.ceil(yearly / perClient) : null;
   const cents = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
@@ -312,26 +313,62 @@ export function RoiCalculator({ price }: { price: number }) {
         )}
       </div>
 
+      <div className="mt-5 text-[13px] font-medium">Plan</div>
+      <div className="mt-1.5 grid grid-cols-2 gap-3">
+        {PLANS.map((p) => (
+          <Choice key={p.id} on={planId === p.id} onClick={() => setPlanId(p.id)}>
+            <span className="font-medium">{p.name}</span>
+            <span className="text-[12px] tnum opacity-80">{money(p.monthly)}/mo</span>
+          </Choice>
+        ))}
+      </div>
+
+      <div className="mt-4 text-[13px] font-medium">Billing</div>
+      <div className="mt-1.5 grid grid-cols-2 gap-3">
+        <Choice on={billing === "year"} onClick={() => setBilling("year")}>
+          <span className="font-medium">Annual</span>
+          <span className="text-[12px] opacity-80">2 months free</span>
+        </Choice>
+        <Choice on={billing === "month"} onClick={() => setBilling("month")}>
+          <span className="font-medium">Monthly</span>
+          <span className="text-[12px] opacity-80">Billed each month</span>
+        </Choice>
+      </div>
+
       <div className="mt-5 text-[13px] font-medium">Annual marketing investment</div>
-      <div className="mt-1.5 flex items-center justify-between rounded-xl border border-[#B08D57] bg-[#F4ECDF] px-4 py-3 ring-1 ring-[#B08D57]">
-        <span className="text-[14px] font-medium">Sample {BRAND.name} plan <span className="font-normal text-[#6B675E]">({money(price)}/mo)</span></span>
-        <span className="text-[14px] tnum">{money(yearly)} a year</span>
+      <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-[#B08D57] bg-[#F4ECDF] px-4 py-3 ring-1 ring-[#B08D57]">
+        <span className="text-[14px] font-medium">
+          {plan.name}, billed {billing === "year" ? "annually" : "monthly"}
+        </span>
+        <span className="text-[14px] tnum">
+          {billing === "year" ? (
+            <>
+              {money(plan.annual)}/yr <span className="text-[#6B675E]">(~{money(effectiveMonthly(plan))}/mo)</span>
+            </>
+          ) : (
+            <>
+              {money(plan.monthly)}/mo <span className="text-[#6B675E]">({money(yearly)}/yr)</span>
+            </>
+          )}
+        </span>
       </div>
 
       <div className="mt-6 rounded-2xl border border-[#B08D57]/30 bg-[#F4ECDF]/60 px-5 py-5 text-center" aria-live="polite">
         <div className="text-[14px] text-[#6B675E]">Your ROI</div>
         <div className="mt-1 font-serif text-[44px] leading-none tnum">{roi === null ? "—" : `${roi >= 100 ? Math.round(roi) : roi.toFixed(1)}x`}</div>
         <div className="mt-2 text-[14px] text-[#6B675E] tnum">Return: {cents(revenue)}</div>
+        {breakEven !== null && (
+          <div className="mt-3 border-t border-[#B08D57]/25 pt-3 text-[14px] font-medium tnum">
+            {breakEven === 1 ? `One new client pays for ${plan.name} for the year` : `${breakEven.toLocaleString("en-US")} new clients cover ${plan.name} for the year`}
+          </div>
+        )}
       </div>
       <p className="mt-3 text-center text-[11px] leading-relaxed text-[#6B675E]">
-        Illustration only, using the numbers you enter: one year of fees from new clients divided by the annual cost. Not a prediction of results.
+        An illustration using the numbers you enter: one year of fees from new clients divided by the yearly cost of the plan. It’s not a promise or prediction of results.
       </p>
       <Link href="/signup" className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#0B1F3A] text-[14px] font-medium text-white hover:bg-[#16304f]">
-        Start free <ArrowRight className="size-4" />
+        Start your free trial <ArrowRight className="size-4" />
       </Link>
-      <p className="mt-4 rounded-xl bg-[#F4ECDF]/70 px-4 py-3 text-center text-[12px] leading-relaxed text-[#6B675E]">
-        This is a sample ROI if the price were {money(price)} per month. The current price of {BRAND.name} is TBD, and it’s free during early access.
-      </p>
     </div>
   );
 }

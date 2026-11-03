@@ -140,8 +140,11 @@ const SECTIONS: LegalSection[] = [
     title: "Fees",
     body: (
       <p>
-        {NAME} is free during early access. Pricing after early access hasn’t been set. We’ll tell you before any charges start, and you’ll never be charged unless you choose a paid plan. Third-party
-        services you connect, such as Buffer, may charge you separately under their own terms.
+        {NAME} is a paid subscription, billed monthly or annually in advance through our payment processor, Stripe, at the price shown when you subscribe. New subscriptions start with a free
+        trial (its length and the number of videos it includes are shown at sign-up). A payment card is required to start the trial; it isn’t charged until the trial ends, and you can cancel
+        anytime before then from your billing page. Subscriptions renew automatically until cancelled; when you cancel, you keep access until the end of the period you’ve paid for, and fees
+        already paid aren’t refunded except where the law requires. We’ll give you notice before any price change applies to you. Accounts opened during early access, and accounts set up for you
+        by our team, may be on different terms we’ve agreed with you. Third-party services you connect, such as Buffer, may charge you separately under their own terms.
       </p>
     ),
   },

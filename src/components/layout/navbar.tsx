@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { Command, LogOut, Moon, Plus, Settings, ShieldCheck, Sun, UserRound } from "lucide-react";
+import { Command, LogOut, Moon, Plus, Settings, ShieldCheck, Sun, UserRound, CreditCard } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -66,6 +66,7 @@ export function Navbar({ className }: { className?: string }) {
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild><Link href="/settings#voice"><UserRound /> Your voice</Link></DropdownMenuItem>
               <DropdownMenuItem asChild><Link href="/settings"><Settings /> Settings</Link></DropdownMenuItem>
+              {account?.billing?.required && <DropdownMenuItem asChild><Link href="/billing"><CreditCard /> Billing</Link></DropdownMenuItem>}
               {account?.admin && <DropdownMenuItem asChild><Link href="/admin"><ShieldCheck /> Admin</Link></DropdownMenuItem>}
               <DropdownMenuItem onSelect={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>
                 {resolvedTheme === "dark" ? <Sun /> : <Moon />} {resolvedTheme === "dark" ? "Light mode" : "Navy mode"}

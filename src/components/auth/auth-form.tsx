@@ -88,7 +88,11 @@ export function AuthForm({ mode }: { mode: "signin" | "signup" }) {
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body.ok) throw new Error(body.error || "Something went wrong. Please try again.");
       // Full load so the studio opens with this account's data.
-      window.location.href = mode === "signup" ? "/welcome" : next();
+      // New accounts pick a plan and add a card first (when billing is on), keeping the plan chosen on the pricing page.
+      const q = new URLSearchParams(window.location.search);
+      const plan = q.get("plan");
+      const billing = q.get("billing");
+      window.location.href = mode === "signup" ? (body.billingRequired ? `/billing?${new URLSearchParams({ ...(plan ? { plan } : {}), ...(billing ? { billing } : {}) })}` : "/welcome") : next();
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
@@ -99,7 +103,7 @@ export function AuthForm({ mode }: { mode: "signin" | "signup" }) {
   const closed = signup && policy && !policy.open && !linkInvite;
 
   return (
-    <AuthShell title={signup ? "Create your studio." : "Welcome back."} subtitle={signup ? `Free during early access. Your ${BRAND.name} studio, saved to your account and ready on any device.` : `Sign in to your ${BRAND.name} studio.`}>
+    <AuthShell title={signup ? "Create your studio." : "Welcome back."} subtitle={signup ? `Start your free trial. Your ${BRAND.name} studio, saved to your account and ready on any device.` : `Sign in to your ${BRAND.name} studio.`}>
 
         {closed ? (
           <div className="mt-8 rounded-2xl border border-border bg-card p-5 text-[14px] text-muted-foreground">

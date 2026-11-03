@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser, ensureIndexed, isAdmin, loadState, saveState } from "@/lib/auth/server";
+import { billingState } from "@/lib/billing/server";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +10,8 @@ const MAX_BYTES = 5 * 1024 * 1024;
 export async function GET(request: Request) {
   const user = await currentUser(request);
   if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
-  const [saved] = await Promise.all([loadState(user.id), ensureIndexed(user).catch(() => {})]);
-  return NextResponse.json({ user: { ...user, admin: isAdmin(user) }, state: saved?.state ?? null, drafts: saved?.drafts ?? null, updatedAt: saved?.updatedAt ?? null }, { headers: { "Cache-Control": "no-store" } });
+  const [saved, billing] = await Promise.all([loadState(user.id), billingState(user).catch(() => null), ensureIndexed(user).catch(() => {})]);
+  return NextResponse.json({ user: { ...user, admin: isAdmin(user), billing: billing && { required: billing.required, active: billing.active, trialing: billing.trialing, trialVideosUsed: billing.trialVideosUsed, trialVideos: billing.trialVideos } }, state: saved?.state ?? null, drafts: saved?.drafts ?? null, updatedAt: saved?.updatedAt ?? null }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function PUT(request: Request) {

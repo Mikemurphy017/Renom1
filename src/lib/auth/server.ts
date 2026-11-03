@@ -29,6 +29,8 @@ export interface User {
   createdAt: string;
   /** Signed in with a password the admin set up for them: they're asked to choose their own. */
   tempPassword?: boolean;
+  /** Set up by the admin and billed outside the app: no plan needed. */
+  billingExempt?: boolean;
 }
 interface StoredUser extends User {
   salt: string;
@@ -165,7 +167,7 @@ export async function createUser(input: { email: string; password: string; name:
   return publicUser(user);
 }
 
-const publicUser = (u: StoredUser): User => ({ id: u.id, email: u.email, name: u.name, createdAt: u.createdAt, ...(u.tempPassword ? { tempPassword: true } : {}) });
+const publicUser = (u: StoredUser): User => ({ id: u.id, email: u.email, name: u.name, createdAt: u.createdAt, ...(u.tempPassword ? { tempPassword: true } : {}), ...(u.billingExempt ? { billingExempt: true } : {}) });
 
 export async function verifyPassword(emailRaw: string, password: string): Promise<User | null> {
   const u = await getJSON<StoredUser>(userKey(emailRaw));
@@ -364,7 +366,7 @@ export async function createClientAccount(input: { email: string; name: string }
   if (await objects().stat(userKey(email))) throw new AuthError("There’s already an account with that email. Find it in the list to edit its workspace.", 409);
   const password = tempPassword();
   const now = new Date().toISOString();
-  const user: StoredUser = { id: `u${randomBytes(9).toString("hex")}`, email, name, createdAt: now, tempPassword: true, ...(await hashPassword(password)) };
+  const user: StoredUser = { id: `u${randomBytes(9).toString("hex")}`, email, name, createdAt: now, tempPassword: true, billingExempt: true, ...(await hashPassword(password)) };
   await putJSON(userKey(email), user);
   await indexUser(user);
   return { user: publicUser(user), password };

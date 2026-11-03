@@ -64,11 +64,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // First run: send people to setup before anything else (the admin dashboard excepted).
-  const needsSetup = hydrated && !onboarded && !pathname.startsWith("/admin");
+  // A plan first (card at sign-up, or after a trial or plan ends), then setup, then the studio.
+  const onBilling = pathname.startsWith("/billing");
+  const needsPlan = hydrated && !!account?.billing?.required && !account.billing.active && !onBilling && !pathname.startsWith("/admin");
+  // First run: send people to setup before anything else (the admin dashboard and billing excepted).
+  const needsSetup = hydrated && !needsPlan && !onboarded && !pathname.startsWith("/admin") && !onBilling;
   React.useEffect(() => {
-    if (needsSetup) router.replace("/welcome");
-  }, [needsSetup, router]);
+    if (needsPlan) router.replace("/billing");
+    else if (needsSetup) router.replace("/welcome");
+  }, [needsPlan, needsSetup, router]);
 
   const ctx = React.useMemo(() => ({ openPalette: () => setPalette(true), openNewVideo: () => setNewVideo(true) }), []);
 
@@ -78,7 +82,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* In the studio, phones get the studio header only. */}
         <Navbar className={cn(inStudio && "hidden md:block")} />
         {account?.tempPassword && <TempPasswordBanner />}
-        <main className={cn("flex-1", !inStudio && "pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0")}>{hydrated && !needsSetup ? children : <ShellSkeleton />}</main>
+        <main className={cn("flex-1", !inStudio && "pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0")}>{hydrated && !needsSetup && !needsPlan ? children : <ShellSkeleton />}</main>
       </div>
       {!inStudio && <TabBar />}
       <CommandPalette open={palette} onOpenChange={setPalette} onNewVideo={() => setNewVideo(true)} />

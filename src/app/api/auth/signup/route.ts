@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { AuthError, createSession, createUser, sessionCookie, throttle } from "@/lib/auth/server";
+import { billingState } from "@/lib/billing/server";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,8 @@ export async function POST(request: Request) {
   try {
     const user = await createUser({ email: String(b.email ?? ""), password: String(b.password ?? ""), name: String(b.name ?? ""), invite: b.invite });
     const token = await createSession(user);
-    return NextResponse.json({ ok: true, user }, { headers: { "Set-Cookie": sessionCookie(token, request) } });
+    const billing = await billingState(user).catch(() => null);
+    return NextResponse.json({ ok: true, user, billingRequired: !!billing?.required }, { headers: { "Set-Cookie": sessionCookie(token, request) } });
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ ok: false, error: e.message }, { status: e.status });
     console.error("[auth] sign-up failed:", e);

@@ -4,7 +4,7 @@ import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
   title: { absolute: `${BRAND.name}: video for financial advisors` },
-  description: `${BRAND.name} writes the script in your voice, puts it on a teleprompter in your browser, edits your take and hands you a video that's ready to post. Free during early access.`,
+  description: `${BRAND.name} writes the script in your voice, puts it on a teleprompter in your browser, edits your take and hands you a video that's ready to post. Start with a free trial.`,
 };
 
 /** Signed-out visitors to "/" see this page (see src/middleware.ts). */

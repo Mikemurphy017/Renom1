@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getProcessor, VideoProcessorError } from "@/lib/video/processor";
 import { getUpload } from "@/lib/video/storage";
 import { validateProcessRequest } from "@/lib/video/validate";
+import { currentUser } from "@/lib/auth/server";
+import { BillingError, checkRender, countRender } from "@/lib/billing/server";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +22,23 @@ export async function POST(request: Request) {
   if (!source) return NextResponse.json({ ok: false, error: "That upload wasn’t found" }, { status: 404 });
   if (req.cuts?.some((c) => c.end > source.durationSec + 1)) return NextResponse.json({ ok: false, error: "A cut runs past the end of the video" }, { status: 400 });
 
+  // Finishing a video needs a plan (or the trial, up to its video limit). Reading a take doesn't.
+  const user = await currentUser(request);
+  if (req.kind === "render" && user) {
+    try {
+      await checkRender(user, source.id);
+    } catch (e) {
+      if (e instanceof BillingError) return NextResponse.json({ ok: false, error: e.message, billing: true }, { status: e.status });
+      throw e;
+    }
+  }
+
   const processor = await getProcessor();
   const ready = processor.readiness();
   if (!ready.ok) return NextResponse.json({ ok: false, error: ready.reason }, { status: 503 });
   try {
     const { jobId } = await processor.process(req, source);
+    if (req.kind === "render" && user) await countRender(user, source.id).catch((e) => console.warn("[billing] couldn’t count the render:", e));
     return NextResponse.json({ ok: true, jobId, processor: processor.id });
   } catch (e) {
     const status = e instanceof VideoProcessorError ? e.status : 500;
