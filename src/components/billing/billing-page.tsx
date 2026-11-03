@@ -20,6 +20,7 @@ interface Billing {
   trialing: boolean;
   trialVideosUsed: number;
   trialVideos: number;
+  needsCard?: boolean;
   exempt?: "admin" | "client" | "early" | "off";
 }
 
@@ -130,6 +131,7 @@ export function BillingPage() {
       </div>
     );
 
+  if (!b.active && b.needsCard) return <AddCard plan={b.plan} />;
   if (!b.active) return <ChoosePlan ended={!!b.status} />;
 
   const plan = getPlan(b.plan);
@@ -239,6 +241,33 @@ function ChoosePlan({ ended }: { ended: boolean }) {
         })}
       </div>
       <p className="mt-5 flex items-center justify-center gap-1.5 text-[12px] text-muted-foreground"><Lock className="size-3" /> Secure checkout by Stripe. Cancel anytime from this page.</p>
+    </div>
+  );
+}
+
+/** A trial that started without a card: save one to unlock the studio (nothing is charged now). */
+function AddCard({ plan }: { plan: PlanId | null }) {
+  const [busy, setBusy] = React.useState(false);
+  const add = async () => {
+    setBusy(true);
+    try {
+      window.location.href = (await post<{ url: string }>("/api/billing/card")).url;
+    } catch (e) {
+      toast.error((e as Error).message);
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="mx-auto max-w-lg py-10 text-center">
+      <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-brass-soft text-primary"><CreditCard className="size-6" /></span>
+      <h1 className="mt-5 font-serif text-[32px] leading-tight">Add your card to start your trial</h1>
+      <p className="mt-2 text-[15px] text-muted-foreground">
+        Your {getPlan(plan)?.name ?? ""} free trial is ready; it just needs a card on file. You won’t be charged until the trial ends, and you can cancel anytime before then.
+      </p>
+      <Button className="mt-7 rounded-full px-6" disabled={busy} onClick={add}>
+        {busy ? <LoaderCircle className="animate-spin" /> : <Lock />} Add card securely
+      </Button>
+      <p className="mt-3 text-[12px] text-muted-foreground">Saved by Stripe; Renom never sees your card number.</p>
     </div>
   );
 }

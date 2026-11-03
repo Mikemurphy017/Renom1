@@ -100,7 +100,8 @@ export function GettingStarted() {
 export function TrialBanner() {
   const { account } = useStore();
   const b = account?.billing;
-  if (!b?.trialing) return null;
+  // Not until the trial is really running (a card on file).
+  if (!b?.trialing || !b.active) return null;
   const days = b.trialEnd ? Math.max(0, Math.ceil((Date.parse(b.trialEnd) - Date.now()) / 86400_000)) : null;
   const left = Math.max(0, b.trialVideos - b.trialVideosUsed);
   return (

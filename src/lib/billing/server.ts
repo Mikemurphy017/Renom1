@@ -34,6 +34,8 @@ export interface BillingRecord {
   trialRenders?: string[];
   /** A trial has been used (no second trial on a new checkout). */
   hadTrial?: boolean;
+  /** A card is saved for the subscription (false: a trial started without one). */
+  cardOnFile?: boolean;
   updatedAt?: string;
 }
 
@@ -51,6 +53,8 @@ export interface BillingState {
   trialing: boolean;
   trialVideosUsed: number;
   trialVideos: number;
+  /** A trial started without a card: add one to use the studio. */
+  needsCard?: boolean;
   /** Why not required (for the billing page). */
   exempt?: "admin" | "client" | "early" | "off";
 }
@@ -131,7 +135,9 @@ export async function billingState(user: User & { billingExempt?: boolean }): Pr
   const r = await readBilling(user.id);
   const exempt: BillingState["exempt"] = !stripeConfigured() ? "off" : isAdmin(user) ? "admin" : user.billingExempt ? "client" : Date.parse(user.createdAt) < BILLING_FROM() ? "early" : undefined;
   const status = r.status ?? null;
-  const live = status === "trialing" || status === "active" || status === "past_due";
+  // A trial only counts once there's a card on file to charge when it ends.
+  const needsCard = status === "trialing" && r.cardOnFile === false;
+  const live = (status === "trialing" && !needsCard) || status === "active" || status === "past_due";
   const trialing = status === "trialing";
   return {
     required: !exempt,
@@ -145,6 +151,7 @@ export async function billingState(user: User & { billingExempt?: boolean }): Pr
     trialing,
     trialVideosUsed: r.trialRenders?.length ?? 0,
     trialVideos: TRIAL_VIDEOS,
+    needsCard: !exempt && needsCard,
     exempt,
   };
 }
@@ -217,6 +224,7 @@ interface StripeSub {
   trial_end: number | null;
   current_period_end?: number;
   cancel_at_period_end: boolean;
+  default_payment_method?: string | null;
   metadata?: Record<string, string>;
   items?: { data: { current_period_end?: number; price: { lookup_key: string | null; unit_amount?: number | null; recurring?: { interval: string } | null } }[] };
 }
@@ -230,6 +238,7 @@ async function saveSubscription(userId: string, sub: StripeSub) {
   const interval = (byPrice?.interval ?? look?.[2] ?? item?.price.recurring?.interval ?? sub.metadata?.interval) as BillingInterval | undefined;
   await linkCustomer(sub.customer, userId);
   return writeBilling(userId, {
+    cardOnFile: await hasCard(sub),
     customerId: sub.customer,
     subscriptionId: sub.id,
     status: sub.status,
@@ -242,12 +251,53 @@ async function saveSubscription(userId: string, sub: StripeSub) {
   });
 }
 
+/** Whether there's a card to charge: on the subscription, or the customer's default. */
+async function hasCard(sub: StripeSub): Promise<boolean> {
+  if (sub.default_payment_method) return true;
+  try {
+    const c = await stripe<{ invoice_settings?: { default_payment_method?: string | null }; default_source?: string | null }>("GET", `/customers/${sub.customer}`);
+    if (c.invoice_settings?.default_payment_method || c.default_source) return true;
+    const pms = await stripe<{ data: unknown[] }>("GET", "/payment_methods", { customer: sub.customer, type: "card", limit: 1 });
+    return pms.data.length > 0;
+  } catch {
+    // Can't tell right now: don't lock someone out over it.
+    return true;
+  }
+}
+
+/** A Stripe page to save a card (setup mode), for a trial that started without one. */
+export async function addCardUrl(user: User, origin: string): Promise<string> {
+  const r = await readBilling(user.id);
+  if (!r.customerId || !r.subscriptionId) throw new BillingError("There’s no trial to add a card to. Choose a plan first.", 404);
+  const s = await stripe<{ url: string }>("POST", "/checkout/sessions", {
+    mode: "setup",
+    customer: r.customerId,
+    currency: "usd",
+    payment_method_types: ["card"],
+    client_reference_id: user.id,
+    metadata: { userId: user.id, subscriptionId: r.subscriptionId },
+    success_url: `${origin}/billing?checkout=done&session={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${origin}/billing`,
+  });
+  return s.url;
+}
+
+/** A card saved in setup mode becomes the subscription's (and the customer's) default. */
+async function applySetup(session: { setup_intent?: unknown; customer?: unknown; metadata?: Record<string, string> | null }, userId: string) {
+  const intent = await stripe<{ payment_method: string | null }>("GET", `/setup_intents/${session.setup_intent as string}`);
+  const subId = session.metadata?.subscriptionId ?? (await readBilling(userId)).subscriptionId;
+  if (!intent.payment_method || !subId) return;
+  await stripe("POST", `/customers/${session.customer as string}`, { invoice_settings: { default_payment_method: intent.payment_method } });
+  await saveSubscription(userId, await stripe<StripeSub>("POST", `/subscriptions/${subId}`, { default_payment_method: intent.payment_method }));
+}
+
 /** After Checkout (or a Payment Link) returns: read the session so the account is ready before the webhook arrives. */
 export async function syncCheckout(user: User, sessionId: string) {
   if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId) || !stripeConfigured()) return;
-  const s = await stripe<{ client_reference_id: string | null; subscription: string | null; customer: string | null }>("GET", `/checkout/sessions/${sessionId}`);
+  const s = await stripe<{ client_reference_id: string | null; subscription: string | null; customer: string | null; mode?: string; setup_intent?: string | null; metadata?: Record<string, string> | null }>("GET", `/checkout/sessions/${sessionId}`);
   if (s.client_reference_id !== user.id) return;
   await linkCustomer(s.customer, user.id);
+  if (s.mode === "setup" && s.setup_intent) return applySetup(s, user.id);
   if (s.subscription) await saveSubscription(user.id, await stripe<StripeSub>("GET", `/subscriptions/${s.subscription}`));
 }
 
@@ -278,6 +328,7 @@ export async function handleEvent(event: { type: string; data: { object: Record<
       return;
     }
     await linkCustomer(o.customer, userId);
+    if (o.mode === "setup" && o.setup_intent) return applySetup(o as Parameters<typeof applySetup>[0], userId);
     if (o.subscription) await saveSubscription(userId, await stripe<StripeSub>("GET", `/subscriptions/${o.subscription as string}`));
     return;
   }
