@@ -181,6 +181,40 @@ function describeError(e: unknown): string {
  * saved file is truly vertical (and never mirrored). Quality (size and frame
  * rate) is remembered per browser and limited to what the camera can do.
  */
+export interface SoundCheck {
+  /** The room, while quiet (dBFS). */
+  noise: number;
+  /** The voice, while talking (dBFS, loud moments). */
+  voice: number;
+  peak: number;
+}
+
+export type MicKind = "bluetooth" | "builtin" | "webcam" | "external";
+
+/** What kind of mic this is, from its name (as the browser reports it). */
+export function micKind(label: string): MicKind {
+  const l = label.toLowerCase();
+  if (/airpods|bluetooth|hands-?free|headset|buds|beats|bose|jabra|wh-1000|sony wf|powerbeats/.test(l)) return "bluetooth";
+  if (/webcam|brio|c9[0-9]{2}|c6[0-9]{2}|facetime|camera|kiyo|insta360|obsbot/.test(l)) return "webcam";
+  if (/built-?in|macbook|internal|microphone array|realtek|intel.*smart sound|laptop/.test(l)) return "builtin";
+  return "external";
+}
+
+/** What to tell the advisor after a sound check, worst problem first. */
+export function soundAdvice(c: SoundCheck, kind: MicKind): { tone: "good" | "ok" | "bad"; title: string; tips: string[] } {
+  const tips: string[] = [];
+  const snr = c.voice - c.noise;
+  if (snr < 8) return { tone: "bad", title: "We could barely hear you", tips: ["Check the right microphone is selected above, and that it isn’t muted."] };
+  if (c.peak > -1) tips.push("Too loud: it’s distorting. Turn the mic gain down or sit a little further back.");
+  else if (c.voice < -38) tips.push("Too quiet. Move the mic closer (a hand’s width to a forearm’s length from your mouth) or turn its gain up.");
+  if (c.noise > -50) tips.push("The room is noisy. Close the door and windows, turn off fans or the AC if you can. The edit cleans up the rest, but less noise always sounds better.");
+  if (kind === "bluetooth") tips.push("Bluetooth mics (AirPods and headsets) record at phone-call quality. A wired or USB mic sounds much better.");
+  else if (kind === "builtin") tips.push("Built-in laptop mics pick up the whole room. A USB or clip-on (lavalier) mic is the single biggest upgrade.");
+  else if (kind === "webcam") tips.push("Webcam mics are far from your mouth. A USB or clip-on mic will sound noticeably clearer.");
+  const tone = snr >= 30 && c.peak <= -1 && c.voice >= -38 && c.noise <= -50 ? (kind === "external" ? "good" : "ok") : tips.some((t) => t.startsWith("Too") || t.startsWith("The room")) ? "bad" : "ok";
+  return { tone, title: tone === "good" ? "Sounds great" : tone === "ok" ? "Good to go" : "Worth fixing before you record", tips };
+}
+
 export function useCapture() {
   const [stream, setStream] = React.useState<MediaStream | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -199,6 +233,9 @@ export function useCapture() {
   const [settings, setSettings] = React.useState<CameraSettings | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
   const audioCtxRef = React.useRef<AudioContext | null>(null);
+  const analyserRef = React.useRef<AnalyserNode | null>(null);
+  /** The mic actually in use (its name), for advice. */
+  const [micLabel, setMicLabel] = React.useState("");
   const recorderRef = React.useRef<{ rec: MediaRecorder; stopCanvas?: () => void; started: number; w: number; h: number; mime: string } | null>(null);
 
   React.useEffect(() => {
@@ -235,6 +272,7 @@ export function useCapture() {
     streamRef.current = null;
     audioCtxRef.current?.close().catch(() => {});
     audioCtxRef.current = null;
+    analyserRef.current = null;
     setStream(null);
     setSettings(null);
     setLevel(0);
@@ -306,6 +344,8 @@ export function useCapture() {
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 1024;
         ctx.createMediaStreamSource(s).connect(analyser);
+        analyserRef.current = analyser;
+        setMicLabel(s.getAudioTracks()[0]?.label ?? "");
         const buf = new Float32Array(analyser.fftSize);
         let lastClip = 0;
         const tick = () => {
@@ -438,9 +478,52 @@ export function useCapture() {
     []
   );
 
+  /**
+   * A 5-second sound check: 1.5 s of quiet (the room), then 3.5 s of talking
+   * (the voice). Levels in dBFS, from the raw mic.
+   */
+  const soundCheck = React.useCallback(async (onPhase: (p: "quiet" | "speak") => void): Promise<SoundCheck | null> => {
+    const analyser = analyserRef.current;
+    if (!analyser) return null;
+    const buf = new Float32Array(analyser.fftSize);
+    const sample = () => {
+      analyser.getFloatTimeDomainData(buf);
+      let sum = 0;
+      let peak = 0;
+      for (const v of buf) {
+        sum += v * v;
+        peak = Math.max(peak, Math.abs(v));
+      }
+      return { rms: Math.sqrt(sum / buf.length), peak };
+    };
+    const collect = async (ms: number) => {
+      const out: { rms: number; peak: number }[] = [];
+      const end = performance.now() + ms;
+      while (performance.now() < end) {
+        out.push(sample());
+        await new Promise((r) => setTimeout(r, 40));
+      }
+      return out;
+    };
+    const db = (v: number) => (v > 0 ? 20 * Math.log10(v) : -120);
+    const pct = (xs: number[], q: number) => [...xs].sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(xs.length * q))] ?? 0;
+    onPhase("quiet");
+    await new Promise((r) => setTimeout(r, 300));
+    const quiet = await collect(1500);
+    onPhase("speak");
+    const speak = await collect(3500);
+    return {
+      noise: db(pct(quiet.map((x) => x.rms), 0.5)),
+      voice: db(pct(speak.map((x) => x.rms), 0.9)),
+      peak: db(Math.max(...speak.map((x) => x.peak))),
+    };
+  }, []);
+
   return {
     stream,
     error,
+    micLabel,
+    soundCheck,
     starting,
     cameras,
     mics,

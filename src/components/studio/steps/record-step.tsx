@@ -17,6 +17,7 @@ import { useStore } from "@/lib/store";
 import { generateScript } from "@/lib/ai/content";
 import type { Script, Video } from "@/lib/types";
 import { cn, fmtDuration } from "@/lib/utils";
+import { micKind, soundAdvice, type SoundCheck } from "@/lib/media/use-capture";
 import { nearestQuality, QUALITY_OPTIONS, recordSize, useCapture, videoBitrate, type CaptureQuality, type QualityId } from "@/lib/media/use-capture";
 import { getTake, saveTake, takeExtension } from "@/lib/media/takes";
 import { readVideoMeta, videoType } from "@/lib/media/video-file";
@@ -73,8 +74,19 @@ export function RecordStep({ video, complete }: StepProps) {
   const [mirror, setMirror] = React.useState(true);
   const capture = useCapture();
   const { stream } = capture;
+  // The camera and mic the advisor picked last time, on this browser.
   const [cam, setCam] = React.useState<string>("");
   const [mic, setMic] = React.useState<string>("");
+  const devicesLoaded = React.useRef(false);
+  React.useEffect(() => {
+    const d = savedDevices();
+    if (d.cam) setCam(d.cam);
+    if (d.mic) setMic(d.mic);
+    devicesLoaded.current = true;
+  }, []);
+  React.useEffect(() => {
+    if (devicesLoaded.current) saveDevices({ cam, mic });
+  }, [cam, mic]);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const [countdown, setCountdown] = React.useState<number | null>(null);
   const [lastTake, setLastTake] = React.useState(() => getTake(video.id));
@@ -159,8 +171,14 @@ export function RecordStep({ video, complete }: StepProps) {
     });
 
   const enableCamera = async (opts?: { cameraId?: string; micId?: string }) => {
-    const ok = await capture.start(opts ?? { cameraId: cam || undefined, micId: mic || undefined });
-    if (ok && !opts) toast.success("Camera and microphone connected");
+    let ok = await capture.start(opts ?? { cameraId: cam || undefined, micId: mic || undefined });
+    // A remembered camera or mic that isn't plugged in any more: fall back to the defaults.
+    if (!ok && !opts && (cam || mic)) {
+      setCam("");
+      setMic("");
+      ok = await capture.start({});
+    }
+    if (ok && !opts) toast.success("Camera and microphone connected", { description: "Tip: run a 5-second sound check under Recording settings → Camera." });
   };
 
   const beginRecording = () => {
@@ -357,6 +375,7 @@ export function RecordStep({ video, complete }: StepProps) {
                   </SelectContent>
                 </Select>
                 <div className="mt-2.5"><MicMeter level={capture.level} live={!!stream} clippedAt={capture.clippedAt} /></div>
+                {stream && <SoundCheckPanel capture={capture} disabled={recording} />}
               </div>
             </TabsContent>
           </Tabs>
@@ -619,6 +638,62 @@ export function RecordStep({ video, complete }: StepProps) {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+const DEVICES_KEY = "renom.devices.v1";
+function savedDevices(): { cam?: string; mic?: string } {
+  try {
+    return JSON.parse(localStorage.getItem(DEVICES_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+function saveDevices(d: { cam: string; mic: string }) {
+  try {
+    localStorage.setItem(DEVICES_KEY, JSON.stringify(d));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** What kind of mic is in use, and a 5-second check of level and room noise with advice. */
+function SoundCheckPanel({ capture, disabled }: { capture: ReturnType<typeof useCapture>; disabled: boolean }) {
+  const [phase, setPhase] = React.useState<"idle" | "quiet" | "speak">("idle");
+  const [result, setResult] = React.useState<SoundCheck | null>(null);
+  const kind = micKind(capture.micLabel);
+  const run = async () => {
+    setResult(null);
+    const r = await capture.soundCheck(setPhase);
+    setPhase("idle");
+    setResult(r);
+  };
+  const advice = result ? soundAdvice(result, kind) : null;
+  return (
+    <div className="mt-3 space-y-2">
+      {!result && kind !== "external" && (
+        <p className="rounded-lg bg-warning-soft px-2.5 py-2 text-[11px] leading-snug">
+          {kind === "bluetooth" ? "This looks like a Bluetooth mic: they record at phone-call quality. A wired or USB mic sounds much better." : kind === "builtin" ? "This looks like a built-in laptop mic: it picks up the whole room. A USB or clip-on mic is the biggest upgrade." : "This looks like a webcam mic: it’s far from your mouth. A USB or clip-on mic sounds clearer."}
+        </p>
+      )}
+      <Button type="button" size="sm" variant="outline" className="w-full" disabled={disabled || phase !== "idle"} onClick={run}>
+        {phase === "quiet" ? "Stay quiet for a moment…" : phase === "speak" ? "Now say a sentence as you would on camera…" : result ? "Check again" : "Run a 5-second sound check"}
+      </Button>
+      {advice && result && (
+        <div className={cn("rounded-lg border px-3 py-2.5 text-[12px]", advice.tone === "good" ? "border-success/30 bg-success-soft" : advice.tone === "ok" ? "border-border bg-card" : "border-destructive/30 bg-warning-soft")}>
+          <div className="flex items-center justify-between gap-2 font-medium">
+            <span>{advice.title}</span>
+            <span className="text-[11px] font-normal text-muted-foreground tnum">voice {Math.round(result.voice)} dB · room {result.noise <= -90 ? "silent" : `${Math.round(result.noise)} dB`}</span>
+          </div>
+          {advice.tips.length > 0 && (
+            <ul className="mt-1.5 list-disc space-y-1 pl-4 text-[11px] leading-snug text-muted-foreground">
+              {advice.tips.map((t) => <li key={t}>{t}</li>)}
+            </ul>
+          )}
+          <p className="mt-1.5 text-[11px] text-muted-foreground">The edit cleans up your voice for every take: noise removed, levels evened out, tuned to your room.</p>
+        </div>
+      )}
     </div>
   );
 }

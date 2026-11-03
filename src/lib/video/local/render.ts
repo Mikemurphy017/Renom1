@@ -36,23 +36,54 @@ const FONT_DIR = path.join(process.cwd(), "assets", "fonts");
 /** RNNoise model for speech in recordings ("somnolent-hogwash", github.com/GregorR/rnnoise-models). */
 const DENOISE_MODEL = path.join(process.cwd(), "assets", "audio", "voice-denoise.rnnn");
 
+/** How a take sounds before cleanup: the room between words and the voice itself (dBFS). */
+export interface VoiceMeasure {
+  /** Noise floor: the quietest stretches, i.e. the room. */
+  floor: number;
+  /** Average level of the whole take. */
+  rms: number;
+  peak: number;
+}
+
+/** Reads the take's sound in one quick audio-only pass. Null when it can't tell. */
+export async function measureVoice(source: string): Promise<VoiceMeasure | null> {
+  const { stderr } = await runFfmpeg(["-nostats", "-i", source, "-vn", "-af", "aformat=channel_layouts=mono,highpass=f=75,astats=metadata=0:reset=0:measure_overall=Noise_floor+RMS_level+Peak_level:measure_perchannel=none", "-f", "null", "-"]).catch((e: { stderr?: string }) => ({ stderr: e.stderr ?? "" }));
+  const num = (name: string) => {
+    const m = new RegExp(`${name} dB: (-?[\\d.]+|-inf)`).exec(stderr);
+    return m ? (m[1] === "-inf" ? -120 : Number(m[1])) : NaN;
+  };
+  const v = { floor: num("Noise floor"), rms: num("RMS level"), peak: num("Peak level") };
+  return Object.values(v).every(Number.isFinite) ? v : null;
+}
+
 /**
- * "Studio sound" for the voice: rumble cut, neural denoise plus a light
- * spectral pass, a touch of EQ (less mud, more presence and air), de-essing,
- * gentle compression, and an expander that drops the room between sentences
+ * "Studio sound" for the voice: rumble cut, neural denoise plus a spectral
+ * pass, a touch of EQ (less mud, more presence and air), de-essing, gentle
+ * compression, and an expander that drops the room between sentences
  * without touching the words. Loudness is set on the final mix.
+ *
+ * It's tuned to the take: a noisy room gets stronger noise reduction and a
+ * deeper expander; a quiet room keeps more of the natural voice; a voice
+ * recorded too quietly (a laptop mic across the desk) is brought up first so
+ * the compressor and expander work on it as they would on a good mic.
  */
-function studioVoice() {
-  const denoise = existsSync(DENOISE_MODEL) ? `arnndn=m=${DENOISE_MODEL},afftdn=nf=-35:tn=1` : "afftdn=nf=-25:tn=1";
+export function studioVoice(m: VoiceMeasure | null) {
+  const room = !m ? "normal" : m.floor > -48 ? "noisy" : m.floor < -66 ? "quiet" : "normal";
+  const hasModel = existsSync(DENOISE_MODEL);
+  const spectral = room === "noisy" ? "afftdn=nf=-30:nr=22:tn=1" : room === "quiet" ? "afftdn=nf=-45:nr=8:tn=1" : "afftdn=nf=-35:nr=12:tn=1";
+  const denoise = hasModel ? `arnndn=m=${DENOISE_MODEL}${room === "noisy" ? ":mix=1" : room === "quiet" ? ":mix=0.85" : ""},${spectral}` : spectral;
+  // Lift a quiet take toward a -20 dBFS average before compression (at most +18 dB, and never past the peaks).
+  const lift = m && m.rms < -26 ? Math.min(18, -20 - m.rms, -3 - m.peak) : 0;
   return [
     "highpass=f=75",
+    ...(lift > 1 ? [`volume=${lift.toFixed(1)}dB`] : []),
     denoise,
     "equalizer=f=220:t=q:w=1.2:g=-2",
     "equalizer=f=3200:t=q:w=1.4:g=2.5",
     "highshelf=f=9500:g=2",
     "deesser=i=0.35",
     "acompressor=threshold=0.1:ratio=3:attack=10:release=150:makeup=1.6",
-    "agate=threshold=0.02:ratio=2.5:range=0.12:attack=5:release=250",
+    room === "noisy" ? "agate=threshold=0.03:ratio=3:range=0.06:attack=5:release=250" : "agate=threshold=0.02:ratio=2.5:range=0.12:attack=5:release=250",
   ].join(",");
 }
 
@@ -207,7 +238,9 @@ export async function renderVideo(r: RenderInput): Promise<{ durationSec: number
     af.push(r.hasAudio ? `[0:a]atrim=start=${k.start.toFixed(3)}:end=${k.end.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]` : `[${silent}:a]atrim=duration=${(k.end - k.start).toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
   });
   af.push(`${keep.map((_, i) => `[a${i}]`).join("")}concat=n=${keep.length}:v=0:a=1[ac]`);
-  af.push(`[ac]aresample=48000,aformat=channel_layouts=mono${r.enhanceAudio ? `,${studioVoice()}` : ""},aformat=channel_layouts=stereo[voice]`);
+  const voice = r.enhanceAudio && r.hasAudio ? await measureVoice(r.source) : null;
+  if (voice) console.info(`[video] voice: room ${voice.floor.toFixed(0)} dB, level ${voice.rms.toFixed(0)} dB, peak ${voice.peak.toFixed(0)} dB`);
+  af.push(`[ac]aresample=48000,aformat=channel_layouts=mono${r.enhanceAudio ? `,${studioVoice(voice)}` : ""},aformat=channel_layouts=stereo[voice]`);
   const mix: string[] = [];
   if (musicIn >= 0) {
     const gain = (0.5 * Math.max(0, Math.min(1, ex.musicVolume))).toFixed(3);
