@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isPro } from "@/lib/billing/tier";
 import { getProcessor, VideoProcessorError } from "@/lib/video/processor";
 import { getUpload } from "@/lib/video/storage";
 import { validateProcessRequest } from "@/lib/video/validate";
@@ -24,6 +25,11 @@ export async function POST(request: Request) {
 
   // Finishing a video needs a plan (or the trial, up to its video limit). Reading a take doesn't.
   const user = await currentUser(request);
+  // Motion graphics and 4K are Pro: a Starter render goes out without them.
+  if (user && !(await isPro(user))) {
+    if (req.overlays.extras) req.overlays.extras = { ...req.overlays.extras, graphics: false };
+    if (req.resolution === "2160p") req.resolution = "1080p";
+  }
   if (req.kind === "render" && user) {
     try {
       await checkRender(user, source.id);

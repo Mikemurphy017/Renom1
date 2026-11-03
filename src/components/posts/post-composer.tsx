@@ -1,6 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element -- the advisor's own pictures */
+import { ProUpsell } from "@/components/shared/pro";
 import * as React from "react";
 import Link from "next/link";
 import { ArrowLeft, CalendarClock, Check, CircleCheck, Copy, Download, ExternalLink, ImagePlus, LoaderCircle, Plug, Send, Sparkles, TriangleAlert, Type, Image as ImageIcon, Wand2 } from "lucide-react";
@@ -11,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { PlatformIcon } from "@/components/shared/platform-icon";
 import { AskBar } from "@/components/studio/ask-bar";
-import { useStore, voiceProfileOf } from "@/lib/store";
+import { usePro, useStore, voiceProfileOf } from "@/lib/store";
 import { isAbort, useWriter } from "@/lib/ai/writer";
 import { activeDisclosure, composeCaption } from "@/lib/compose";
 import { getPlatform } from "@/lib/mock/platforms";
@@ -53,6 +54,8 @@ function Step({ n, title, desc, children, right }: { n: number; title: string; d
 
 export function PostComposer({ id }: { id: string }) {
   const { posts, updatePost, profile, hydrated } = useStore();
+  const { isPro } = usePro();
+  if (hydrated && !isPro) return <ProUpsell className="mt-10" title="Text and image posts" body="Posts in your voice for every platform, with AI photos of you made from your headshots." />;
   const post = posts.find((p) => p.id === id);
   if (!hydrated) return <div className="flex items-center gap-2 py-16 text-[14px] text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Loading…</div>;
   if (!post)

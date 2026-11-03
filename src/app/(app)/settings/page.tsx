@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { ProBadge } from "@/components/shared/pro";
 import * as React from "react";
 import { Check, CircleAlert, History, Lock, Mail, Plus, Sparkles, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
@@ -16,7 +18,7 @@ import { AccountSection } from "@/components/settings/account-section";
 import { PublishingSection } from "@/components/settings/publishing-section";
 import { CalendarLink } from "@/components/settings/calendar-link";
 import { CoverSettings } from "@/components/settings/cover-settings";
-import { useStore } from "@/lib/store";
+import { usePro, useStore } from "@/lib/store";
 import { disclosureTemplate, firstDisclosure, initials } from "@/lib/profile";
 import { useRouter } from "next/navigation";
 import type { DisclosureVersion } from "@/lib/types";
@@ -68,6 +70,7 @@ function useClaudeStatus() {
 
 export default function SettingsPage() {
   const { profile: p, updateProfile, requireApproval, setRequireApproval, reviewer, setReviewer, team, setTeam, resetAll } = useStore();
+  const { isPro } = usePro();
   const router = useRouter();
   const claude = useClaudeStatus();
   const [newOpinion, setNewOpinion] = React.useState("");
@@ -205,8 +208,8 @@ export default function SettingsPage() {
           <Section id="approval" title="Approval" desc="Who has to say yes before anything goes out.">
             <div className="divide-y divide-border rounded-xl border border-border bg-card">
               <div className="flex items-center justify-between gap-6 px-4 py-3.5">
-                <div><div className="text-[14px] font-medium">Require approval before posting</div><div className="text-[12px] text-muted-foreground">Nothing is scheduled until a reviewer approves it.</div></div>
-                <Switch checked={requireApproval} onCheckedChange={(v) => { setRequireApproval(v); toast.success(v ? "Approval required" : "Approval no longer required"); }} />
+                <div><div className="flex items-center gap-1.5 text-[14px] font-medium">Require approval before posting {!isPro && <ProBadge />}</div><div className="text-[12px] text-muted-foreground">{isPro ? "Nothing is scheduled until a reviewer approves it." : <>The compliance approval workflow is part of Pro. <Link href="/billing" className="text-primary underline underline-offset-2">Upgrade</Link></>}</div></div>
+                <Switch checked={isPro && requireApproval} disabled={!isPro} onCheckedChange={(v) => { setRequireApproval(v); toast.success(v ? "Approval required" : "Approval no longer required"); }} />
               </div>
               <div className="flex items-center justify-between gap-6 px-4 py-3.5">
                 <div><div className="text-[14px] font-medium">Reviewer</div><div className="text-[12px] text-muted-foreground">New submissions go here.</div></div>

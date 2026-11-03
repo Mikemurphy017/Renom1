@@ -1,6 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element -- the advisor's own pictures */
+import { ProUpsell } from "@/components/shared/pro";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -10,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PageContainer } from "@/components/shared/page";
 import { PlatformIcon } from "@/components/shared/platform-icon";
-import { useStore } from "@/lib/store";
+import { usePro, useStore } from "@/lib/store";
 import type { PostDraft, PostKind } from "@/lib/types";
 import { cn, fmtDateTime, relativeTime } from "@/lib/utils";
 
@@ -32,6 +33,13 @@ const STATUS: Record<PostDraft["status"], string> = { draft: "Draft", scheduled:
 export function PostsList() {
   const { posts, deletePost, addPost } = useStore();
   const start = useStartPost();
+  const { isPro } = usePro();
+  if (!isPro)
+    return (
+      <PageContainer className="max-w-[1100px] pt-16">
+        <ProUpsell title="Text and image posts" body="Posts in your voice for LinkedIn, Facebook, Instagram and X, with AI photos of you made from your headshots, for the days you’re not filming." />
+      </PageContainer>
+    );
 
   const remove = (p: PostDraft) => {
     deletePost(p.id);

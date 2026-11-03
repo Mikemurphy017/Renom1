@@ -20,6 +20,9 @@ interface Row {
   lastSignInAt?: string;
   onboarded: boolean;
   videos: number;
+  grantedPlan: "starter" | "pro" | null;
+  /** Features they get now (granted, subscribed, or Pro when no plan is needed). */
+  tier: "starter" | "pro" | null;
 }
 
 /** Everyone who isn't an admin: set up their workspace, or hand them a new sign-in. */
@@ -34,6 +37,21 @@ export function ClientsList() {
       .then((j) => setRows((j.users as Row[]).filter((u) => !u.admin)))
       .catch(() => toast.error("Couldn’t load clients"));
   }, []);
+
+  const setPlan = async (u: Row, plan: "starter" | "pro" | null) => {
+    setBusy(u.id);
+    try {
+      const res = await fetch(`/api/admin/users/${u.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "plan", plan }) });
+      const j = await res.json();
+      if (!res.ok || !j.ok) throw new Error(j.error || "Couldn’t change the plan.");
+      setRows((rs) => rs && rs.map((r) => (r.id === u.id ? { ...r, grantedPlan: plan, tier: plan ?? r.tier } : r)));
+      toast.success(plan ? `${u.name || u.email} now has ${plan === "pro" ? "Pro" : "Starter"}` : `${u.name || u.email} is back on their subscription`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const newPassword = async (u: Row) => {
     if (!window.confirm(`Make a new temporary password for ${u.email}? Their current password stops working and they’re signed out.`)) return;
@@ -79,7 +97,21 @@ export function ClientsList() {
                   {u.email}{u.firm ? ` · ${u.firm}` : ""} · {u.lastSignInAt ? `signed in ${relativeTime(u.lastSignInAt)}` : "hasn’t signed in yet"} · {u.videos} video{u.videos === 1 ? "" : "s"}
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                  Plan
+                  <select
+                    value={u.grantedPlan ?? ""}
+                    disabled={busy === u.id}
+                    onChange={(e) => void setPlan(u, (e.target.value || null) as "starter" | "pro" | null)}
+                    className="h-8 cursor-pointer rounded-full border border-border bg-card px-2.5 text-[12px] font-medium text-foreground"
+                    aria-label={`Plan for ${u.email}`}
+                  >
+                    <option value="pro">Pro</option>
+                    <option value="starter">Starter</option>
+                    <option value="">Their subscription{!u.grantedPlan && u.tier ? ` (${u.tier === "pro" ? "Pro" : "Starter"})` : !u.grantedPlan ? " (none)" : ""}</option>
+                  </select>
+                </label>
                 <Button asChild size="sm" variant="outline" className="rounded-full">
                   <Link href={`/admin/clients/${u.id}`}><PencilLine /> {u.onboarded ? "Edit workspace" : "Set up workspace"}</Link>
                 </Button>

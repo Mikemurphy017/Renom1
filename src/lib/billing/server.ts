@@ -1,15 +1,19 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getJSON, putJSON } from "@/lib/storage/objects";
 import { isAdmin, type User } from "@/lib/auth/server";
-import { PLANS, TRIAL_DAYS, TRIAL_VIDEOS, getPlan, type BillingInterval, type PlanId } from "@/lib/pricing";
+import { PAYMENT_LINKS, PLANS, TRIAL_VIDEOS, getPlan, planForPrice, type BillingInterval, type PlanId } from "@/lib/pricing";
 
 /**
  * Subscriptions through Stripe (server-only, STRIPE_SECRET_KEY never leaves
- * the server). A card is taken up front at Checkout; the trial is TRIAL_DAYS
- * days and TRIAL_VIDEOS finished videos, whichever comes first (after the
- * videos, the advisor can start their plan early). Stripe is the source of
- * truth; the webhook keeps a copy per account in billing/<user id>.json.
+ * the server). Checkout is a Stripe Payment Link per plan and billing
+ * (PAYMENT_LINKS), opened with client_reference_id = our user id; the card,
+ * the TRIAL_DAYS-day trial and the after-payment redirect are set on the links
+ * in Stripe. On top of that, the trial here is TRIAL_VIDEOS finished videos
+ * (after them, the advisor can start their plan early). Stripe is the source
+ * of truth; the webhook keeps a copy per account in billing/<user id>.json,
+ * plus a Stripe customer → user index (billingcust/…), since payment-link
+ * subscriptions carry none of our metadata.
  *
  * Who doesn't need a plan: admins, clients the admin set up (billed
  * separately), and accounts made before billing started (BILLING_REQUIRED_FROM,
@@ -63,11 +67,26 @@ export class BillingError extends Error {
 }
 
 const recordKey = (userId: string) => `billing/${userId}.json`;
+/** Our user ids (u + hex) fit storage keys; anything else from Stripe is ignored. */
+const okUserId = (id: unknown): id is string => typeof id === "string" && /^[a-z0-9]{6,40}$/.test(id);
 export const readBilling = async (userId: string) => (await getJSON<BillingRecord>(recordKey(userId))) ?? {};
 async function writeBilling(userId: string, patch: Partial<BillingRecord>) {
   const next = { ...(await readBilling(userId)), ...patch, updatedAt: new Date().toISOString() };
   await putJSON(recordKey(userId), next);
   return next;
+}
+
+/** Stripe customer → our user. Stripe ids don't fit storage keys, so the key is a hash of the id. */
+const customerKey = (customerId: string) => `billingcust/${createHash("sha256").update(customerId).digest("hex").slice(0, 40)}.json`;
+async function linkCustomer(customerId: unknown, userId: string) {
+  if (typeof customerId !== "string" || !customerId) return;
+  const key = customerKey(customerId);
+  if ((await getJSON<{ userId?: string }>(key))?.userId !== userId) await putJSON(key, { userId, customerId });
+}
+async function userForCustomer(customerId: unknown): Promise<string | undefined> {
+  if (typeof customerId !== "string" || !customerId) return undefined;
+  const id = (await getJSON<{ userId?: string }>(customerKey(customerId)))?.userId;
+  return okUserId(id) ? id : undefined;
 }
 
 // ── Stripe REST, form-encoded ──
@@ -104,25 +123,6 @@ async function stripe<T>(method: "GET" | "POST", path: string, body?: Record<str
     throw new BillingError(j.error?.message || `Stripe returned an error (${res.status}).`, res.status >= 500 ? 502 : 400);
   }
   return j;
-}
-
-/** The Stripe price for a plan and interval, made the first time it's needed (found again by lookup key). */
-const priceCache = new Map<string, string>();
-async function priceFor(plan: PlanId, interval: BillingInterval): Promise<string> {
-  const key = `renom_${plan}_${interval}`;
-  const hit = priceCache.get(key);
-  if (hit) return hit;
-  const p = getPlan(plan)!;
-  const amount = (interval === "year" ? p.annual : p.monthly) * 100;
-  const found = await stripe<{ data: { id: string; unit_amount: number }[] }>("GET", "/prices", { lookup_keys: [key], active: true, limit: 1 });
-  let id = found.data[0]?.unit_amount === amount ? found.data[0].id : "";
-  if (!id) {
-    // A new price (or the amount changed): the lookup key moves to it.
-    const product = await stripe<{ id: string }>("POST", "/products", { name: `Renom ${p.name}`, metadata: { plan } });
-    id = (await stripe<{ id: string }>("POST", "/prices", { product: product.id, currency: "usd", unit_amount: amount, recurring: { interval }, lookup_key: key, transfer_lookup_key: true, metadata: { plan, interval } })).id;
-  }
-  priceCache.set(key, id);
-  return id;
 }
 
 // ── state ──
@@ -174,24 +174,24 @@ export async function countRender(user: User, sourceId: string) {
 
 // ── checkout, portal, start now ──
 
-export async function checkoutUrl(user: User, plan: PlanId, interval: BillingInterval, origin: string): Promise<string> {
-  if (!PLANS.some((p) => p.id === plan)) throw new BillingError("Unknown plan.");
+/** The Stripe Payment Link for this plan and billing (STRIPE_LINK_<PLAN>_<INTERVAL> overrides the built-in one). */
+function paymentLink(plan: PlanId, interval: BillingInterval) {
+  return process.env[`STRIPE_LINK_${plan.toUpperCase()}_${interval.toUpperCase()}`]?.trim() || PAYMENT_LINKS[plan][interval];
+}
+
+/**
+ * Where to send the account to pay: the plan's Payment Link, tagged with our
+ * user id (comes back as the session's client_reference_id) and the email
+ * filled in. Needs no Stripe key; the trial and redirect are set on the link.
+ */
+export async function checkoutUrl(user: User, plan: PlanId, interval: BillingInterval): Promise<string> {
+  if (!PLANS.some((p) => p.id === plan) || (interval !== "month" && interval !== "year")) throw new BillingError("Unknown plan.");
   const r = await readBilling(user.id);
   if (r.status && ["trialing", "active", "past_due"].includes(r.status)) throw new BillingError("You already have a plan. Change it from the billing page.", 409);
-  const price = await priceFor(plan, interval);
-  const session = await stripe<{ url: string }>("POST", "/checkout/sessions", {
-    mode: "subscription",
-    ...(r.customerId ? { customer: r.customerId } : { customer_email: user.email }),
-    client_reference_id: user.id,
-    line_items: [{ price, quantity: 1 }],
-    payment_method_collection: "always",
-    allow_promotion_codes: true,
-    subscription_data: { ...(r.hadTrial ? {} : { trial_period_days: TRIAL_DAYS }), metadata: { userId: user.id, plan, interval } },
-    metadata: { userId: user.id, plan, interval },
-    success_url: `${origin}/billing?checkout=done&session={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${origin}/billing?plan=${plan}&billing=${interval}`,
-  });
-  return session.url;
+  const url = new URL(paymentLink(plan, interval));
+  url.searchParams.set("client_reference_id", user.id);
+  if (user.email) url.searchParams.set("prefilled_email", user.email);
+  return url.toString();
 }
 
 export async function portalUrl(user: User, origin: string): Promise<string> {
@@ -218,14 +218,17 @@ interface StripeSub {
   current_period_end?: number;
   cancel_at_period_end: boolean;
   metadata?: Record<string, string>;
-  items?: { data: { current_period_end?: number; price: { lookup_key: string | null; recurring?: { interval: string } } }[] };
+  items?: { data: { current_period_end?: number; price: { lookup_key: string | null; unit_amount?: number | null; recurring?: { interval: string } | null } }[] };
 }
 
 async function saveSubscription(userId: string, sub: StripeSub) {
   const item = sub.items?.data[0];
+  // Payment links: the price's amount and interval. Then our older lookup-keyed prices, then metadata.
+  const byPrice = planForPrice(item?.price.unit_amount, item?.price.recurring?.interval);
   const look = /^renom_(starter|pro)_(month|year)$/.exec(item?.price.lookup_key ?? "");
-  const plan = (look?.[1] ?? sub.metadata?.plan) as PlanId | undefined;
-  const interval = (look?.[2] ?? item?.price.recurring?.interval ?? sub.metadata?.interval) as BillingInterval | undefined;
+  const plan = (byPrice?.plan ?? look?.[1] ?? sub.metadata?.plan) as PlanId | undefined;
+  const interval = (byPrice?.interval ?? look?.[2] ?? item?.price.recurring?.interval ?? sub.metadata?.interval) as BillingInterval | undefined;
+  await linkCustomer(sub.customer, userId);
   return writeBilling(userId, {
     customerId: sub.customer,
     subscriptionId: sub.id,
@@ -239,12 +242,13 @@ async function saveSubscription(userId: string, sub: StripeSub) {
   });
 }
 
-/** After Checkout returns: read the session so the account is ready before the webhook arrives. */
+/** After Checkout (or a Payment Link) returns: read the session so the account is ready before the webhook arrives. */
 export async function syncCheckout(user: User, sessionId: string) {
-  if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId)) return;
+  if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId) || !stripeConfigured()) return;
   const s = await stripe<{ client_reference_id: string | null; subscription: string | null; customer: string | null }>("GET", `/checkout/sessions/${sessionId}`);
-  if (s.client_reference_id !== user.id || !s.subscription) return;
-  await saveSubscription(user.id, await stripe<StripeSub>("GET", `/subscriptions/${s.subscription}`));
+  if (s.client_reference_id !== user.id) return;
+  await linkCustomer(s.customer, user.id);
+  if (s.subscription) await saveSubscription(user.id, await stripe<StripeSub>("GET", `/subscriptions/${s.subscription}`));
 }
 
 /** Checks Stripe's signature on a webhook (Stripe-Signature: t=…,v1=…), within 5 minutes. */
@@ -267,13 +271,22 @@ export function verifyWebhook(payload: string, header: string | null): boolean {
 export async function handleEvent(event: { type: string; data: { object: Record<string, unknown> } }) {
   const o = event.data.object;
   if (event.type === "checkout.session.completed") {
-    const userId = (o.client_reference_id as string) || (o.metadata as Record<string, string> | undefined)?.userId;
-    if (userId && o.subscription) await saveSubscription(userId, await stripe<StripeSub>("GET", `/subscriptions/${o.subscription as string}`));
+    // client_reference_id is our user id (Payment Links get it from the URL checkoutUrl builds).
+    const userId = (o.client_reference_id as string | null) || (o.metadata as Record<string, string> | undefined)?.userId;
+    if (!okUserId(userId)) {
+      if (o.subscription) console.warn(`[billing] checkout ${o.id as string} has no Renom user (opened without client_reference_id?)`);
+      return;
+    }
+    await linkCustomer(o.customer, userId);
+    if (o.subscription) await saveSubscription(userId, await stripe<StripeSub>("GET", `/subscriptions/${o.subscription as string}`));
     return;
   }
   if (event.type.startsWith("customer.subscription.")) {
     const sub = o as unknown as StripeSub;
-    const userId = sub.metadata?.userId;
+    // Our own metadata if it's there; payment-link subscriptions are found by customer.
+    // (A subscription event before checkout.session.completed finds nobody yet; that event saves it.)
+    const meta = sub.metadata?.userId;
+    const userId = okUserId(meta) ? meta : await userForCustomer(sub.customer);
     if (userId) await saveSubscription(userId, sub);
   }
 }

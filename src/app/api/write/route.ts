@@ -1,4 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { currentUser } from "@/lib/auth/server";
+import { isPro } from "@/lib/billing/tier";
 import { claudeConfigured, writeWithClaude } from "@/lib/ai/claude";
 import type { WriteEvent, WriteRequest } from "@/lib/ai/write-types";
 import { WRITERS } from "@/lib/ai/writers";
@@ -38,6 +40,11 @@ export async function POST(request: Request) {
     return Response.json({ error: "Writing isn’t switched on for this studio yet. Your administrator turns it on once for everyone." }, { status: 503 });
   }
   const req = parsed;
+  // Text and image posts are a Pro feature.
+  if (req.task === "post") {
+    const user = await currentUser(request);
+    if (!user || !(await isPro(user))) return Response.json({ error: "Text and image posts are part of Pro. Upgrade from your billing page to use them." }, { status: 403 });
+  }
 
   const encoder = new TextEncoder();
   // The advisor can leave (or reload) before Claude answers: after that, nothing more may be written.

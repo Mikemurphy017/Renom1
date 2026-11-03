@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/shared/page";
 import { peekDraft, useDraft } from "@/lib/drafts";
 import { getTake, subscribeTakes } from "@/lib/media/takes";
 import { generateScript } from "@/lib/ai/content";
-import { useStore, voiceProfileOf } from "@/lib/store";
+import { usePro, useStore, voiceProfileOf } from "@/lib/store";
 import { scriptFromTranscript } from "@/lib/video/from-transcript";
 import { BRAND } from "@/lib/brand";
 import type { Video } from "@/lib/types";
@@ -94,6 +94,7 @@ export function EditStep(props: StepProps) {
 
 function EditStudio({ video, complete, analysis }: StepProps & { analysis?: PipelineState }) {
   const { profile, updateVideo } = useStore();
+  const { isPro } = usePro();
   const result = analysis?.result;
   const [segments, setSegments] = useDraft<Segment[]>(video.id, result ? `edit.segments.${result.jobId}` : "edit.segments.none", () => (result ? segmentsFromResult(result) : []));
   const [rawLook, setLook] = useDraft<OverlayOptions>(video.id, "edit.overlays", () => defaultOverlays(profile, video.format));
@@ -244,7 +245,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
         overlays: look,
         script: scriptLines(video),
         cuts: cutsFromSegments(segments),
-        resolution: can4k && export4k ? "2160p" : "1080p",
+        resolution: can4k && export4k && isPro ? "2160p" : "1080p",
       });
       const fourK = Math.min(out.width ?? 0, out.height ?? 0) >= 2160;
       toast.success("Your video is ready", { description: `${fmtDuration(out.durationSec)} · ${aspect}${fourK ? " 4K" : ""} MP4` });
@@ -390,7 +391,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
             ["Skip cuts", skipCuts, setSkipCuts],
             ["Studio sound", enhance, setEnhance],
             // Off by default: 1080p is what the networks show, and renders several times faster.
-            ...(can4k ? [["4K export", export4k, setExport4k]] : []),
+            ...(can4k && isPro ? [["4K export", export4k, setExport4k]] : []),
           ].map(([label, val, set]) => (
             <label key={label as string} className="flex items-center gap-2 text-[12px] text-muted-foreground">
               <Switch checked={val as boolean} onCheckedChange={set as (v: boolean) => void} /> {label as string}

@@ -128,6 +128,7 @@ export function ClientSetup({ id }: { id?: string }) {
   const [p, setP] = React.useState<AdvisorProfile>(EMPTY_PROFILE);
   const [disclosure, setDisclosure] = React.useState("");
   const [requireApproval, setRequireApproval] = React.useState(false);
+  const [plan, setPlan] = React.useState<"pro" | "starter">("pro");
   const [reviewer, setReviewer] = React.useState("");
   const [opinion, setOpinion] = React.useState("");
   const [photoBusy, setPhotoBusy] = React.useState(false);
@@ -180,7 +181,7 @@ export function ClientSetup({ id }: { id?: string }) {
     setSaving(true);
     try {
       const profile = { ...p, email: p.email || loginEmail, disclosures: disclosure.trim() ? [{ ...(p.disclosures[0] ?? {}), text: disclosure.trim() }] : [] };
-      const body = JSON.stringify({ email: loginEmail, profile, requireApproval, reviewer });
+      const body = JSON.stringify({ email: loginEmail, profile, requireApproval, reviewer, plan });
       if (editing) {
         await call(`/api/admin/clients/${id}`, { method: "PUT", body });
         toast.success("Workspace saved", { description: "They’ll see it next time they open the app." });
@@ -226,6 +227,14 @@ export function ClientSetup({ id }: { id?: string }) {
             <Input required type="email" value={loginEmail} disabled={editing} onChange={(e) => setLoginEmail(e.target.value)} placeholder="jordan@firm.com" />
           </Field>
         </div>
+        {!editing && (
+          <Field label="Plan" hint="Their features; billed by you, outside the app. Change it anytime from the Clients list.">
+            <ToggleGroup type="single" value={plan} onValueChange={(v) => v && setPlan(v as "pro" | "starter")} className="w-full sm:w-auto">
+              <ToggleGroupItem value="pro" className="flex-1 sm:flex-none sm:px-5">Pro</ToggleGroupItem>
+              <ToggleGroupItem value="starter" className="flex-1 sm:flex-none sm:px-5">Starter</ToggleGroupItem>
+            </ToggleGroup>
+          </Field>
+        )}
       </Card>
 
       <Card title="Practice">

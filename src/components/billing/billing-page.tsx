@@ -39,12 +39,42 @@ export function BillingPage() {
   const q = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const justPaid = q.get("checkout") === "done";
 
+  // Back from paying, the webhook may not have landed yet: re-check every 2s for ~20s before showing the plans.
+  const [confirming, setConfirming] = React.useState(false);
+
   React.useEffect(() => {
-    const session = new URLSearchParams(window.location.search).get("session");
-    fetch(`/api/billing${session ? `?session=${encodeURIComponent(session)}` : ""}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((j) => j.ok && setB(j.billing))
+    const p = new URLSearchParams(window.location.search);
+    const session = p.get("session");
+    const url = `/api/billing${session ? `?session=${encodeURIComponent(session)}` : ""}`;
+    const load = () => fetch(url, { cache: "no-store" }).then((r) => r.json()).then((j) => (j.ok ? (j.billing as Billing) : null));
+    let stop = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = (left: number) => {
+      timer = setTimeout(() => {
+        load()
+          .catch(() => null)
+          .then((nb) => {
+            if (stop) return;
+            if (nb) setB(nb);
+            if ((nb && (nb.active || !nb.required)) || left <= 1) setConfirming(false);
+            else poll(left - 1);
+          });
+      }, 2000);
+    };
+    load()
+      .then((nb) => {
+        if (stop || !nb) return;
+        setB(nb);
+        if (p.get("checkout") === "done" && nb.required && !nb.active) {
+          setConfirming(true);
+          poll(10);
+        }
+      })
       .catch(() => toast.error("Couldn’t load billing"));
+    return () => {
+      stop = true;
+      clearTimeout(timer);
+    };
   }, []);
 
   const go = async (what: "portal" | "start") => {
@@ -64,6 +94,9 @@ export function BillingPage() {
   };
 
   if (!b) return <div className="flex items-center gap-2 py-16 text-[14px] text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Loading billing…</div>;
+
+  if (justPaid && confirming && !b.active)
+    return <div className="flex items-center justify-center gap-2 py-16 text-[14px] text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Confirming your payment with Stripe…</div>;
 
   // Back from Checkout.
   if (justPaid && b.active)

@@ -52,7 +52,7 @@ export interface Account {
   /** Signed in with a temporary password the admin handed over. */
   tempPassword?: boolean;
   /** Plan status: whether one is needed and whether the studio is usable. */
-  billing?: { required: boolean; active: boolean; trialing: boolean; trialVideosUsed: number; trialVideos: number } | null;
+  billing?: { required: boolean; active: boolean; trialing: boolean; trialVideosUsed: number; trialVideos: number; tier?: "starter" | "pro" | null } | null;
 }
 
 interface Store {
@@ -292,7 +292,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         }),
       addComment: (reviewId, c) =>
         set((s) => ({ reviews: s.reviews.map((r) => (r.id === reviewId ? { ...r, comments: [...r.comments, { ...c, id: `c${Date.now()}`, at: now(), resolved: false }] } : r)) })),
-      requireApproval: state.requireApproval,
+      // The approval workflow is a Pro feature: on Starter, nothing waits for a reviewer.
+      requireApproval: state.requireApproval && (account?.billing?.tier ?? "pro") === "pro",
       setRequireApproval: (v) => set(() => ({ requireApproval: v })),
       reviewer: state.reviewer,
       setReviewer: (name) => set(() => ({ reviewer: name })),
@@ -335,4 +336,11 @@ export function voiceProfileOf(p: AdvisorProfile) {
     opinions: p.opinions,
     sampleWriting: p.sampleWriting,
   };
+}
+
+/** Whether this account has Pro features (Pro plan, granted Pro, or no plan needed). True until the account loads. */
+export function usePro() {
+  const { account } = useStore();
+  const tier = account?.billing?.tier;
+  return { isPro: !account || tier === undefined || tier === "pro", tier: tier ?? null };
 }

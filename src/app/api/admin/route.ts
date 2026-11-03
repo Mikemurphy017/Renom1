@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, serviceStatus } from "@/lib/auth/admin";
-import { getSettings, isAdmin, listUsers, loadState, readInvites } from "@/lib/auth/server";
+import { getSettings, isAdmin, listUsers, loadState, readInvites, userById } from "@/lib/auth/server";
+import { planTier } from "@/lib/billing/tier";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,8 @@ export async function GET(request: Request) {
   const users = await listUsers();
   const rows = await Promise.all(
     users.map(async (u) => {
-      const saved = await loadState(u.id).catch(() => null);
+      const [saved, full] = await Promise.all([loadState(u.id).catch(() => null), userById(u.id).catch(() => null)]);
+      const tier = full ? await planTier(full).catch(() => null) : null;
       const st = (saved?.state ?? {}) as { onboarded?: boolean; videos?: { status?: string }[]; profile?: { firm?: string } };
       const videos = Array.isArray(st.videos) ? st.videos : [];
       return {
@@ -23,6 +25,8 @@ export async function GET(request: Request) {
         videos: videos.length,
         published: videos.filter((v) => v.status === "published" || v.status === "scheduled").length,
         lastActiveAt: saved?.updatedAt ?? null,
+        grantedPlan: full?.grantedPlan ?? null,
+        tier,
       };
     }),
   );

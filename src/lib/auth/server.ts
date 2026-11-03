@@ -31,6 +31,8 @@ export interface User {
   tempPassword?: boolean;
   /** Set up by the admin and billed outside the app: no plan needed. */
   billingExempt?: boolean;
+  /** Plan the admin granted (overrides the subscription's features). */
+  grantedPlan?: "starter" | "pro";
 }
 interface StoredUser extends User {
   salt: string;
@@ -167,7 +169,7 @@ export async function createUser(input: { email: string; password: string; name:
   return publicUser(user);
 }
 
-const publicUser = (u: StoredUser): User => ({ id: u.id, email: u.email, name: u.name, createdAt: u.createdAt, ...(u.tempPassword ? { tempPassword: true } : {}), ...(u.billingExempt ? { billingExempt: true } : {}) });
+const publicUser = (u: StoredUser): User => ({ id: u.id, email: u.email, name: u.name, createdAt: u.createdAt, ...(u.tempPassword ? { tempPassword: true } : {}), ...(u.billingExempt ? { billingExempt: true } : {}), ...(u.grantedPlan ? { grantedPlan: u.grantedPlan } : {}) });
 
 export async function verifyPassword(emailRaw: string, password: string): Promise<User | null> {
   const u = await getJSON<StoredUser>(userKey(emailRaw));
@@ -380,6 +382,16 @@ export async function setTempPassword(id: string): Promise<string> {
   await putJSON(userKey(u.email), { ...u, ...(await hashPassword(password)), passwordChangedAt: now, sessionsValidAfter: now, tempPassword: true });
   cache.clear();
   return password;
+}
+
+/** The admin grants an account Starter or Pro features, or (null) leaves it to the subscription. */
+export async function setGrantedPlan(id: string, plan: "starter" | "pro" | null) {
+  const u = await storedById(id);
+  const next: StoredUser = { ...u };
+  if (plan) next.grantedPlan = plan;
+  else delete next.grantedPlan;
+  await putJSON(userKey(u.email), next);
+  cache.clear();
 }
 
 // ── invites ──────────────────────────────────────────────────────────────────

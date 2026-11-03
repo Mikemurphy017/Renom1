@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isPro, proOnly } from "@/lib/billing/tier";
 import { currentUser } from "@/lib/auth/server";
 import { appUrl } from "@/lib/email";
 import { SocialError, cancelPost, postsFor, publish } from "@/lib/social/server";
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
   const b = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!b) return NextResponse.json({ ok: false, error: "Invalid request." }, { status: 400 });
 
-  if (typeof b.postId === "string") return publishPost(request, user, b);
+  if (typeof b.postId === "string") return (await isPro(user)) ? publishPost(request, user, b) : proOnly("Text and image posts");
 
   const outputId = str(b.outputId, 64);
   const rec = isStorageId(outputId) ? await getUpload(outputId) : null;

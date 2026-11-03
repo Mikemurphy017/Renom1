@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isPro, proOnly } from "@/lib/billing/tier";
 import { currentUser } from "@/lib/auth/server";
 import { GeminiError, POST_SCENES, editImage, geminiConfigured, postPhotoPrompt } from "@/lib/ai/gemini";
 import { objects } from "@/lib/storage/objects";
@@ -25,6 +26,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = await currentUser(request);
   if (!user) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
+  if (!(await isPro(user))) return proOnly("AI post images");
   if (!geminiConfigured()) return NextResponse.json({ ok: false, error: "AI images aren’t set up for this studio yet." }, { status: 503 });
   const b = (await request.json().catch(() => null)) as { headshots?: unknown; scene?: unknown; aspect?: unknown } | null;
   const ids = Array.isArray(b?.headshots) ? b.headshots.filter(isMediaId).slice(0, 4) : [];

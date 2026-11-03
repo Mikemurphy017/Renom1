@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/admin";
 import { resetLink, sendResetEmail } from "@/lib/auth/reset-email";
 import { signInUrl } from "@/lib/auth/workspace";
-import { AuthError, createResetToken, deleteUser, setDisabled, setTempPassword, signOutEverywhere, userById } from "@/lib/auth/server";
+import { AuthError, createResetToken, deleteUser, setDisabled, setGrantedPlan, setTempPassword, signOutEverywhere, userById } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
   const { id } = await ctx.params;
-  const { action } = (await request.json().catch(() => ({}))) as { action?: string };
+  const { action, plan } = (await request.json().catch(() => ({}))) as { action?: string; plan?: string | null };
   try {
     const user = await userById(id);
     const self = user.id === admin.id;
@@ -32,6 +32,11 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
         if (self) throw new AuthError("Change your own password in Settings.", 409);
         const password = await setTempPassword(id);
         return NextResponse.json({ ok: true, password, signInUrl: signInUrl(request) });
+      }
+      case "plan": {
+        // Grant Starter or Pro features, or (null) go back to what their subscription gives.
+        await setGrantedPlan(id, plan === "pro" || plan === "starter" ? plan : null);
+        return NextResponse.json({ ok: true });
       }
       case "disable":
       case "enable":

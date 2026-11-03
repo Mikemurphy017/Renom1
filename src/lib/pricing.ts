@@ -67,3 +67,26 @@ export const TRIAL_DAYS = 14;
 export const TRIAL_VIDEOS = 3;
 
 export const money = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
+
+/**
+ * Stripe Payment Links, one per plan and billing (the trial, card requirement
+ * and after-payment redirect are set on each link in Stripe). The server can
+ * override each with STRIPE_LINK_<PLAN>_<INTERVAL>, e.g. STRIPE_LINK_PRO_YEAR.
+ */
+export const PAYMENT_LINKS: Record<PlanId, Record<BillingInterval, string>> = {
+  starter: {
+    month: "https://buy.stripe.com/4gM00k5M83jE4LO3n2bwk2D",
+    year: "https://buy.stripe.com/14A6oIb6s07scegaPubwk2E",
+  },
+  pro: {
+    month: "https://buy.stripe.com/5kQfZib6sdYi1zC6zebwk2F",
+    year: "https://buy.stripe.com/cNieVe8YkbQaemo6zebwk2G",
+  },
+};
+
+/** The plan a Stripe price is for, from its amount (cents) and interval: how payment-link subscriptions are recognised. */
+export function planForPrice(unitAmount: number | null | undefined, interval: string | null | undefined): { plan: PlanId; interval: BillingInterval } | null {
+  if (interval !== "month" && interval !== "year") return null;
+  const p = PLANS.find((x) => (interval === "year" ? x.annual : x.monthly) * 100 === unitAmount);
+  return p ? { plan: p.id, interval } : null;
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import { ProBadge } from "@/components/shared/pro";
 import * as React from "react";
 import Link from "next/link";
 import { ChartColumnBig, CalendarDays, Check, Film, Music2, Pause, Play, Sparkles, Volume2, Wand2, ZoomIn } from "lucide-react";
@@ -8,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { BRAND } from "@/lib/brand";
-import { useStore } from "@/lib/store";
+import { usePro, useStore } from "@/lib/store";
 import { STYLES, MUSIC_CHOICES, extrasFor, getStyle, type StyleCategory, type StyleDef, type StyleId } from "@/lib/video/styles";
 import type { CaptionPosition, OverlayOptions, StyleExtras, TranscriptWord } from "@/lib/video/types";
 import { cn } from "@/lib/utils";
@@ -46,6 +47,7 @@ export function LookPanel({
   stockFootage: boolean;
 }) {
   const { profile } = useStore();
+  const { isPro } = usePro();
   const c = value.captions;
   const st = getStyle(c.style);
   const ex = value.extras;
@@ -150,8 +152,9 @@ export function LookPanel({
           disabled={!brollItems.length && !stockFootage}
           onChange={(v) => setExtras({ broll: v, brollMedia: brollItems.map((x) => x.id) })}
         />
-        <Row icon={ChartColumnBig} label="Motion graphics" hint="Charts, checklists, timelines, color cutaways and more, built from what you say" checked={!!ex.graphics} onChange={(v) => setExtras({ graphics: v })} />
-        {ex.graphics && <GraphicsPicker value={ex} onChange={setExtras} />}
+        <Row icon={ChartColumnBig} label={<>Motion graphics {!isPro && <ProBadge className="ml-1" />}</>} hint={isPro ? "Charts, checklists, timelines, color cutaways and more, built from what you say" : "Charts, timelines, color cutaways and more. Part of Pro."} checked={isPro && !!ex.graphics} disabled={!isPro} onChange={(v) => setExtras({ graphics: v })} />
+        {!isPro && <Link href="/billing" className="-mt-1 ml-5.5 block text-[11px] text-primary underline-offset-2 hover:underline">Upgrade to Pro</Link>}
+        {isPro && ex.graphics && <GraphicsPicker value={ex} onChange={setExtras} />}
         <Row icon={Wand2} label="Sound effects" hint="A soft whoosh or pop on each moment" checked={ex.sfx} onChange={(v) => setExtras({ sfx: v })} />
         <MusicPicker value={ex} onChange={setExtras} tracks={tracks} />
         <Link href="/settings#library" className="block text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">Add your own b-roll and music</Link>
@@ -257,7 +260,7 @@ function GraphicsPicker({ value, onChange }: { value: StyleExtras; onChange: (pa
   );
 }
 
-function Row({ label, hint, checked, onChange, disabled, icon: Icon }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; icon?: React.ComponentType<{ className?: string }> }) {
+function Row({ label, hint, checked, onChange, disabled, icon: Icon }: { label: React.ReactNode; hint?: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; icon?: React.ComponentType<{ className?: string }> }) {
   return (
     <label className={cn("flex cursor-pointer items-center justify-between gap-3", disabled && "cursor-default opacity-50")}>
       <span className="flex min-w-0 items-start gap-2">
