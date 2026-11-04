@@ -13,12 +13,14 @@ import type { StoredTake } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * Make the take without filming: the script in the advisor's AI voice over
- * their photos (AI photo set and headshots). The result goes to the AI edit
- * like any other take.
+ * Make the take without filming, in the advisor's AI voice: a talking avatar
+ * (one photo of them, lip-synced to the script) or a photo slideshow. The
+ * result goes to the AI edit like any other take.
  */
 
 const MAX = 6;
+type Mode = "talking" | "slideshow";
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const mediaIdOf = (url?: string) => /\/api\/media\/([A-Za-z0-9_-]+)/.exec(url ?? "")?.[1];
 
 export function AvatarDialog({ open, onOpenChange, videoId, text, vertical, onTake }: { open: boolean; onOpenChange: (v: boolean) => void; videoId: string; text: string; vertical: boolean; onTake: (take: StoredTake) => void }) {
@@ -34,29 +36,53 @@ export function AvatarDialog({ open, onOpenChange, videoId, text, vertical, onTa
     }
     return out;
   }, [profile.photoSet, profile.headshots]);
+  const [mode, setMode] = React.useState<Mode>("talking");
   const [picked, setPicked] = React.useState<string[]>([]);
   React.useEffect(() => {
-    if (open && !picked.length) setPicked(photos.slice(0, 4).map((p) => p.id));
-  }, [open, photos, picked.length]);
+    if (open && !picked.length) setPicked(photos.slice(0, mode === "talking" ? 1 : 4).map((p) => p.id));
+  }, [open, photos, picked.length, mode]);
+  const switchMode = (m: Mode) => {
+    setMode(m);
+    setPicked((p) => (m === "talking" ? p.slice(0, 1) : p.length > 1 ? p : photos.slice(0, 4).map((x) => x.id)));
+  };
   const [making, setMaking] = React.useState(false);
+  const [progress, setProgress] = React.useState("");
   const words = text.trim().split(/\s+/).filter(Boolean).length;
   const estSec = Math.round((words / 150) * 60);
 
-  const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length >= MAX ? p : [...p, id]));
+  const toggle = (id: string) => setPicked((p) => (mode === "talking" ? [id] : p.includes(id) ? p.filter((x) => x !== id) : p.length >= MAX ? p : [...p, id]));
 
   const make = async () => {
     setMaking(true);
+    setProgress(mode === "talking" ? "Recording your voice…" : "Making your video…");
     try {
-      const r = await fetch("/api/avatar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, photoIds: picked, vertical, videoId }) });
-      const j = (await r.json().catch(() => null)) as { ok?: boolean; error?: string; take?: StoredTake } | null;
-      if (!r.ok || !j?.ok || !j.take) throw new Error(j?.error ?? "Couldn’t make the avatar video.");
+      const r = await fetch("/api/avatar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, photoIds: picked, vertical, videoId, mode }) });
+      const j = (await r.json().catch(() => null)) as { ok?: boolean; error?: string; take?: StoredTake; job?: string } | null;
+      if (!r.ok || !j?.ok || !(j.take || j.job)) throw new Error(j?.error ?? "Couldn’t make the avatar video.");
+      let take = j.take;
+      // A talking avatar takes a few minutes: check in until it's ready.
+      for (let misses = 0; !take; ) {
+        await sleep(10_000);
+        const s = await fetch(`/api/avatar?job=${j.job}`, { cache: "no-store" }).catch(() => null);
+        const st = (await s?.json().catch(() => null)) as { ok?: boolean; state?: string; error?: string; take?: StoredTake; elapsedSec?: number } | null;
+        if (!s?.ok || !st?.ok) {
+          if (s && s.status < 500 && s.status !== 429) throw new Error(st?.error ?? "Couldn’t make the avatar video.");
+          if (++misses > 12) throw new Error("Lost touch with the video service. Check your connection and try again.");
+          continue;
+        }
+        misses = 0;
+        if (st.state === "failed") throw new Error(st.error ?? "Couldn’t make the avatar video.");
+        if (st.state === "done") take = st.take;
+        else setProgress(`Your avatar is filming… ${Math.floor((st.elapsedSec ?? 0) / 60)}:${String((st.elapsedSec ?? 0) % 60).padStart(2, "0")}`);
+      }
       onOpenChange(false);
-      onTake(j.take);
+      onTake(take);
       toast.success("Your avatar video is ready", { description: "The AI edit is adding captions and graphics now." });
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
       setMaking(false);
+      setProgress("");
     }
   };
 
@@ -89,8 +115,19 @@ export function AvatarDialog({ open, onOpenChange, videoId, text, vertical, onTa
   else
     body = (
       <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            ["talking", "Talking avatar", "Your photo speaks the script, lip-synced to your voice."],
+            ["slideshow", "Photo slideshow", "Your photos with slow zooms while your voice reads. Ready in seconds."],
+          ] as const).map(([m, title, desc]) => (
+            <button key={m} type="button" disabled={making} onClick={() => switchMode(m)} aria-pressed={mode === m} className={cn("cursor-pointer rounded-xl border p-3 text-left transition", mode === m ? "border-primary bg-brass-soft/50" : "border-border hover:bg-muted/50")}>
+              <div className="text-[13px] font-medium">{title}</div>
+              <div className="mt-0.5 text-[12px] text-muted-foreground">{desc}</div>
+            </button>
+          ))}
+        </div>
         <div>
-          <div className="mb-2 flex items-baseline justify-between text-[13px] font-medium">Pick the photos <span className="text-[12px] font-normal text-muted-foreground">{picked.length} of up to {MAX}</span></div>
+          <div className="mb-2 flex items-baseline justify-between text-[13px] font-medium">{mode === "talking" ? "Pick one photo" : "Pick the photos"} <span className="text-[12px] font-normal text-muted-foreground">{mode === "talking" ? "Front-facing, just you, face clearly visible" : `${picked.length} of up to ${MAX}`}</span></div>
           <div className="grid max-h-72 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
             {photos.map((p) => {
               const on = picked.includes(p.id);
@@ -105,11 +142,11 @@ export function AvatarDialog({ open, onOpenChange, videoId, text, vertical, onTa
           </div>
         </div>
         <div className="rounded-lg bg-muted/60 p-3 text-[12px] text-muted-foreground">
-          Your AI voice reads this video’s script ({words} words, about {Math.max(1, Math.round(estSec / 60))} min). Each photo holds for a few seconds with a slow zoom, then the AI edit adds your captions, graphics and cover. {vertical ? "Vertical (9:16)." : "Wide (16:9)."}
+          Your AI voice reads this video’s script ({words} words, about {estSec < 60 ? `${Math.max(5, Math.round(estSec / 5) * 5)} sec` : `${Math.round(estSec / 60)} min`}). {mode === "talking" ? "Your photo comes to life and speaks it, then" : "Each photo holds for a few seconds with a slow zoom, then"} the AI edit adds your captions, graphics and cover. {vertical ? "Vertical (9:16)." : "Wide (16:9)."}
         </div>
         <div className="flex items-center gap-3">
-          <Button onClick={make} disabled={making || !picked.length || words < 5}>{making ? <><LoaderCircle className="animate-spin" /> Making your video…</> : <><Sparkles /> Make the video</>}</Button>
-          {making && <span className="text-[12px] text-muted-foreground">This takes a minute or two. Keep this tab open.</span>}
+          <Button onClick={make} disabled={making || !picked.length || words < 5}>{making ? <><LoaderCircle className="animate-spin" /> Making…</> : <><Sparkles /> Make the video</>}</Button>
+          {making && <span className="text-[12px] text-muted-foreground">{progress} {mode === "talking" ? "Usually a few minutes. Keep this tab open." : "Keep this tab open."}</span>}
         </div>
       </div>
     );

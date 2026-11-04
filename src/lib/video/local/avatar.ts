@@ -51,3 +51,30 @@ export async function buildAvatarTake(o: { photos: string[]; audio: string; out:
   await runFfmpeg(args);
   return { durationSec: Math.round(D * 100) / 100, width: W, height: H };
 }
+
+/**
+ * The photo sent for a talking avatar, already in the video's shape: vertical
+ * fills the frame (kept to the upper part, where the face is); wide puts the
+ * portrait on a soft, blurred copy of itself.
+ */
+export async function prepareAvatarPhoto(input: string, out: string, vertical: boolean) {
+  const filter = vertical
+    ? "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-1080)/2:(ih-1920)*0.3,setsar=1"
+    : "split[a][b];[a]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,boxblur=30:2,eq=brightness=-0.08[bg];[b]scale=-2:1080[fg];[bg][fg]overlay=(W-w)/2:0,setsar=1";
+  await runFfmpeg(["-y", "-i", input, "-frames:v", "1", "-filter_complex", filter, "-q:v", "2", out]);
+}
+
+/** The finished talking-avatar video at the studio's size, frame rate and sound format. */
+export async function normalizeTalkingVideo(input: string, out: string, vertical: boolean): Promise<{ durationSec: number; width: number; height: number }> {
+  const [W, H] = vertical ? [1080, 1920] : [1920, 1080];
+  await runFfmpeg([
+    "-y", "-i", input,
+    "-vf", `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=0x0b1526,setsar=1,fps=${FPS},format=yuv420p`,
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "19",
+    "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
+    "-movflags", "+faststart", out,
+  ]);
+  const D = await audioDuration(out);
+  if (!D) throw new Error("The avatar video couldn’t be read.");
+  return { durationSec: Math.round(D * 100) / 100, width: W, height: H };
+}
