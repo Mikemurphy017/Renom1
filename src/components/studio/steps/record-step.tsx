@@ -15,7 +15,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Headshot } from "@/components/shared/headshot";
 import { useStore } from "@/lib/store";
 import { generateScript } from "@/lib/ai/content";
-import type { Script, Video } from "@/lib/types";
+import type { Script, StoredTake, Video } from "@/lib/types";
+import { AvatarDialog } from "../avatar-dialog";
 import { cn, fmtDuration } from "@/lib/utils";
 import { micKind, soundAdvice, type SoundCheck } from "@/lib/media/use-capture";
 import { nearestQuality, QUALITY_OPTIONS, recordSize, useCapture, videoBitrate, type CaptureQuality, type QualityId } from "@/lib/media/use-capture";
@@ -127,6 +128,7 @@ export function RecordStep({ video, complete }: StepProps) {
   const [doneOpen, setDoneOpen] = React.useState(false);
   // A video made elsewhere (phone, videographer) instead of recording here.
   const fileInput = React.useRef<HTMLInputElement>(null);
+  const [avatarOpen, setAvatarOpen] = React.useState(false);
   const [uploaded, setUploaded] = React.useState(false);
   const [dragging, setDragging] = React.useState(false);
 
@@ -213,6 +215,23 @@ export function RecordStep({ video, complete }: StepProps) {
     }
     if (active.id === video.id) complete();
     else { updateVideo(active.id, { stage: "edit" }); toast.success("Sent to AI Edit", { description: active.title }); }
+  };
+
+  // An avatar take is already stored on the server: save it on the video and start the AI edit.
+  const avatarTake = (take: StoredTake) => {
+    const target = active;
+    resetPipeline(target.id);
+    updateVideo(target.id, { take, analysisJobId: undefined });
+    analyzeTake(target.id, take, {
+      aspect: take.height > take.width ? "9:16" : "16:9",
+      edit: DEFAULT_EDIT,
+      overlays: peekDraft<OverlayOptions>(target.id, "edit.overlays") ?? defaultOverlays(profile, target.format),
+      script: scriptText(target),
+    })
+      .then((r) => updateVideo(target.id, { analysisJobId: r.jobId }))
+      .catch((e) => toast.error("AI Edit couldn’t process this video", { description: (e as Error).message }));
+    if (target.id === video.id) complete();
+    else updateVideo(target.id, { stage: "edit" });
   };
 
   const takeFile = async (file?: File | null) => {
@@ -466,6 +485,9 @@ export function RecordStep({ video, complete }: StepProps) {
                       <Upload /> Upload a video
                     </Button>
                   </div>
+                  <button type="button" onClick={() => setAvatarOpen(true)} className="mt-3 inline-flex cursor-pointer items-center gap-1.5 text-[13px] text-[#E8CFA4] underline-offset-2 hover:underline">
+                    <Sparkles className="size-3.5" /> Or make it with your AI avatar: your photos and voice, no camera
+                  </button>
                   <p className="mt-3 text-[12px] text-white/55">MP4, MOV or WebM from your phone or computer. You can also drag the file here.</p>
                 </div>
               </div>
@@ -515,6 +537,9 @@ export function RecordStep({ video, complete }: StepProps) {
               </PopoverTrigger>
               <PopoverContent align="start" side="top" className="w-72"><PrompterShortcuts /></PopoverContent>
             </Popover>
+            <Button size="sm" variant="ghost" className="ml-1 text-white hover:bg-white/10 hover:text-white" onClick={() => setAvatarOpen(true)} disabled={recording} title="Make this video from your photos and AI voice">
+              <Sparkles /> <span className="hidden sm:inline">AI avatar</span>
+            </Button>
             <Button size="sm" variant="outline" className="ml-1 border-[#E8CFA4]/60 bg-white/5 text-white hover:bg-white/15 hover:text-white" onClick={() => fileInput.current?.click()} disabled={recording} aria-label="Upload a video">
               <Upload /> <span className="hidden sm:inline">Upload a video</span><span className="sm:hidden">Upload</span>
             </Button>
@@ -576,6 +601,7 @@ export function RecordStep({ video, complete }: StepProps) {
       </div>
 
 
+      <AvatarDialog open={avatarOpen} onOpenChange={setAvatarOpen} videoId={active.id} text={lines.join(" ")} vertical={aspect === "9:16"} onTake={avatarTake} />
       <Dialog open={doneOpen} onOpenChange={setDoneOpen}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
