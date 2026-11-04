@@ -132,3 +132,18 @@ export async function talkingVideoStatus(id: string): Promise<TalkingStatus> {
   }
   return { state: "working" };
 }
+
+/** For the admin: which plan the voice service sees on the studio's key (nothing secret is returned). */
+export async function voiceAccount(): Promise<Record<string, unknown>> {
+  if (!voiceConfigured()) return { configured: false };
+  const keyEnds = `…${KEY().slice(-4)}`;
+  try {
+    const res = await fetch(`${BASE()}/v1/user/subscription`, { headers: { "xi-api-key": KEY() }, cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    const j = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!res.ok) return { configured: true, keyEnds, httpStatus: res.status, error: (j?.detail as { message?: string } | undefined)?.message ?? j?.detail ?? "unreadable" };
+    const pick = (k: string) => j?.[k];
+    return { configured: true, keyEnds, tier: pick("tier"), status: pick("status"), charactersUsed: pick("character_count"), characterLimit: pick("character_limit"), resets: typeof pick("next_character_count_reset_unix") === "number" ? new Date((pick("next_character_count_reset_unix") as number) * 1000).toISOString() : undefined };
+  } catch (e) {
+    return { configured: true, keyEnds, error: (e as Error).message };
+  }
+}
