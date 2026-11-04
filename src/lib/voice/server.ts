@@ -44,7 +44,11 @@ async function call(path: string, init: RequestInit & { timeout?: number; badInp
     console.error(`[voice] ${res.status} ${path}: ${detail.slice(0, 300)}`);
     // A voice made on another voice-service account (e.g. after the studio's key changed).
     if (/voice_not_found|voice.*(not found|does not exist)/i.test(detail) || (res.status === 404 && /\/text-to-speech\//.test(path))) throw new VoiceError("Your AI voice needs to be made again: Settings → Your AI voice → Remake. It takes about two minutes.", 409);
-    if (res.status === 402 || /paid_plan_required/i.test(detail)) throw new VoiceError("Talking avatars aren’t included in the studio’s current AI plan. Your administrator can upgrade it.", 402);
+    if (res.status === 402 || /paid_plan_required/i.test(detail)) {
+      // Record which plan the service sees on this key, for the administrator.
+      await voiceAccount().then((a) => console.error("[voice] plan on key:", JSON.stringify(a))).catch(() => {});
+      throw new VoiceError("Talking avatars aren’t included in the studio’s current AI plan. Your administrator can upgrade it.", 402);
+    }
     if (res.status === 403 && /model_access_denied/i.test(detail)) throw new VoiceError("Talking avatars haven’t been switched on for this studio yet. Your administrator can request access.", 503);
     if (res.status === 401) throw new VoiceError("The studio’s voice key was refused. Your administrator can check it.", 503);
     if (res.status === 429) throw new VoiceError("The voice service is busy. Try again in a minute.", 429);
