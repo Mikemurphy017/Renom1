@@ -127,24 +127,27 @@ export function AvatarDialog({ open, onOpenChange, videoId, text, vertical, onTa
           ))}
         </div>
         <div>
-          <div className="mb-2 flex items-baseline justify-between text-[13px] font-medium">{mode === "talking" ? "Pick one photo" : "Pick the photos"} <span className="text-[12px] font-normal text-muted-foreground">{mode === "talking" ? "Front-facing, just you, face clearly visible" : `${picked.length} of up to ${MAX}`}</span></div>
-          <div className="grid max-h-72 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
+          <div className="mb-2 flex flex-col gap-0.5 text-[13px] font-medium sm:flex-row sm:items-baseline sm:justify-between">{mode === "talking" ? "Pick one photo" : "Pick the photos"} <span className="text-[12px] font-normal text-muted-foreground">{mode === "talking" ? "Front-facing, just you, face clearly visible" : `${picked.length} of up to ${MAX}`}</span></div>
+          <div className="max-h-[45dvh] overflow-y-auto overscroll-contain rounded-lg sm:max-h-80">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
             {photos.map((p) => {
               const on = picked.includes(p.id);
               return (
-                <button key={p.id} type="button" onClick={() => toggle(p.id)} disabled={making} className={cn("relative aspect-[4/5] cursor-pointer overflow-hidden rounded-lg border-2 transition", on ? "border-primary" : "border-transparent opacity-70 hover:opacity-100")} aria-pressed={on} title={p.label}>
+                <button key={p.id} type="button" onClick={() => toggle(p.id)} disabled={making} className={cn("relative block w-full cursor-pointer overflow-hidden rounded-lg border-2 transition", on ? "border-primary" : "border-transparent opacity-75 hover:opacity-100")} aria-pressed={on} title={p.label}>
+                  <span className="block w-full pb-[125%]" aria-hidden />
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.url} alt={p.label} className="size-full object-cover" loading="lazy" />
+                  <img src={p.url} alt={p.label} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
                   {on && <span className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="size-3" /></span>}
                 </button>
               );
             })}
           </div>
+          </div>
         </div>
         <div className="rounded-lg bg-muted/60 p-3 text-[12px] text-muted-foreground">
           Your AI voice reads this video’s script ({words} words, about {estSec < 60 ? `${Math.max(5, Math.round(estSec / 5) * 5)} sec` : `${Math.round(estSec / 60)} min`}). {mode === "talking" ? "Your photo comes to life and speaks it, then" : "Each photo holds for a few seconds with a slow zoom, then"} the AI edit adds your captions, graphics and cover. {vertical ? "Vertical (9:16)." : "Wide (16:9)."}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="sticky -bottom-6 z-10 -mx-6 -mb-6 flex items-center gap-3 border-t border-border bg-card px-6 py-3">
           <Button onClick={make} disabled={making || !picked.length || words < 5}>{making ? <><LoaderCircle className="animate-spin" /> Making…</> : <><Sparkles /> Make the video</>}</Button>
           {making && <span className="text-[12px] text-muted-foreground">{progress} {mode === "talking" ? "Usually a few minutes. Keep this tab open." : "Keep this tab open."}</span>}
         </div>
@@ -153,7 +156,7 @@ export function AvatarDialog({ open, onOpenChange, videoId, text, vertical, onTa
 
   return (
     <Dialog open={open} onOpenChange={(v) => !making && onOpenChange(v)}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="font-serif text-2xl">Make it with your AI avatar</DialogTitle>
           <DialogDescription>No camera needed: your photos, your voice, your script.</DialogDescription>
