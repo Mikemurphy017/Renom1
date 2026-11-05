@@ -18,7 +18,6 @@ import { AccountSection } from "@/components/settings/account-section";
 import { PublishingSection } from "@/components/settings/publishing-section";
 import { CalendarLink } from "@/components/settings/calendar-link";
 import { CoverSettings } from "@/components/settings/cover-settings";
-import { AiVoiceSection } from "@/components/settings/ai-voice";
 import { usePro, useStore } from "@/lib/store";
 import { disclosureTemplate, firstDisclosure, initials } from "@/lib/profile";
 import { useRouter } from "next/navigation";
@@ -29,7 +28,6 @@ import { BRAND } from "@/lib/brand";
 const SECTIONS = [
   ["voice", "Your voice"],
   ["covers", "Covers"],
-  ["ai-voice", "AI voice"],
   ["library", "B-roll & music"],
   ["disclosures", "Disclosures"],
   ["calendar", "Calendar link"],
@@ -167,10 +165,6 @@ export default function SettingsPage() {
 
           <Section id="covers" title="Covers" desc="What goes on your thumbnails. The AI photo set turns your headshots into a range of photos of you; or keep it to real photos, or words only.">
             <CoverSettings />
-          </Section>
-
-          <Section id="ai-voice" title="Your AI voice" desc="Record a minute or two of you talking, once. Your AI voice can then read any script over your photos, so you can make a video without filming.">
-            <AiVoiceSection />
           </Section>
 
           <Section id="library" title="B-roll & music" desc="Your own footage and tracks. Edit styles use them for cutaways and background music.">
