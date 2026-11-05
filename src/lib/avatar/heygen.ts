@@ -78,23 +78,35 @@ export async function lookStatus(lookId: string): Promise<LookState> {
   return { state: "ready", engines: d.supported_api_engines ?? [] };
 }
 
-/** Starts the talking video. Uses Avatar V when the look supports it. */
+/**
+ * Starts the talking video. Uses Avatar V when the look supports it, with no
+ * extras: blinking and motion options need a digital twin reference, which a
+ * photo avatar doesn't have. If Avatar V turns the request down, falls back
+ * to Avatar IV (with a touch of expression and gesture) once.
+ */
 export async function startAvatarVideo(o: { lookId: string; audioAssetId: string; vertical: boolean; engines: string[]; title?: string }): Promise<string> {
-  const v = o.engines.includes("avatar_v");
-  const body = {
+  const base = {
     type: "avatar",
     avatar_id: o.lookId,
     audio_asset_id: o.audioAssetId,
     title: o.title?.slice(0, 200) || "Renom avatar video",
     resolution: "1080p",
     aspect_ratio: o.vertical ? "9:16" : "16:9",
-    ...(v
-      ? { engine: { type: "avatar_v", more_blinking: true } }
-      : { expressiveness: "medium", motion_prompt: "Speaking warmly and confidently to camera, natural head movement, occasional small hand gestures." }),
   };
-  const d = await call<{ video_id?: string }>("/v3/videos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!d.video_id) throw new VoiceError("The avatar service didn’t start the video. Try again.");
-  return d.video_id;
+  const iv = { ...base, expressiveness: "medium", motion_prompt: "Speaking warmly and confidently to camera, natural head movement, occasional small hand gestures." };
+  const start = async (body: object) => {
+    const d = await call<{ video_id?: string }>("/v3/videos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!d.video_id) throw new VoiceError("The avatar service didn’t start the video. Try again.");
+    return d.video_id;
+  };
+  if (!o.engines.includes("avatar_v")) return start(iv);
+  try {
+    return await start({ ...base, engine: { type: "avatar_v" } });
+  } catch (e) {
+    if (!(e instanceof VoiceError) || e.status !== 400 || !o.engines.includes("avatar_iv")) throw e;
+    console.warn("[avatar] Avatar V turned the request down; trying Avatar IV");
+    return start(iv);
+  }
 }
 
 export type VideoState = { state: "working" } | { state: "done"; url: string } | { state: "failed"; reason: string };
