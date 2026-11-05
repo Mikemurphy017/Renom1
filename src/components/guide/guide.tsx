@@ -43,13 +43,14 @@ function useDismissed() {
 // ── Getting started (Home) ──
 
 export function GettingStarted() {
-  const { videos, profile } = useStore();
+  const { videos, profile, plan } = useStore();
   const { openNewVideo } = useShell();
   const { status } = useSocialStatus();
   const [dismissed, dismiss] = useDismissed();
   const steps = [
     { id: "voice", title: "Tell us how you sound", body: "Your voice, who you serve and what you believe. Every script starts here.", done: !!profile.niche || !!profile.idealClient, href: "/settings#voice", cta: "Review your voice" },
     { id: "photos", title: "Add 2–4 headshots", body: "They go on your covers and make your AI photo set.", done: profile.headshots.some((h) => h.url), href: "/settings#covers", cta: "Add headshots" },
+    { id: "plan", title: "Set your goal and plan the month", body: "Choose how many videos go out each week; Renom lines up a topic for every slot and keeps you on pace.", done: !!profile.goals && plan.length > 0, href: "/plan?goals=1", cta: "Plan my month" },
     { id: "video", title: "Start your first video", body: "Pick an idea; Renom writes the script in your voice. Or upload a video you’ve already made.", done: videos.length > 0, action: openNewVideo, cta: "Start a video" },
     { id: "record", title: "Record it", body: "Read from the teleprompter in your browser. Run the 5-second sound check first.", done: videos.some((v) => v.take), href: videos[0] ? `/studio/${videos[0].id}/record` : undefined, cta: "Go to Record" },
     { id: "edit", title: "Finish your first edit", body: "The AI cuts the pauses, adds captions and cleans up your sound. You pick the look.", done: videos.some((v) => v.output), href: videos.find((v) => v.take) ? `/studio/${videos.find((v) => v.take)!.id}/edit` : undefined, cta: "Go to Edit" },

@@ -2,6 +2,7 @@
 
 import { UploadFinishedButton } from "@/components/layout/upload-finished";
 import { GettingStarted } from "@/components/guide/guide";
+import { ThisWeekCard } from "@/components/plan/this-week";
 import * as React from "react";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Monitor, Smartphone, Sparkles } from "lucide-react";
@@ -95,6 +96,8 @@ export default function HomePage() {
       </section>
 
       <GettingStarted />
+
+      <ThisWeekCard />
 
       {videos.length === 0 && (
         <section className="grid gap-4 sm:grid-cols-3">

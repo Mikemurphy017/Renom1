@@ -225,6 +225,8 @@ export interface AdvisorProfile {
   ideaHistory?: string[];
   /** Every idea suggested so far (newest last): a subject can come back through a new angle, never the same one. */
   ideaLog?: { title: string; subject?: string; angle?: string }[];
+  /** How much the advisor means to publish, and when they record and post (see lib/plan). */
+  goals?: PostingGoals;
 }
 
 export type CoverPhotos = "ai" | "real" | "none";
@@ -259,4 +261,34 @@ export interface DisclosureVersion {
   updatedAt: string;
   updatedBy: string;
   active: boolean;
+}
+
+/** The advisor's publishing goals: what accountability on Home and the Plan page measure against. */
+export interface PostingGoals {
+  videosPerWeek: number;
+  postsPerWeek: number;
+  /** Day of the week they batch-record (0 Sunday … 6 Saturday). */
+  recordDay: number;
+  /** Days of the week videos and posts go out. */
+  videoDays: number[];
+  postDays: number[];
+}
+
+/** One thing on the content calendar: a video or a post planned for a day. */
+export interface PlanItem {
+  id: string;
+  /** Local date, YYYY-MM-DD. */
+  date: string;
+  kind: "video" | "post";
+  title: string;
+  subject?: string;
+  angle?: string;
+  category?: Category;
+  outline?: string[];
+  format?: VideoFormat;
+  postKind?: PostKind;
+  /** Set once it's started: the video or post made from it. */
+  videoId?: string;
+  postId?: string;
+  createdAt: string;
 }

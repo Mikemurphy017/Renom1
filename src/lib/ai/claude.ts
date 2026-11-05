@@ -29,6 +29,8 @@ function pastList(existing: Extract<WriteRequest, { task: "ideas" }>["existing"]
   return lines.join("\n") || "- (none)";
 }
 
+const ideaCount = (req: Extract<WriteRequest, { task: "ideas" }>) => Math.min(16, Math.max(1, Math.round(req.count ?? 3)));
+
 function userPrompt(req: WriteRequest): string {
   const revise = (current: unknown, instruction?: string) =>
     current && instruction
@@ -40,14 +42,14 @@ function userPrompt(req: WriteRequest): string {
   switch (req.task) {
     case "ideas":
       return `Today is ${today()}.
-Suggest 3 ${req.format === "short" ? "short-form (under 60 seconds, vertical)" : "long-form (6–12 minutes)"} video ideas.
+Suggest ${ideaCount(req)} ${req.format === "short" ? "short-form (under 60 seconds, vertical)" : "long-form (6–12 minutes)"} video ideas.
 ${req.mode === "timely"
   ? "Make them timely: tie each to something happening in the next few weeks — the season, tax and enrollment deadlines, year-end planning, or market themes advisors are being asked about now. Don't invent specific news events, quotes or numbers."
   : "Make them evergreen: questions the ideal client will still be asking a year from now."}
 ${req.topic ? `The advisor wants to talk about: "${req.topic}". Every idea should serve that topic.` : "Pick the topics most likely to bring the ideal client in the door."}
 Each idea is one subject seen through one angle. The angles:
 ${ANGLES.map((a) => `- ${a.label}: ${a.brief}`).join("\n")}
-Give each of the 3 ideas a different angle${req.topic ? "" : " and, unless asked otherwise, a different subject"}.
+Give each of the ${ideaCount(req)} ideas a different angle${req.topic ? "" : " and, unless asked otherwise, a different subject"}${ideaCount(req) > 3 ? ". Spread them across the advisor's subjects so the set reads as a varied month of content, not one theme" : ""}.
 The advisor already has, or was already offered, these (title [subject · angle]):
 ${pastList(req.existing)}
 A subject that's already covered can come back, but only through an angle it hasn't had yet, as a genuinely different video: new question, new points. Never the same subject through the same angle again, and never a listed video reworded. Prefer angles this advisor has used least.
@@ -148,7 +150,7 @@ const SCHEMAS = { ideas: IdeasSchema, script: ScriptSchema, captions: CaptionsSc
 
 /** Ideas that repeat nothing the advisor has or was offered: repeats are dropped and Claude is asked again (twice at most). */
 async function writeIdeas(req: Extract<WriteRequest, { task: "ideas" }>) {
-  const want = 3;
+  const want = ideaCount(req);
   const kept: WriteResult<"ideas">["ideas"] = [];
   let avoid = [...req.existing];
   for (let round = 0; round < 3 && kept.length < want; round++) {

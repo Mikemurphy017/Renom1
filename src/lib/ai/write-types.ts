@@ -15,6 +15,8 @@ export type WriteRequest =
       /** Everything the advisor already has or was already offered: videos, ideas on screen, past suggestions. No new idea may repeat one. */
       existing: { title: string; outline?: string[]; subject?: string; angle?: string }[];
       instruction?: string;
+      /** How many ideas (default 3, up to 16): the month planner asks for a month's worth at once. */
+      count?: number;
     }
   | {
       task: "script";

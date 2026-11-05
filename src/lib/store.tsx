@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import type { AdvisorProfile, ComplianceStatus, PhotoSetItem, PostDraft, StageId, Video } from "./types";
+import type { AdvisorProfile, ComplianceStatus, PhotoSetItem, PlanItem, PostDraft, StageId, Video } from "./types";
 import type { ReviewComment, ReviewItem } from "./compliance";
 import { EMPTY_PROFILE } from "./profile";
 import { clearDrafts, exportDrafts, importDrafts, legacyDrafts, onDraftsChange } from "./drafts";
@@ -28,6 +28,8 @@ interface Persisted {
   team: TeamMember[];
   /** Text and image posts. */
   posts?: PostDraft[];
+  /** The content calendar. */
+  plan?: PlanItem[];
 }
 
 const KEY = "renom.state.v1";
@@ -41,6 +43,7 @@ const INITIAL: Persisted = {
   profile: EMPTY_PROFILE,
   team: [],
   posts: [],
+  plan: [],
 };
 
 export interface Account {
@@ -93,6 +96,10 @@ interface Store {
   addPost: (p: Pick<PostDraft, "kind"> & Partial<PostDraft>) => PostDraft;
   updatePost: (id: string, patch: Partial<PostDraft> | ((p: PostDraft) => Partial<PostDraft>)) => void;
   deletePost: (id: string) => void;
+  plan: PlanItem[];
+  addPlanItems: (items: (Omit<PlanItem, "id" | "createdAt"> & Partial<Pick<PlanItem, "id">>)[]) => PlanItem[];
+  updatePlanItem: (id: string, patch: Partial<PlanItem>) => void;
+  deletePlanItem: (id: string) => void;
 }
 
 const StoreContext = React.createContext<Store | null>(null);
@@ -311,6 +318,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       },
       updatePost: (id, patch) => set((s) => ({ posts: (s.posts ?? []).map((p) => (p.id === id ? { ...p, ...(typeof patch === "function" ? patch(p) : patch), updatedAt: now() } : p)) })),
       deletePost: (id) => set((s) => ({ posts: (s.posts ?? []).filter((p) => p.id !== id) })),
+      plan: state.plan ?? [],
+      addPlanItems: (items) => {
+        const made = items.map((it) => ({ ...it, id: it.id ?? `pl${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`, createdAt: now() }));
+        set((s) => ({ plan: [...(s.plan ?? []), ...made] }));
+        return made;
+      },
+      updatePlanItem: (id, patch) => set((s) => ({ plan: (s.plan ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)) })),
+      deletePlanItem: (id) => set((s) => ({ plan: (s.plan ?? []).filter((p) => p.id !== id) })),
     };
   }, [state, hydrated, account, signOut, saveState]);
 
