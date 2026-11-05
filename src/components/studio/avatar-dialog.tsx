@@ -64,7 +64,7 @@ export function AvatarDialog({ open, onOpenChange, videoId, text, vertical, onTa
       for (let misses = 0; !take; ) {
         await sleep(10_000);
         const s = await fetch(`/api/avatar?job=${j.job}`, { cache: "no-store" }).catch(() => null);
-        const st = (await s?.json().catch(() => null)) as { ok?: boolean; state?: string; error?: string; take?: StoredTake; elapsedSec?: number } | null;
+        const st = (await s?.json().catch(() => null)) as { ok?: boolean; state?: string; phase?: string; error?: string; take?: StoredTake; elapsedSec?: number } | null;
         if (!s?.ok || !st?.ok) {
           if (s && s.status < 500 && s.status !== 429) throw new Error(st?.error ?? "Couldn’t make the avatar video.");
           if (++misses > 12) throw new Error("Lost touch with the video service. Check your connection and try again.");
@@ -73,7 +73,7 @@ export function AvatarDialog({ open, onOpenChange, videoId, text, vertical, onTa
         misses = 0;
         if (st.state === "failed") throw new Error(st.error ?? "Couldn’t make the avatar video.");
         if (st.state === "done") take = st.take;
-        else setProgress(`Your avatar is filming… ${Math.floor((st.elapsedSec ?? 0) / 60)}:${String((st.elapsedSec ?? 0) % 60).padStart(2, "0")}`);
+        else setProgress(`${st.phase === "avatar" ? "Building your avatar from the photo (first time only)…" : "Your avatar is filming…"} ${Math.floor((st.elapsedSec ?? 0) / 60)}:${String((st.elapsedSec ?? 0) % 60).padStart(2, "0")}`);
       }
       onOpenChange(false);
       onTake(take);

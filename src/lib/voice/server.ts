@@ -97,48 +97,6 @@ export async function speak(user: User, text: string): Promise<Uint8Array> {
   return new Uint8Array(await res.arrayBuffer());
 }
 
-// ── Talking avatar: a photo of the advisor speaking their AI voice, lip-synced ──
-
-/** The lip-sync avatar model (photo + speech in, talking video out). */
-const AVATAR_MODEL = () => process.env.AVATAR_MODEL_ID?.trim() || "creatify-aurora";
-
-const inline = (bytes: Uint8Array, mime: string) => ({ type: "inline_base64", content_base64: Buffer.from(bytes).toString("base64"), mime_type: mime });
-
-/** Starts a talking-avatar video. Returns the provider's generation id. */
-export async function startTalkingVideo(photo: { bytes: Uint8Array; type: string }, speech: Uint8Array): Promise<string> {
-  const res = await call("/v1/flows/video", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model_id: AVATAR_MODEL(), image: inline(photo.bytes, photo.type), audio: inline(speech, "audio/mpeg") }),
-    timeout: 120_000,
-    badInput: "That photo couldn’t be used for a talking avatar. Pick a clear, front-facing photo of just you.",
-  });
-  const j = (await res.json()) as { id?: string };
-  if (!j.id || !/^[A-Za-z0-9_-]{1,80}$/.test(j.id)) throw new VoiceError("The video service didn’t start the video. Try again.");
-  return j.id;
-}
-
-export type TalkingStatus = { state: "working" } | { state: "done"; url: string } | { state: "failed"; reason: string };
-
-/** Where a talking-avatar video is. Busy or flaky service answers count as still working. */
-export async function talkingVideoStatus(id: string): Promise<TalkingStatus> {
-  let res: Response;
-  try {
-    res = await fetch(`${BASE()}/v1/flows/video/${encodeURIComponent(id)}`, { headers: { "xi-api-key": KEY() }, cache: "no-store", signal: AbortSignal.timeout(30_000) });
-  } catch {
-    return { state: "working" };
-  }
-  if (res.status === 429 || res.status >= 500) return { state: "working" };
-  if (!res.ok) return { state: "failed", reason: "The video service lost this video. Please make it again." };
-  const j = (await res.json().catch(() => ({}))) as { status?: string; content_url?: string; failure_reason?: string; error_message?: string };
-  if (j.status === "completed") return j.content_url ? { state: "done", url: j.content_url } : { state: "failed", reason: "The video came back empty. Please make it again." };
-  if (j.status === "failed") {
-    console.error(`[voice] avatar ${id} failed: ${j.failure_reason ?? ""} ${(j.error_message ?? "").slice(0, 300)}`);
-    return { state: "failed", reason: j.failure_reason === "moderated" ? "The video service declined this photo or script. Try a different photo, or reword the script." : "The video service couldn’t make this one. Please try again, or pick a different photo." };
-  }
-  return { state: "working" };
-}
-
 /** For the admin: which plan the voice service sees on the studio's key (nothing secret is returned). */
 export async function voiceAccount(): Promise<Record<string, unknown>> {
   if (!voiceConfigured()) return { configured: false };

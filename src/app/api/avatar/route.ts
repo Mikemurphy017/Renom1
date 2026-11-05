@@ -7,7 +7,8 @@ import { currentUser, type User } from "@/lib/auth/server";
 import { isPro, proOnly } from "@/lib/billing/tier";
 import { getJSON, objects, putJSON } from "@/lib/storage/objects";
 import { isMediaId, mediaKey } from "@/lib/storage/media";
-import { VoiceError, speak, startTalkingVideo, talkingVideoStatus } from "@/lib/voice/server";
+import { VoiceError, speak } from "@/lib/voice/server";
+import { avatarConfigured, avatarVideoStatus, createPhotoLook, lookStatus, startAvatarVideo, uploadAsset } from "@/lib/avatar/heygen";
 import { buildAvatarTake, normalizeTalkingVideo, prepareAvatarPhoto } from "@/lib/video/local/avatar";
 import { getProcessor } from "@/lib/video/processor";
 import { saveUpload, updateUpload } from "@/lib/video/storage";
@@ -31,15 +32,23 @@ const recent = new Map<string, number[]>();
 
 interface Job {
   userId: string;
-  generationId: string;
   vertical: boolean;
+  /** Renom's video this take is for. */
   videoId?: string;
   startedAt: string;
+  /** "look": the photo avatar is still being made; "video": the video is rendering. */
+  stage: "look" | "video";
+  lookId: string;
+  audioAssetId: string;
+  title?: string;
+  renderId?: string;
   take?: StoredTake;
   error?: string;
 }
 const jobKey = (id: string) => `avatarjob/${id}.json`;
 const quotaKey = (userId: string) => `avatarquota/${userId.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 40)}.json`;
+/** The photo avatar made from one of the advisor's photos, kept so it's only made once. */
+const lookKey = (userId: string, photoId: string, vertical: boolean) => `avatarlook/${crypto.createHash("sha256").update(`${userId}:${photoId}:${vertical ? "v" : "h"}`).digest("hex").slice(0, 32)}.json`;
 const month = () => new Date().toISOString().slice(0, 7);
 
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status });
@@ -108,14 +117,29 @@ export async function POST(request: Request) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "renom-avatar-"));
   try {
     if (talking) {
-      const src = await readPhoto(ids[0], dir, 0);
-      if (!src) throw new VoiceError("That photo couldn’t be read. Pick another.", 400);
-      const photo = path.join(dir, "avatar.jpg");
-      await prepareAvatarPhoto(src, photo, vertical);
+      if (!avatarConfigured()) throw new VoiceError("Talking avatars aren’t switched on for this studio yet. Use Photo slideshow for now.", 503);
+      // The advisor's AI voice reads the script first: no point making an avatar if that fails.
       const speech = await speak(user, text);
-      const generationId = await startTalkingVideo({ bytes: new Uint8Array(await fs.readFile(photo)), type: "image/jpeg" }, speech);
+      const audioAssetId = await uploadAsset(speech, "audio/mpeg", "voice.mp3");
+      // Their photo avatar: reuse the one made from this photo before, unless it failed.
+      const lk = lookKey(user.id, ids[0], vertical);
+      let lookId = (await getJSON<{ lookId: string }>(lk).catch(() => null))?.lookId;
+      let st = lookId ? await lookStatus(lookId).catch(() => null) : null;
+      if (!lookId || !st || st.state === "failed") {
+        const src = await readPhoto(ids[0], dir, 0);
+        if (!src) throw new VoiceError("That photo couldn’t be read. Pick another.", 400);
+        const photo = path.join(dir, "avatar.jpg");
+        await prepareAvatarPhoto(src, photo, vertical);
+        const asset = await uploadAsset(new Uint8Array(await fs.readFile(photo)), "image/jpeg", "photo.jpg");
+        lookId = await createPhotoLook(`Renom ${user.name || user.email}`.trim(), asset);
+        await putJSON(lk, { lookId });
+        st = await lookStatus(lookId).catch(() => ({ state: "working" }) as const);
+      }
+      if (st.state === "failed") throw new VoiceError(st.reason, 400);
       const job = crypto.randomBytes(10).toString("hex");
-      await putJSON(jobKey(job), { userId: user.id, generationId, vertical, videoId, startedAt: new Date().toISOString() } satisfies Job);
+      const base: Job = { userId: user.id, vertical, videoId, startedAt: new Date().toISOString(), stage: "look", lookId, audioAssetId, title: text.slice(0, 80) };
+      if (st.state === "ready") Object.assign(base, { stage: "video", renderId: await startAvatarVideo({ lookId, audioAssetId, vertical, engines: st.engines, title: base.title }) });
+      await putJSON(jobKey(job), base);
       return json({ ok: true, job });
     }
     const photos = (await Promise.all(ids.map((id, i) => readPhoto(id, dir, i)))).filter((f): f is string => !!f);
@@ -144,11 +168,36 @@ export async function GET(request: Request) {
   if (job.take) return json({ ok: true, state: "done", take: job.take });
   if (job.error) return json({ ok: true, state: "failed", error: job.error });
 
-  const st = await talkingVideoStatus(job.generationId);
   const elapsedSec = Math.round((Date.now() - Date.parse(job.startedAt)) / 1000);
+  if (!job.stage || !job.lookId) return json({ ok: true, state: "failed", error: "Please make this video again." });
+  try {
+    // Still making the photo avatar: once it's ready, start the video.
+    if (job.stage === "look") {
+      const lk = await lookStatus(job.lookId);
+      if (lk.state === "failed") {
+        await putJSON(jobKey(id), { ...job, error: lk.reason });
+        await refund(user);
+        return json({ ok: true, state: "failed", error: lk.reason });
+      }
+      if (lk.state === "working") return json({ ok: true, state: "working", phase: "avatar", elapsedSec });
+      job.renderId = await startAvatarVideo({ lookId: job.lookId, audioAssetId: job.audioAssetId, vertical: job.vertical, engines: lk.engines, title: job.title });
+      job.stage = "video";
+      await putJSON(jobKey(id), job);
+      return json({ ok: true, state: "working", phase: "video", elapsedSec });
+    }
+  } catch (e) {
+    if (e instanceof VoiceError && e.status < 500 && e.status !== 429) {
+      await putJSON(jobKey(id), { ...job, error: e.message });
+      await refund(user);
+      return json({ ok: true, state: "failed", error: e.message });
+    }
+    return json({ ok: true, state: "working", elapsedSec });
+  }
+
+  const st = await avatarVideoStatus(job.renderId ?? "").catch((e) => (e instanceof VoiceError && e.status < 500 ? ({ state: "failed", reason: e.message } as const) : ({ state: "working" } as const)));
   if (st.state === "working") {
     // Give up after an hour: something's stuck on the service's side.
-    if (elapsedSec < 3600) return json({ ok: true, state: "working", elapsedSec });
+    if (elapsedSec < 3600) return json({ ok: true, state: "working", phase: "video", elapsedSec });
     await putJSON(jobKey(id), { ...job, error: "This one took too long. Please make it again." });
     return json({ ok: true, state: "failed", error: "This one took too long. Please make it again." });
   }
