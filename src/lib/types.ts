@@ -62,7 +62,9 @@ export interface Video {
   thumbnail?: ThumbnailSpec;
   script?: Script;
   /** "upload": a finished video the advisor brought in, skipping Idea and Script; its words come from the transcript. */
-  source?: "upload";
+  source?: "upload" | "clip";
+  /** A clip cut from a longer video: which one, and the part of it (seconds into the recording). */
+  clipOf?: { videoId: string; start: number; end: number };
   runtimeSec: number;
   platforms: PlatformId[];
   scheduledFor?: string;

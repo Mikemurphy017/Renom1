@@ -1,7 +1,7 @@
 import type { PlatformId, Script, VideoFormat } from "../types";
 import type { VoiceProfile } from "./voice";
 import type { WriterId } from "./writers";
-import type { CaptionsOutput, CoversOutput, IdeasOutput, PostOutput, ScriptOutput, TranscriptOutput } from "./schemas";
+import type { CaptionsOutput, ClipsOutput, CoversOutput, IdeasOutput, PostOutput, ScriptOutput, TranscriptOutput } from "./schemas";
 import type { PostCopy, PostKind, PostPlatform } from "../types";
 
 /** Requests the browser sends to /api/write. Revisions pass `current` + `instruction`. */
@@ -60,15 +60,24 @@ export type WriteRequest =
       instruction?: string;
     }
   | {
+      task: "clips";
+      profile: VoiceProfile;
+      /** The long recording, numbered sentence by sentence with times (seconds). */
+      sentences: { n: number; start: number; end: number; text: string }[];
+      /** How many clips to find. */
+      count: number;
+      instruction?: string;
+    }
+  | {
       task: "covers";
       profile: VoiceProfile;
       video: { title: string; format: VideoFormat; script?: Script; outline: string[] };
       instruction?: string;
     };
 
-export type WriteResult<T extends WriteRequest["task"]> = T extends "ideas" ? IdeasOutput : T extends "script" ? ScriptOutput : T extends "captions" ? CaptionsOutput : T extends "post" ? PostOutput : T extends "transcript" ? TranscriptOutput : CoversOutput;
+export type WriteResult<T extends WriteRequest["task"]> = T extends "ideas" ? IdeasOutput : T extends "script" ? ScriptOutput : T extends "captions" ? CaptionsOutput : T extends "post" ? PostOutput : T extends "transcript" ? TranscriptOutput : T extends "clips" ? ClipsOutput : CoversOutput;
 
 export type WriteEvent =
   | { type: "status"; text: string }
-  | { type: "result"; data: IdeasOutput | ScriptOutput | CaptionsOutput | CoversOutput | PostOutput | TranscriptOutput; source: "claude" | "sample" }
+  | { type: "result"; data: IdeasOutput | ScriptOutput | CaptionsOutput | CoversOutput | PostOutput | TranscriptOutput | ClipsOutput; source: "claude" | "sample" }
   | { type: "error"; message: string };

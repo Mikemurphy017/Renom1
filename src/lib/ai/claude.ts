@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { HOUSE_VOICE, advisorBlock } from "./voice";
 import { getWriter } from "./writers";
-import { CaptionsSchema, CoversSchema, IdeasSchema, PostSchema, ScriptSchema, TranscriptSchema } from "./schemas";
+import { CaptionsSchema, CoversSchema, IdeasSchema, PostSchema, ScriptSchema, TranscriptSchema, ClipsSchema } from "./schemas";
 import type { WriteRequest, WriteResult } from "./write-types";
 import { originalIdeas, repeatsOpening } from "./originality";
 import { ANGLES } from "./angles";
@@ -94,6 +94,23 @@ Where a link belongs, use the placeholder {{BOOKING_LINK}}. Don't add disclosure
 Also write three taglines for the video: standalone one-liners (at most 12 words) the advisor can use as a post's opening line, a pinned comment, on-screen text or a headline. Each takes a different angle, all in your voice.${revise(req.current, req.instruction)}`;
     }
 
+    case "clips":
+      return `This is the transcript of a long video the advisor recorded, numbered sentence by sentence, with each sentence's start and end time in seconds.
+Find the ${Math.min(12, Math.max(1, req.count))} best moments to post as short vertical clips (each its own short video for social media).
+Each clip:
+- Is a run of whole sentences, from "first" to "last" (inclusive), between 25 and 75 seconds long (use the times).
+- Stands on its own: someone who hasn't seen the rest understands it. It opens on a line that grabs attention (a question, a surprising claim, a mistake, a number), not on "so", "and", "like I said", or a reference to something earlier.
+- Makes one clear point and ends on a complete thought.
+- Does not overlap any other clip. Prefer different subjects or angles across the set so the clips read as a varied month of content.
+The angles:
+${ANGLES.map((a) => `- ${a.label}: ${a.brief}`).join("\n")}
+Order the clips by where they appear in the video.${revise(undefined, req.instruction)}
+
+Transcript:
+"""
+${req.sentences.map((s) => `[${s.n}] (${s.start.toFixed(1)}–${s.end.toFixed(1)}s) ${s.text}`).join("\n").slice(0, 60000)}
+"""`;
+
     case "transcript":
       return `This is the transcript of a ${req.format === "short" ? "short-form vertical" : "long-form horizontal"} video the advisor recorded on their own (no script from us). Captions, covers and social posts will be written from it, so organise it:
 - A title for the video, written as a hook in their voice. It must say what the video is actually about.
@@ -146,7 +163,7 @@ function descBudget(id: string, limit: number) {
   return id === "x" ? 200 : Math.min(limit, 3000) - 650;
 }
 
-const SCHEMAS = { ideas: IdeasSchema, script: ScriptSchema, captions: CaptionsSchema, covers: CoversSchema, post: PostSchema, transcript: TranscriptSchema } as const;
+const SCHEMAS = { clips: ClipsSchema, ideas: IdeasSchema, script: ScriptSchema, captions: CaptionsSchema, covers: CoversSchema, post: PostSchema, transcript: TranscriptSchema } as const;
 
 /** Ideas that repeat nothing the advisor has or was offered: repeats are dropped and Claude is asked again (twice at most). */
 async function writeIdeas(req: Extract<WriteRequest, { task: "ideas" }>) {

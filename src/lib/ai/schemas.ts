@@ -77,7 +77,23 @@ export const TranscriptSchema = z.object({
   cta: z.string().describe("The close, in their own words (empty if there isn't one)"),
 });
 
+/** Short clips cut from a long recording: each a standalone moment, by sentence numbers. */
+export const ClipsSchema = z.object({
+  clips: z.array(
+    z.object({
+      title: z.string().describe("The clip's title, written as a hook in the advisor's voice"),
+      first: z.number().int().describe("Number of the sentence the clip starts on"),
+      last: z.number().int().describe("Number of the sentence the clip ends on (inclusive)"),
+      subject: z.string().describe('The subject in one to four words, e.g. "Roth conversions"'),
+      angle: z.enum(ANGLE_LABELS).describe("The angle this clip takes, from the angle list"),
+      category: z.enum(CATEGORY_VALUES),
+      why: z.string().describe("One sentence on why this moment works on its own"),
+    })
+  ),
+});
+
 export type IdeasOutput = z.infer<typeof IdeasSchema>;
+export type ClipsOutput = z.infer<typeof ClipsSchema>;
 export type ScriptOutput = z.infer<typeof ScriptSchema>;
 export type CaptionsOutput = z.infer<typeof CaptionsSchema>;
 export type CoversOutput = z.infer<typeof CoversSchema>;

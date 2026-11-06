@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Clapperboard, Flame, LoaderCircle, PenLine, Plus, Settings2, Sparkles, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clapperboard, Flame, LoaderCircle, PenLine, PenTool, Plus, Scissors, Settings2, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,8 @@ import type { Category, PlanItem, PostingGoals, VideoFormat } from "@/lib/types"
 import { cn } from "@/lib/utils";
 import { Meter, PaceBadge, paceMessage } from "./this-week";
 import { useAccountability, useOpenPlanItem } from "./use-plan";
+import { ScriptAheadDialog } from "./script-ahead";
+import { ClipLongDialog } from "./clip-long";
 
 const STATUS_STYLE: Record<ItemStatus["key"], string> = {
   posted: "border-success/30 bg-success-soft text-success",
@@ -40,6 +42,8 @@ export function PlanPage() {
   const [goalsOpen, setGoalsOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<PlanItem | null>(null);
   const [adding, setAdding] = React.useState<string | null>(null);
+  const [scripting, setScripting] = React.useState(false);
+  const [clipping, setClipping] = React.useState(false);
 
   React.useEffect(() => {
     if (params.get("goals") === "1") setGoalsOpen(true);
@@ -120,6 +124,8 @@ export function PlanPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="rounded-full" onClick={() => setGoalsOpen(true)}><Settings2 /> Goals</Button>
+          <Button variant="outline" className="rounded-full" onClick={() => setClipping(true)}><Scissors /> Clip a long video</Button>
+          <Button variant="outline" className="rounded-full" onClick={() => setScripting(true)}><PenTool /> Script ahead</Button>
           <Button className="rounded-full" onClick={planMonth} disabled={busy}>{busy ? <><LoaderCircle className="animate-spin" /> {status ?? "Planning…"}</> : <><Sparkles /> Plan my month{slots.length ? ` (${Math.min(16, slots.length)})` : ""}</>}</Button>
         </div>
       </div>
@@ -231,6 +237,8 @@ export function PlanPage() {
       </section>
 
       <GoalsDialog open={goalsOpen} onOpenChange={setGoalsOpen} goals={goals} onSave={(g) => { updateProfile({ goals: g }); toast.success("Goal saved", { description: `${g.videosPerWeek} ${g.videosPerWeek === 1 ? "video" : "videos"} and ${g.postsPerWeek} ${g.postsPerWeek === 1 ? "post" : "posts"} a week.` }); }} />
+      <ScriptAheadDialog open={scripting} onOpenChange={setScripting} month={month} />
+      <ClipLongDialog open={clipping} onOpenChange={setClipping} />
       <AddDialog date={adding} onClose={() => setAdding(null)} onAdd={(it) => { addPlanItems([it]); setAdding(null); }} />
       <ItemDialog item={editing ? (plan.find((p) => p.id === editing.id) ?? null) : null} onClose={() => setEditing(null)} status={editing ? itemStatus(plan.find((p) => p.id === editing.id) ?? editing, videos, posts) : null}
         onSave={(patch) => editing && updatePlanItem(editing.id, patch)}

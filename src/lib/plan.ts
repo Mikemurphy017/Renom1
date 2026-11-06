@@ -125,7 +125,7 @@ export function itemStatus(item: PlanItem, videos: Video[], posts: PostDraft[], 
  * The open days in a month, from today on, that the goals call for but nothing
  * is planned or going out: what "Plan my month" fills.
  */
-export function openSlots(month: Date, goals: PostingGoals, plan: PlanItem[], videos: Video[], posts: PostDraft[], today = new Date()) {
+export function openSlots(month: Date, goals: PostingGoals, plan: Pick<PlanItem, "kind" | "date">[], videos: Video[], posts: PostDraft[], today = new Date()) {
   const first = startOfMonth(month);
   const days = daysInMonth(first);
   const start = startOfDay(today) > first ? startOfDay(today) : first;

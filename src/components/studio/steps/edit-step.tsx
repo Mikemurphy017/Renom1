@@ -20,6 +20,8 @@ import { BRAND } from "@/lib/brand";
 import type { Video } from "@/lib/types";
 import { cn, fmtDuration } from "@/lib/utils";
 import { analyzeTake, renderFinal, restoreAnalysis, usePipeline, type PipelineState } from "@/lib/video/client";
+import { clippable } from "@/lib/video/clips";
+import { ClipMaker } from "../clip-maker";
 import { cutsFromSegments, defaultOverlays, segmentsFromResult, type Segment } from "@/lib/video/edit-model";
 import { DEFAULT_EDIT, type OverlayOptions } from "@/lib/video/types";
 import type { StepProps } from "../studio-view";
@@ -272,6 +274,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
         <h1 className="font-serif text-[30px] leading-tight tracking-tight sm:text-[40px]">Cut the pauses. Keep you.</h1>
         <p className="mt-2 text-[15px] text-muted-foreground">{BRAND.name} found the pauses in your audio. Click any phrase to cut or restore it, pick your look, then finish.</p>
       </div>
+      {result && video.take && video.source !== "clip" && clippable(result.durationSec) && <ClipMaker video={video} result={result} take={video.take} />}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
         {/* Preview + look */}
         <div className="space-y-6">

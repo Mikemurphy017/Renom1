@@ -211,8 +211,17 @@ export function RecordStep({ video, complete }: StepProps) {
         .then((r) => updateVideo(target.id, { analysisJobId: r.jobId }))
         .catch((e) => toast.error("AI Edit couldn’t process this take", { description: (e as Error).message }));
     }
+    // In a recording session, the next script goes on the teleprompter; Edit comes after the last one.
+    const next = queueCandidates.find((v) => v.id !== active.id && queued.includes(v.id) && v.stage === "record" && !getTake(v.id) && !v.take);
+    if (next) {
+      updateVideo(active.id, { stage: "edit" });
+      toast.success("Sent to AI Edit", { description: `Next up: ${next.title}` });
+      setActiveId(next.id);
+      setOffset(0);
+      return;
+    }
     if (active.id === video.id) complete();
-    else { updateVideo(active.id, { stage: "edit" }); toast.success("Sent to AI Edit", { description: active.title }); }
+    else { updateVideo(active.id, { stage: "edit" }); toast.success("Sent to AI Edit", { description: active.title }); router.push(`/studio/${active.id}/edit`); }
   };
 
   const takeFile = async (file?: File | null) => {

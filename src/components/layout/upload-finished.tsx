@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
 import { getTake, saveTake } from "@/lib/media/takes";
+import { seedDraft } from "@/lib/drafts";
 import { readVideoMeta, videoType } from "@/lib/media/video-file";
 import { analyzeTake, getPipeline, resetPipeline } from "@/lib/video/client";
 import { defaultOverlays } from "@/lib/video/edit-model";
@@ -21,7 +22,7 @@ export function useUploadFinished() {
   const router = useRouter();
   const { addVideo, updateVideo, profile } = useStore();
   return React.useCallback(
-    async (file?: File | null) => {
+    async (file?: File | null, opts: { clips?: boolean } = {}) => {
       if (!file) return false;
       const type = videoType(file);
       if (!ACCEPTED_VIDEO_TYPES.includes(type)) {
@@ -38,6 +39,8 @@ export function useUploadFinished() {
       const format = vertical ? "short" : "long";
       const name = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
       const v = addVideo({ title: name ? name.charAt(0).toUpperCase() + name.slice(1) : "Uploaded video", format, stage: "edit", source: "upload", runtimeSec: meta?.durationSec || 60 });
+      // Brought in to be cut into clips: Edit finds them as soon as the recording has been read.
+      if (opts.clips) seedDraft(v.id, "edit.clips.open", true);
       saveTake(v.id, {
         blob: file,
         mimeType: type,
