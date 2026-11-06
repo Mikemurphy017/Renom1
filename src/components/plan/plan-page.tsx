@@ -125,7 +125,7 @@ export function PlanPage() {
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="rounded-full" onClick={() => setGoalsOpen(true)}><Settings2 /> Goals</Button>
           <Button variant="outline" className="rounded-full" onClick={() => setClipping(true)}><Scissors /> Clip a long video</Button>
-          <Button variant="outline" className="rounded-full" onClick={() => setScripting(true)}><PenTool /> Script ahead</Button>
+          <Button variant="outline" className="rounded-full" onClick={() => setScripting(true)}><PenTool /> Write ahead</Button>
           <Button className="rounded-full" onClick={planMonth} disabled={busy}>{busy ? <><LoaderCircle className="animate-spin" /> {status ?? "Planning…"}</> : <><Sparkles /> Plan my month{slots.length ? ` (${Math.min(16, slots.length)})` : ""}</>}</Button>
         </div>
       </div>
