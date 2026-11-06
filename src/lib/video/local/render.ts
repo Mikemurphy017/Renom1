@@ -1,16 +1,18 @@
 import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { runFfmpeg } from "./ffmpeg";
-import { buildAss, normWord, type Beat, type TimedWord } from "./ass";
-import { pickBeats } from "./beats";
-import { pickGraphics } from "./graphics-pick";
-import { GRAPHIC_KINDS, type Graphic } from "./graphics";
+import { buildAss, normWord, type Beat } from "./ass";
+import type { Graphic } from "./graphics";
+import { planMoments } from "./plan";
 import { footageFor } from "./broll";
 import { musicBed, sfx, type SfxKind } from "./audio-beds";
 import { objects } from "@/lib/storage/objects";
 import { isMediaId, mediaKey } from "@/lib/storage/media";
 import { getStyle, normalizeOverlays, type MusicMood } from "../styles";
 import type { Aspect, OutputResolution, OverlayOptions, TimeRange, TranscriptWord } from "../types";
+import { editedWords, keepRanges } from "../storyboard";
+
+export { keepRanges };
 
 /**
  * Renders the final MP4: keeps what the advisor kept, frames it for the
@@ -103,34 +105,12 @@ export interface RenderInput {
   keyPhrases: string[];
   overlays: OverlayOptions;
   enhanceAudio: boolean;
+  /**
+   * The approved plan (see storyboard.ts): its moments and graphics are used
+   * as they are. Without one, the render plans them itself.
+   */
+  plan?: { beats: Beat[]; graphics: Graphic[] };
   onProgress?: (p: number) => void;
-}
-
-/** What stays, as ranges of the source. */
-export function keepRanges(cuts: TimeRange[], dur: number): TimeRange[] {
-  const sorted = cuts
-    .map((c) => ({ start: Math.max(0, c.start), end: Math.min(dur, c.end) }))
-    .filter((c) => c.end > c.start)
-    .sort((a, b) => a.start - b.start);
-  const keep: TimeRange[] = [];
-  let t = 0;
-  for (const c of sorted) {
-    if (c.start > t) keep.push({ start: t, end: c.start });
-    t = Math.max(t, c.end);
-  }
-  if (dur > t) keep.push({ start: t, end: dur });
-  return keep.filter((k) => k.end - k.start >= 0.05);
-}
-
-/** Source time → time in the edited video (null if it was cut). */
-function remap(keep: TimeRange[], t: number): number | null {
-  let acc = 0;
-  for (const k of keep) {
-    if (t < k.start) return null;
-    if (t <= k.end) return acc + (t - k.start);
-    acc += k.end - k.start;
-  }
-  return null;
 }
 
 // ── render ───────────────────────────────────────────────────────────────────
@@ -165,32 +145,14 @@ export async function renderVideo(r: RenderInput): Promise<{ durationSec: number
   const outDur = keep.reduce((a, k) => a + (k.end - k.start), 0);
   const fps = r.sourceFps >= 50 ? 60 : 30;
 
-  // Words in the edited timeline.
-  // A word that starts a hair inside a trimmed pause (recognizers stamp words a
-  // little early) starts where the kept part begins instead of being dropped.
-  const words: TimedWord[] = r.transcript
-    .map((w) => {
-      const end = remap(keep, w.end);
-      const start = remap(keep, w.start) ?? (end !== null ? remap(keep, keep.find((k) => k.start > w.start && k.start < w.end)?.start ?? -1) : null);
-      return { text: w.text, start, end };
-    })
-    .filter((w): w is TimedWord => w.start !== null && w.end !== null && w.end > w.start);
+  const words = editedWords(r.transcript, keep);
 
-  // The big moments drive cards, zooms, b-roll and sound effects.
-  const wantsBeats = (ex.keywordCards && !!st.card) || ex.motion || ex.broll || ex.sfx;
+  // The big moments drive cards, zooms, b-roll and sound effects; graphics come
+  // on top. The approved storyboard's plan when there is one (so the video is
+  // what the advisor approved), otherwise planned here.
   r.onProgress?.(0.02);
-  const endCardAt = ov.endCard.enabled && outDur >= 6 ? outDur - 3 : outDur;
-  // Moments never run into the end card.
-  const [rawBeats, graphics] = await Promise.all([
-    wantsBeats ? pickBeats(words, outDur, ex.broll) : Promise.resolve([] as Beat[]),
-    ex.graphics ? pickGraphics(words, outDur, { kinds: ex.graphicKinds?.length ? ex.graphicKinds : [...GRAPHIC_KINDS], amount: ex.graphicsAmount ?? "light", endAt: endCardAt }) : Promise.resolve([] as Graphic[]),
-  ]);
-  // Moments make way for the graphics: no zoom, card or cutaway while one is up.
-  const underGraphic = (a: number, b: number) => graphics.some((g) => a < g.at + g.dur + 0.3 && b > g.at - 0.3);
-  const beats: Beat[] = rawBeats
-    .filter((b) => endCardAt - b.at >= 0.8)
-    .map((b) => ({ ...b, dur: Math.min(b.dur, endCardAt - b.at) }))
-    .filter((b) => !underGraphic(b.at, b.at + b.dur));
+  const { beats, graphics } = r.plan ?? (await planMoments(words, outDur, ov));
+  if (!r.plan) console.info("[video] planned at render time");
   if (graphics.length) console.info(`[video] ${graphics.length} graphics`, graphics.map((g) => `${g.at.toFixed(1)}s ${g.kind}${g.title ? ` "${g.title}"` : ""}`).join(" · "));
   console.info(`[video] ${st.name}: ${beats.length} moments`, beats.map((b) => `${b.at.toFixed(1)}s ${b.keyword}${b.broll ? ` (b-roll: ${b.query})` : ""}`).join(" · "));
   const keyWords = new Set<string>([...(ov.keyPhrases ? r.keyPhrases : []), ...beats.map((b) => b.keyword)].flatMap((k) => k.split(/\s+/).map(normWord)).filter(Boolean));

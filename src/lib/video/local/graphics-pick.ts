@@ -3,6 +3,8 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { claudeConfigured } from "@/lib/ai/claude";
 import type { TimedWord } from "./ass";
+import { replanNote } from "./beats";
+import type { PlanHint } from "./plan";
 import { FULL_SCREEN, GRAPHIC_KINDS, ICONS, durationFor, type Graphic, type GraphicKind } from "./graphics";
 
 /**
@@ -111,7 +113,7 @@ function fallback(words: TimedWord[], dur: number, kinds: GraphicKind[], endAt: 
   return space(gs.slice(0, Math.max(1, Math.floor(dur / 12))), dur, endAt);
 }
 
-export async function pickGraphics(words: TimedWord[], dur: number, opts: { kinds: GraphicKind[]; amount: GraphicsAmount; endAt: number }): Promise<Graphic[]> {
+export async function pickGraphics(words: TimedWord[], dur: number, opts: { kinds: GraphicKind[]; amount: GraphicsAmount; endAt: number; hint?: PlanHint }): Promise<Graphic[]> {
   const kinds = opts.kinds.length ? opts.kinds : [...GRAPHIC_KINDS];
   if (words.length < 8 || dur < 8) return [];
   if (!claudeConfigured()) return fallback(words, dur, kinds, opts.endAt);
@@ -143,12 +145,13 @@ Plan about ${want} graphics, spread evenly through the video so something new ap
 - title: a section card at a turn in the video ("Step 2", "The mistake", "What to do"), 2–5 words.
 - quote: the single most quotable line, close to how it was said.
 - callout: an icon that matches the point (up, down, warning, check, calendar, dollar, clock, house, shield, idea) with 1–3 words.
-Start each graphic at the word where that point begins (not in the first second, not in the last 4 seconds). Keep cutaways (chart, list, compare, timeline, title, quote) under 40% of the running time in total.`,
+Start each graphic at the word where that point begins (not in the first second, not in the last 4 seconds). Keep cutaways (chart, list, compare, timeline, title, quote) under 40% of the running time in total.${replanNote(opts.hint)}`,
         },
       ],
     });
     const placed = place(res.parsed_output?.graphics ?? [], words, dur, kinds, opts.endAt);
-    return placed.length ? placed : fallback(words, dur, kinds, opts.endAt);
+    // A re-plan may ask for fewer graphics, or none: honor it rather than filling in.
+    return placed.length || opts.hint ? placed : fallback(words, dur, kinds, opts.endAt);
   } catch (e) {
     console.warn("[video] couldn't plan graphics with Claude, using the fallback:", (e as Error).message);
     return fallback(words, dur, kinds, opts.endAt);

@@ -13,6 +13,7 @@ import { addDays, goalsOf, openSlots, parseYmd, startOfMonth } from "@/lib/plan"
 import { clipSegments, keptSeconds, rangesFrom, sentencesOf, type Sentence } from "@/lib/video/clips";
 import { cutsFromSegments, defaultOverlays, type Segment } from "@/lib/video/edit-model";
 import { renderFinal } from "@/lib/video/client";
+import { lookKey, planKey, storyboardState } from "@/lib/video/storyboard";
 import { DEFAULT_EDIT, type JobResult, type OverlayOptions } from "@/lib/video/types";
 import type { Category, PlanItem, Script, StoredTake, Video } from "@/lib/types";
 import { cn, fmtDuration } from "@/lib/utils";
@@ -22,6 +23,12 @@ import { cn, fmtDuration } from "@/lib/utils";
  * stand on their own; each becomes its own short video (same recording, the
  * rest cut away), lands on an open day in the content plan, and can be
  * finished (rendered) in one go.
+ *
+ * Finishing them all at once is an explicit choice to skip the one-by-one
+ * storyboard review: a clip whose storyboard the advisor already approved is
+ * rendered with that plan; the others are planned at render time (`autoPlan`)
+ * and that plan is saved on the clip as its storyboard, marked as approved
+ * automatically.
  */
 
 interface Proposal {
@@ -139,14 +146,21 @@ export function ClipMaker({ video, result, take }: { video: Video; result: JobRe
       setRendering({ done: i, total: todo.length, current: v.title });
       try {
         const segments = peekDraft<Segment[]>(v.id, `edit.segments.${result.jobId}`) ?? [];
+        const overlays = peekDraft<OverlayOptions>(v.id, "edit.overlays") ?? defaultOverlays(profile, "short");
+        const cuts = cutsFromSegments(segments);
+        const inputKey = planKey({ sourceId: take.sourceId, aspect: "9:16", cuts, overlays });
+        const sb = v.storyboard;
+        const approved = sb?.approval && storyboardState(sb, inputKey, overlays) === "approved" ? { plan: sb.plan, disabled: sb.disabled, approvedAt: sb.approval.at } : undefined;
         const out = await renderFinal(v.id, take.sourceId, {
           aspect: "9:16",
           edit: DEFAULT_EDIT,
-          overlays: peekDraft<OverlayOptions>(v.id, "edit.overlays") ?? defaultOverlays(profile, "short"),
-          cuts: cutsFromSegments(segments),
+          overlays,
+          cuts,
           resolution: "1080p",
+          ...(approved ? { plan: approved } : { autoPlan: true }),
         });
         updateVideo(v.id, {
+          ...(!approved && out.plan ? { storyboard: { plan: out.plan, inputKey, disabled: [], approval: { at: new Date().toISOString(), lookKey: lookKey(overlays, []), by: "auto" as const } } } : {}),
           stage: "review",
           runtimeSec: Math.round(out.durationSec),
           outputUrl: out.outputUrl,
@@ -218,6 +232,7 @@ export function ClipMaker({ video, result, take }: { video: Video; result: JobRe
               );
             })}
           </ul>
+          {unfinished > 0 && !rendering && <p className="text-right text-[12px] text-muted-foreground">Finishing them all plans and approves each clip’s storyboard for you. To check one scene by scene first, open it.</p>}
           <div className="flex flex-wrap items-center justify-end gap-2">
             {rendering && <span className="text-[12px] text-muted-foreground">Finishing {rendering.done + 1} of {rendering.total}{rendering.current ? `: ${rendering.current}` : ""}… keep this tab open</span>}
             <Button asChild variant="ghost" className="rounded-full"><Link href="/plan"><CalendarDays /> See them on your plan</Link></Button>

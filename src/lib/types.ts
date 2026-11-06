@@ -1,3 +1,5 @@
+import type { StoredStoryboard } from "./video/storyboard";
+
 export type StageId = "idea" | "script" | "record" | "edit" | "review" | "post";
 
 export type VideoFormat = "short" | "long";
@@ -81,6 +83,8 @@ export interface Video {
   take?: StoredTake;
   /** Last finished AI Edit analysis, so the transcript survives a reload. */
   analysisJobId?: string;
+  /** The edit's storyboard (scene by scene, planned before rendering) and its approval. The render needs it approved. */
+  storyboard?: StoredStoryboard;
   /** Rendered cover images, one per shape. */
   covers?: Partial<Record<VideoFormat, CoverImage>>;
   /** The latest request for the team to post this video (mirrors the server). */
