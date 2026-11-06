@@ -4,6 +4,7 @@ import { z } from "zod";
 import { claudeConfigured } from "@/lib/ai/claude";
 import type { Beat, TimedWord } from "./ass";
 import { normWord } from "./ass";
+import type { PlanHint } from "./plan";
 
 /**
  * The big moments of a video: where a keyword card, a punch-in, a b-roll
@@ -46,7 +47,7 @@ function fallback(words: TimedWord[], dur: number): Beat[] {
   return picked.slice(0, want);
 }
 
-export async function pickBeats(words: TimedWord[], dur: number, wantBroll: boolean): Promise<Beat[]> {
+export async function pickBeats(words: TimedWord[], dur: number, wantBroll: boolean, hint?: PlanHint): Promise<Beat[]> {
   if (words.length < 6 || dur < 6) return [];
   if (!claudeConfigured()) return withBroll(fallback(words, dur), wantBroll);
   try {
@@ -64,7 +65,7 @@ export async function pickBeats(words: TimedWord[], dur: number, wantBroll: bool
       messages: [
         {
           role: "user",
-          content: `Transcript of a ${Math.round(dur)}-second video, each word marked with its index:\n\n${marked}\n\nPick about ${want} moments, spread through the video (not in the first second or the last 3 seconds), where the key point lands: a number, the stake, the named mistake, the turn. For each, the keyword to flash on screen (copied from what's said, 1–3 words). ${wantBroll ? "Mark broll true for at most half of them, only where a cutaway helps the viewer picture it, with a concrete stock-footage search." : "Set broll false for all of them."}`,
+          content: `Transcript of a ${Math.round(dur)}-second video, each word marked with its index:\n\n${marked}\n\nPick about ${want} moments, spread through the video (not in the first second or the last 3 seconds), where the key point lands: a number, the stake, the named mistake, the turn. For each, the keyword to flash on screen (copied from what's said, 1–3 words). ${wantBroll ? "Mark broll true for at most half of them, only where a cutaway helps the viewer picture it, with a concrete stock-footage search." : "Set broll false for all of them."}${replanNote(hint)}`,
         },
       ],
     });
@@ -73,7 +74,8 @@ export async function pickBeats(words: TimedWord[], dur: number, wantBroll: bool
       .filter((m) => Number.isInteger(m.word) && m.word >= 0 && m.word < words.length && m.keyword.trim())
       .map((m) => ({ at: words[m.word].start, dur: m.broll && wantBroll ? 2.2 : 1.4, keyword: m.keyword.trim().slice(0, 28), broll: wantBroll && m.broll && !!m.query.trim(), query: m.query.trim().slice(0, 60) }))
       .filter((b) => b.at > 0.8 && b.at < dur - 3);
-    return withBroll(beats.length ? spaced(beats, 3) : fallback(words, dur), wantBroll);
+    // A re-plan may ask for fewer moments or cutaways, or none: honor it rather than filling in.
+    return hint ? spaced(beats, 3) : withBroll(beats.length ? spaced(beats, 3) : fallback(words, dur), wantBroll);
   } catch (e) {
     console.warn("[video] couldn't pick moments with Claude, using the fallback:", (e as Error).message);
     return withBroll(fallback(words, dur), wantBroll);
@@ -84,4 +86,10 @@ export async function pickBeats(words: TimedWord[], dur: number, wantBroll: bool
 function withBroll(beats: Beat[], wantBroll: boolean): Beat[] {
   if (!wantBroll || !beats.length || beats.some((b) => b.broll)) return beats;
   return beats.map((b, i) => (i % 2 === (beats.length > 1 ? 1 : 0) ? { ...b, broll: true, dur: 2.2, query: b.query || b.keyword } : b));
+}
+
+/** The advisor's request on an earlier plan, for a re-plan. */
+export function replanNote(hint?: PlanHint) {
+  if (!hint) return "";
+  return `\n\nThe advisor reviewed an earlier plan for this video:\n${hint.previous ?? "(not available)"}\nThey asked for this change: "${hint.instruction.slice(0, 600)}"\nFollow that request exactly. Keep what they didn't ask to change. If they ask for less or none of something, give less or none.`;
 }

@@ -28,6 +28,8 @@ import type { StepProps } from "../studio-view";
 import { LookPanel, PreviewOverlays, captionAt, type LookPeek } from "./edit-look";
 import { DEFAULT_CTA, bookingCta, bookingOn, isBookingCta } from "@/lib/booking";
 import { getStyle, normalizeOverlays } from "@/lib/video/styles";
+import { StoryboardPanel, useStoryboard } from "./storyboard-panel";
+import type { ApprovedPlan } from "@/lib/video/storyboard";
 
 const scriptLines = (v: Video) => {
   // A video brought in finished has no script: its words come from the voice alone.
@@ -204,6 +206,19 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
   }, [result, t, peek, look.captions.style, vertical]);
 
   const sourceId = result ? analysis?.sourceId : undefined;
+  const aspect = vertical ? "9:16" : "16:9";
+  const cuts = React.useMemo(() => cutsFromSegments(segments), [segments]);
+  // Before anything renders, the advisor approves a storyboard of the edit; the render uses exactly that plan.
+  const storyboard = useStoryboard({ video, sourceId, analysisJobId: result?.jobId, aspect, cuts, look, script: scriptLines(video) });
+  const boardRef = React.useRef<HTMLElement>(null);
+  const showBoard = () => boardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // Plan it as soon as the take has been read (once; after a change the advisor asks for a new plan).
+  const autoPlanned = React.useRef(false);
+  React.useEffect(() => {
+    if (autoPlanned.current || !sourceId || !result || storyboard.state !== "none" || storyboard.planning) return;
+    autoPlanned.current = true;
+    void storyboard.plan();
+  }, [sourceId, result, storyboard]);
   const changeLook = (next: OverlayOptions, p: LookPeek) => {
     setLook(next);
     setPeek(p);
@@ -233,21 +248,27 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
     );
   };
 
-  const doExport = async () => {
+  const doExport = async (approved: ApprovedPlan | undefined = storyboard.approved) => {
     if (!sourceId) {
       toast("Still reading your take", { description: "Give it a moment, then finish the edit." });
       return;
     }
+    // Nothing renders until the storyboard for these cuts and this look is approved.
+    if (!approved) {
+      toast("Approve the storyboard first", { description: "Check each scene, then approve it to render." });
+      showBoard();
+      return;
+    }
     setRendering(true);
     try {
-      const aspect = vertical ? "9:16" : "16:9";
       const out = await renderFinal(video.id, sourceId, {
         aspect,
         edit: { ...DEFAULT_EDIT, enhanceAudio: enhance },
         overlays: look,
         script: scriptLines(video),
-        cuts: cutsFromSegments(segments),
+        cuts,
         resolution: can4k && export4k && isPro ? "2160p" : "1080p",
+        plan: approved,
       });
       const fourK = Math.min(out.width ?? 0, out.height ?? 0) >= 2160;
       toast.success("Your video is ready", { description: `${fmtDuration(out.durationSec)} · ${aspect}${fourK ? " 4K" : ""} MP4` });
@@ -268,11 +289,20 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
 
   const pxPerSec = 14 * zoom;
 
+  // The finish button follows the storyboard: plan it, review and approve it, then render.
+  const finish =
+    storyboard.state === "approved"
+      ? { label: "Render video", run: () => void doExport(), why: "" }
+      : storyboard.state === "unapproved"
+        ? { label: "Review storyboard", run: showBoard, why: "Approve the storyboard to render." }
+        : { label: storyboard.planning ? "Planning storyboard…" : "Plan storyboard", run: () => { showBoard(); void storyboard.plan(); }, why: storyboard.state === "stale" ? "Your edits changed the storyboard. Plan it again." : "Renom plans every scene before rendering." };
+  const finishOff = !!busy || rendering || !sourceId || storyboard.planning;
+
   return (
     <div className="space-y-6 pb-20 md:pb-0">
       <div className="text-center">
         <h1 className="font-serif text-[30px] leading-tight tracking-tight sm:text-[40px]">Cut the pauses. Keep you.</h1>
-        <p className="mt-2 text-[15px] text-muted-foreground">{BRAND.name} found the pauses in your audio. Click any phrase to cut or restore it, pick your look, then finish.</p>
+        <p className="mt-2 text-[15px] text-muted-foreground">{BRAND.name} found the pauses in your audio. Click any phrase to cut or restore it, pick your look, then approve the storyboard to render.</p>
       </div>
       {result && video.take && video.source !== "clip" && clippable(result.durationSec) && <ClipMaker video={video} result={result} take={video.take} />}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
@@ -344,7 +374,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
                 <span className="text-[12px] text-muted-foreground">
                   <span className="tnum">{segments.filter((s) => s.removed).length}</span> cuts · saves <span className="tnum">{fmtDuration(total - kept)}</span>
                 </span>
-                <Button size="sm" onClick={doExport} disabled={!!busy || rendering || !sourceId}>Finish edit <ArrowRight /></Button>
+                <Button size="sm" onClick={finish.run} disabled={finishOff} title={finish.why || undefined}>{finish.label} <ArrowRight /></Button>
               </div>
             </div>
             <TabsContent value="captions" className="scrollbar-thin mt-2 max-h-[560px] overflow-y-auto rounded-md border border-border bg-background/50 p-4">
@@ -458,9 +488,24 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
         </div>
         <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-4">
           <Button variant="outline" disabled={!result} onClick={() => { if (result) setSegments(segmentsFromResult(result)); toast("Auto-cuts re-applied"); }}><Wand2 /> Re-run auto-cut</Button>
-          <Button onClick={doExport} disabled={!!busy || rendering || !sourceId}>Finish edit <ArrowRight /></Button>
+          {finish.why && <span className="mr-auto text-[12px] text-muted-foreground">{finish.why}</span>}
+          <Button onClick={finish.run} disabled={finishOff}>{finish.label} <ArrowRight /></Button>
         </div>
       </div>
+
+      <StoryboardPanel
+        ref={boardRef}
+        video={video}
+        api={storyboard}
+        look={look}
+        cuts={cuts}
+        result={result}
+        takeUrl={take?.url}
+        vertical={vertical}
+        enhanceAudio={enhance}
+        rendering={rendering}
+        onRender={(approved) => void doExport(approved)}
+      />
 
       {/* Phones: finishing is always one tap away. */}
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-background/90 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur-xl md:hidden">
@@ -468,7 +513,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
           <div className="min-w-0 flex-1 text-[12px] text-muted-foreground">
             <span className="tnum">{segments.filter((x) => x.removed).length}</span> cuts · final <span className="font-medium text-foreground tnum">{fmtDuration(kept)}</span>
           </div>
-          <Button className="rounded-full px-5" onClick={doExport} disabled={!!busy || rendering || !sourceId}>Finish edit <ArrowRight /></Button>
+          <Button className="rounded-full px-5" onClick={finish.run} disabled={finishOff}>{finish.label} <ArrowRight /></Button>
         </div>
       </div>
 

@@ -9,6 +9,8 @@ import type { StoredUpload } from "../storage";
 import { probe } from "./ffmpeg";
 import { analyzeTake } from "./analyze";
 import { outputSize, renderVideo } from "./render";
+import { makePlan } from "./plan";
+import { activePlan, editedWords, keepRanges, planKey } from "../storyboard";
 
 /**
  * Built-in editor (ffmpeg). Runs on this server, so it needs nothing but the
@@ -77,6 +79,15 @@ async function run(job: LocalJob, req: ProcessRequest, source: StoredUpload) {
       await step(0.2, "Cutting and adding your captions…");
       console.info(`[video] render ${job.id}: ${info.width}×${info.height} @ ${info.fps.toFixed(1)} fps → ${frame.join("×")}`);
       const out = path.join(dir, "final.mp4");
+      const cuts = req.cuts ?? a.cuts;
+      // The approved storyboard's plan, or (only when the caller opted in) one made now and treated as approved.
+      let plan = req.plan?.plan;
+      if (!plan) {
+        await step(0.18, "Planning the edit…");
+        const keep = keepRanges(cuts, a.durationSec);
+        plan = await makePlan({ key: planKey({ sourceId: req.sourceId, aspect: req.aspect, cuts, overlays: req.overlays }), words: editedWords(a.transcript, keep), outDur: keep.reduce((s, k) => s + (k.end - k.start), 0), overlays: req.overlays });
+        console.info(`[video] render ${job.id}: planned now (auto-approved by the caller), plan ${plan.id}`);
+      } else console.info(`[video] render ${job.id}: using the approved storyboard, plan ${plan.id}${req.plan?.disabled.length ? `, without ${req.plan.disabled.join(", ")}` : ""}`);
       let lastSave = 0;
       const rendered = await renderVideo({
         source: file,
@@ -87,11 +98,12 @@ async function run(job: LocalJob, req: ProcessRequest, source: StoredUpload) {
         aspect: req.aspect,
         size: frame,
         sourceFps: info.fps,
-        cuts: req.cuts ?? a.cuts,
+        cuts,
         transcript: a.transcript,
         keyPhrases: req.overlays.keyPhrases ? a.keyPhrases : [],
         overlays: req.overlays,
         enhanceAudio: req.edit.enhanceAudio,
+        plan: activePlan(plan, req.plan?.disabled ?? []),
         onProgress: (p) => {
           void step(0.2 + p * 0.7, p < 0.5 ? "Cutting and adding your captions…" : "Encoding MP4…");
           if (Date.now() - lastSave > 3000) {
@@ -115,6 +127,7 @@ async function run(job: LocalJob, req: ProcessRequest, source: StoredUpload) {
         transcript: a.transcript,
         cuts: (req.cuts ?? a.cuts).map((c, i) => ({ id: `r${i}`, kind: "silence" as const, start: c.start, end: c.end })),
         keyPhrases: req.overlays.keyPhrases ? a.keyPhrases : [],
+        plan,
       };
     });
     job.state = "done";

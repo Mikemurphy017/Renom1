@@ -5,6 +5,8 @@ import { getUpload } from "@/lib/video/storage";
 import { validateProcessRequest } from "@/lib/video/validate";
 import { currentUser } from "@/lib/auth/server";
 import { BillingError, checkRender, countRender } from "@/lib/billing/server";
+import { verifyPlan } from "@/lib/video/local/plan";
+import { planKey } from "@/lib/video/storyboard";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +31,12 @@ export async function POST(request: Request) {
   if (user && !(await isPro(user))) {
     if (req.overlays.extras) req.overlays.extras = { ...req.overlays.extras, graphics: false };
     if (req.resolution === "2160p") req.resolution = "1080p";
+  }
+  // A render carries the storyboard the advisor approved, made by this server for exactly these cuts and this look.
+  if (req.kind === "render" && req.plan) {
+    if (!(await verifyPlan(req.plan.plan))) return NextResponse.json({ ok: false, error: "This storyboard wasn’t made by Renom. Plan the storyboard again, then approve it.", storyboard: "invalid" }, { status: 409 });
+    if (req.plan.plan.key !== planKey({ sourceId: req.sourceId, aspect: req.aspect, cuts: req.cuts ?? [], overlays: req.overlays }))
+      return NextResponse.json({ ok: false, error: "The cuts or the look changed since the storyboard was planned. Plan it again, then approve it.", storyboard: "stale" }, { status: 409 });
   }
   if (req.kind === "render" && user) {
     try {

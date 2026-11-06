@@ -3,6 +3,7 @@
 import * as React from "react";
 import type { Take } from "@/lib/media/takes";
 import type { StoredTake } from "@/lib/types";
+import type { EditPlan } from "./storyboard";
 import { ACCEPTED_VIDEO_TYPES, MAX_UPLOAD_LABEL, MAX_UPLOAD_MB, type JobEvent, type JobKind, type JobResult, type ProcessorId, type ProcessRequest, type UploadResponse } from "./types";
 
 /**
@@ -190,4 +191,15 @@ export async function renderFinal(videoId: string, sourceId: string, opts: JobOp
     set(key, { ...(states.get(key) ?? base), phase: "error", error: (e as Error).message, status: "Something went wrong" });
     throw e;
   }
+}
+
+/**
+ * Plan the edit without rendering it, for the storyboard. With an instruction
+ * (and the previous plan), plans again with the advisor's change.
+ */
+export async function planStoryboard(req: Omit<ProcessRequest, "kind" | "plan" | "autoPlan"> & { analysisJobId: string; instruction?: string; previous?: EditPlan }): Promise<EditPlan> {
+  const res = await fetch("/api/video/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(req) });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.ok) throw new Error(body.error || `Couldn’t plan the storyboard (${res.status})`);
+  return body.plan as EditPlan;
 }

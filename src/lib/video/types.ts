@@ -7,6 +7,7 @@ export type ProcessorId = "local" | "mock" | "mirage";
 
 import type { MusicMood, StyleId } from "./styles";
 import type { GraphicKind } from "./graphic-kinds";
+import type { ApprovedPlan, EditPlan } from "./storyboard";
 
 /** The edit style (see styles.ts). Older saves used "classic" | "bold" | "minimal". */
 export type CaptionStyle = StyleId;
@@ -102,6 +103,13 @@ export interface ProcessRequest {
   cuts?: TimeRange[];
   /** render only: output size (default 1080p). 2160p falls back to 1080p for smaller takes. */
   resolution?: OutputResolution;
+  /**
+   * render only: the storyboard plan the advisor approved, used as it is. A
+   * render needs one, unless the caller explicitly opts in to `autoPlan`.
+   */
+  plan?: ApprovedPlan;
+  /** render only: plan at render time and treat that plan as approved (batch renders such as "Finish all clips"). */
+  autoPlan?: boolean;
 }
 
 export type JobState = "queued" | "processing" | "done" | "failed";
@@ -150,6 +158,8 @@ export interface JobResult {
   /** render: the output frame, e.g. 1080×1920 or 2160×3840. */
   width?: number;
   height?: number;
+  /** render: the plan the video was rendered with. */
+  plan?: EditPlan;
 }
 
 export interface UploadResponse {

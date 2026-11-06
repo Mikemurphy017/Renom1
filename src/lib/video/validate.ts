@@ -1,6 +1,7 @@
 import type { CaptionPosition, ProcessRequest, StyleExtras } from "./types";
 import { LEGACY_STYLE, STYLE_IDS, normalizeOverlays } from "./styles";
 import { GRAPHIC_KINDS } from "./graphic-kinds";
+import type { ApprovedPlan } from "./storyboard";
 
 /** Server-side checks for POST /api/video/process. Returns the request or an error string. */
 const STYLES: string[] = [...STYLE_IDS, ...Object.keys(LEGACY_STYLE)];
@@ -53,6 +54,13 @@ export function validateProcessRequest(body: unknown): ProcessRequest | string {
     else if (!b.cuts.every((c) => c && isNum(c.start) && isNum(c.end) && c.start >= 0 && c.end > c.start && c.end <= 4 * 3600)) errors.push("each cut needs 0 ≤ start < end");
   }
   if (b.kind === "render" && !Array.isArray(b.cuts)) errors.push("cuts are required to render");
+  if (b.plan !== undefined) {
+    const pl = b.plan as Partial<ApprovedPlan>;
+    if (!pl || typeof pl !== "object" || !pl.plan || typeof pl.plan !== "object" || typeof pl.approvedAt !== "string" || !Array.isArray(pl.disabled) || pl.disabled.length > 200 || !pl.disabled.every((d) => isStr(d, 40)))
+      errors.push("the storyboard plan is invalid");
+  }
+  if (b.autoPlan !== undefined && !isBool(b.autoPlan)) errors.push("autoPlan must be true or false");
+  if (b.kind === "render" && !b.plan && b.autoPlan !== true) errors.push("Approve the storyboard before rendering");
   if (b.resolution !== undefined && b.resolution !== "1080p" && b.resolution !== "2160p") errors.push("resolution must be 1080p or 2160p");
 
   if (errors.length) return errors.join("; ");
@@ -71,5 +79,7 @@ export function validateProcessRequest(body: unknown): ProcessRequest | string {
     script: b.script,
     cuts: b.cuts?.map((c) => ({ start: c.start, end: c.end })),
     resolution: b.resolution,
+    plan: b.plan ? { plan: b.plan.plan, disabled: [...b.plan.disabled], approvedAt: b.plan.approvedAt } : undefined,
+    autoPlan: b.autoPlan === true ? true : undefined,
   };
 }
