@@ -76,6 +76,19 @@ function Composer({ post, update, profile }: { post: PostDraft; update: (patch: 
   const allowed = POST_PLATFORMS.filter((p) => image || p !== "instagram");
   const chosen = post.platforms.filter((p) => allowed.includes(p));
 
+  // Started from the box on the Posts page: write it straight away.
+  const autostart = React.useRef(false);
+  React.useEffect(() => {
+    if (autostart.current || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("write") !== "1") return;
+    autostart.current = true;
+    url.searchParams.delete("write");
+    window.history.replaceState(null, "", url.pathname + url.search);
+    if (!post.copy.length && post.topic.trim()) void generate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const generate = async (instruction?: string) => {
     if (!post.topic.trim()) return toast.error("Say what the post is about first.");
     if (!chosen.length) return toast.error("Pick at least one platform.");

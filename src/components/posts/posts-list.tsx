@@ -5,14 +5,17 @@ import { ProUpsell } from "@/components/shared/pro";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Image as ImageIcon, MoreHorizontal, Trash2, Type } from "lucide-react";
+import { Image as ImageIcon, MoreHorizontal, Sparkles, Trash2, Type } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PageContainer } from "@/components/shared/page";
 import { PlatformIcon } from "@/components/shared/platform-icon";
 import { usePro, useStore } from "@/lib/store";
-import type { PostDraft, PostKind } from "@/lib/types";
+import { POST_PLATFORMS, type PostDraft, type PostKind, type PostPlatform } from "@/lib/types";
+import { getPlatform } from "@/lib/mock/platforms";
 import { cn, fmtDateTime, relativeTime } from "@/lib/utils";
 
 export function useStartPost() {
@@ -27,12 +30,71 @@ export function useStartPost() {
   );
 }
 
+/** The top of the Posts page: say what it's about, pick the kind and platforms, and it's written. */
+function NewPostBox() {
+  const { addPost } = useStore();
+  const router = useRouter();
+  const [topic, setTopic] = React.useState("");
+  const [kind, setKind] = React.useState<PostKind>("image");
+  const [platforms, setPlatforms] = React.useState<PostPlatform[]>(["linkedin", "facebook", "instagram"]);
+  const allowed = POST_PLATFORMS.filter((p) => kind === "image" || p !== "instagram");
+  const chosen = platforms.filter((p) => allowed.includes(p));
+  const write = () => {
+    if (!topic.trim()) return toast.error("Say what the post is about first.");
+    if (!chosen.length) return toast.error("Pick at least one platform.");
+    const p = addPost({ kind, topic: topic.trim(), platforms: chosen });
+    router.push(`/posts/${p.id}?write=1`);
+  };
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5 shadow-soft sm:p-6">
+      <div className="mb-3 flex items-center gap-2"><span className="flex size-6 items-center justify-center rounded-full bg-navy text-[12px] font-semibold text-navy-foreground dark:bg-primary dark:text-primary-foreground">1</span><h2 className="text-[16px] font-semibold">What’s it about?</h2></div>
+      <Textarea
+        rows={2}
+        value={topic}
+        onChange={(e) => setTopic(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            write();
+          }
+        }}
+        placeholder="e.g. Why a Roth conversion in your early 60s can save you thousands"
+        className="font-serif text-[18px]"
+      />
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <ToggleGroup type="single" value={kind} onValueChange={(v) => { if (!v) return; setKind(v as PostKind); if (v === "image" && !platforms.includes("instagram")) setPlatforms((ps) => [...ps, "instagram"]); }} className="rounded-full">
+          <ToggleGroupItem value="text" className="rounded-full"><Type /> Text only</ToggleGroupItem>
+          <ToggleGroupItem value="image" className="rounded-full"><ImageIcon /> Text + image</ToggleGroupItem>
+        </ToggleGroup>
+        <div className="flex flex-wrap gap-1.5">
+          {POST_PLATFORMS.map((p) => {
+            const on = chosen.includes(p);
+            const off = !allowed.includes(p);
+            return (
+              <button
+                key={p}
+                type="button"
+                disabled={off}
+                title={off ? "Instagram posts need a picture: switch to Text + image" : undefined}
+                onClick={() => setPlatforms((ps) => (on ? ps.filter((x) => x !== p) : [...ps, p]))}
+                className={cn("flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] transition-colors disabled:cursor-not-allowed disabled:opacity-40", on ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:text-foreground")}
+              >
+                <PlatformIcon id={p} className="size-3.5" /> {getPlatform(p).short}
+              </button>
+            );
+          })}
+        </div>
+        <Button className="ml-auto rounded-full px-5" onClick={write}><Sparkles /> Write the post</Button>
+      </div>
+    </section>
+  );
+}
+
 const STATUS: Record<PostDraft["status"], string> = { draft: "Draft", scheduled: "Scheduled", published: "Posted" };
 
 /** Text and image posts: start one, or pick up where you left off. */
 export function PostsList() {
   const { posts, deletePost, addPost } = useStore();
-  const start = useStartPost();
   const { isPro } = usePro();
   if (!isPro)
     return (
@@ -53,27 +115,15 @@ export function PostsList() {
           <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">Posts</h1>
           <p className="mt-1 text-[15px] text-muted-foreground">Words only, or words with a picture: for the days you’re not filming.</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="rounded-full" onClick={() => start("text")}><Type /> Text post</Button>
-          <Button className="rounded-full" onClick={() => start("image")}><ImageIcon /> Text + image post</Button>
-        </div>
       </div>
 
+      <div className="mt-6"><NewPostBox /></div>
+
+      {posts.length > 0 && <h2 className="mt-10 font-serif text-2xl">Your posts</h2>}
       {!posts.length ? (
-        <div className="mt-8 grid gap-4 sm:grid-cols-2">
-          {[
-            { kind: "text" as const, icon: Type, title: "Text post", body: "A LinkedIn-style post in your voice, written natively for each platform, with your disclosure added." },
-            { kind: "image" as const, icon: ImageIcon, title: "Text + image post", body: "The same, with a picture: an AI photo of you made from your headshots (presenting, meeting clients…) or one of your own." },
-          ].map((x) => (
-            <button key={x.kind} type="button" onClick={() => start(x.kind)} className="cursor-pointer rounded-2xl border border-border bg-card p-6 text-left shadow-soft transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lg">
-              <span className="flex size-10 items-center justify-center rounded-xl bg-brass-soft text-primary"><x.icon className="size-5" /></span>
-              <div className="mt-3 text-[16px] font-medium">{x.title}</div>
-              <p className="mt-1 text-[13px] leading-snug text-muted-foreground">{x.body}</p>
-            </button>
-          ))}
-        </div>
+        <p className="mt-8 text-center text-[13px] text-muted-foreground">Your posts will show up here. Text + image posts get an AI photo of you made from your headshots, or one of your own.</p>
       ) : (
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {posts.map((p) => (
             <div key={p.id} className="group relative overflow-hidden rounded-2xl border border-border bg-card shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-lg">
               <Link href={`/posts/${p.id}`} className="block">
