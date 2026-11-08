@@ -115,7 +115,6 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
   const memTake = React.useSyncExternalStore(subscribeTakes, () => getTake(video.id), () => undefined);
   // This tab's take if there is one, otherwise the one saved to platform storage.
   const take = memTake ?? video.take;
-  const frame = useStill(take?.url, (take?.durationSec ?? 2) * 0.3);
   const takeRef = React.useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = React.useState(false);
   const [zoom, setZoom] = React.useState(1.5);
@@ -502,7 +501,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
             </TabsContent>
 
             <TabsContent value="look" className="mt-0 space-y-4 p-4">
-              <LookPanel value={look} onChange={changeLook} brandColors={profile.brandColors} frame={frame} stockFootage={stockFootage} booking={{ url: calendarUrl, on: booking, onToggle: setBooking }} vertical={vertical} />
+              <LookPanel value={look} onChange={changeLook} brandColors={profile.brandColors} stockFootage={stockFootage} booking={{ url: calendarUrl, on: booking, onToggle: setBooking }} vertical={vertical} />
               <div className="rounded-xl border border-border p-3">
                 <div className="mb-2 text-[13px] font-medium">Export</div>
                 <div className="flex flex-wrap gap-x-6 gap-y-2">
@@ -649,32 +648,3 @@ function Filmstrip({ src, total, width }: { src?: string; total: number; width: 
   );
 }
 
-/** One still from the take, for the style cards. */
-function useStill(src: string | undefined, at: number) {
-  const [still, setStill] = React.useState<string>();
-  React.useEffect(() => {
-    if (!src) return;
-    let live = true;
-    const v = document.createElement("video");
-    v.muted = true;
-    v.preload = "auto";
-    v.src = src;
-    const grab = () => {
-      const c = document.createElement("canvas");
-      c.height = 280;
-      c.width = Math.round((v.videoWidth / Math.max(1, v.videoHeight)) * 280) || 158;
-      c.getContext("2d")!.drawImage(v, 0, 0, c.width, c.height);
-      if (live) setStill(c.toDataURL("image/jpeg", 0.75));
-    };
-    v.addEventListener("loadeddata", () => {
-      v.addEventListener("seeked", grab, { once: true });
-      v.currentTime = Math.max(0.1, at);
-    }, { once: true });
-    return () => {
-      live = false;
-      v.removeAttribute("src");
-      v.load();
-    };
-  }, [src, at]);
-  return still;
-}

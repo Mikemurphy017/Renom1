@@ -8,9 +8,10 @@ import { GRAPHIC_KINDS, GRAPHIC_LABELS, type GraphicKind } from "@/lib/video/gra
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BRAND } from "@/lib/brand";
 import { usePro, useStore } from "@/lib/store";
-import { STYLES, MUSIC_CHOICES, extrasFor, getStyle, type StyleCategory, type StyleDef, type StyleId } from "@/lib/video/styles";
+import { STYLES, MUSIC_CHOICES, extrasFor, getStyle, type StyleDef, type StyleId } from "@/lib/video/styles";
 import type { CaptionPosition, OverlayOptions, StyleExtras, TranscriptWord } from "@/lib/video/types";
 import { cn } from "@/lib/utils";
 import { CAPTION_CASES, CAPTION_HIGHLIGHTS, SAFE_BOTTOM, Y_MAX, Y_MIN, applyCase, captionCase, captionHighlight, captionY, inkFor, type CaptionCase, type CaptionHighlight } from "@/lib/video/caption-look";
@@ -23,14 +24,12 @@ const POSITIONS: { id: CaptionPosition; label: string }[] = [
   { id: "middle", label: "Middle" },
   { id: "bottom", label: "Bottom" },
 ];
-const CATEGORIES: ("All" | StyleCategory)[] = ["All", "Bold", "Polished", "Minimal"];
 
 /** The "Look" panel: pick a style, then fine-tune captions and what the style adds. */
 export function LookPanel({
   value,
   onChange,
   brandColors,
-  frame,
   stockFootage,
   booking,
   vertical = true,
@@ -42,8 +41,6 @@ export function LookPanel({
   value: OverlayOptions;
   onChange: (next: OverlayOptions, peek: LookPeek) => void;
   brandColors: string[];
-  /** A still from the take for the style cards. */
-  frame?: string;
   stockFootage: boolean;
 }) {
   const { profile } = useStore();
@@ -52,8 +49,7 @@ export function LookPanel({
   const st = getStyle(c.style);
   const ex = value.extras;
   const capY = captionY(c, vertical, value.lowerThird.enabled);
-  const [cat, setCat] = React.useState<(typeof CATEGORIES)[number]>("All");
-  const swatches = [...new Set([st.accent, BRAND.captionColor, "#FFFFFF", "#F5C542", ...brandColors.filter((x) => !/^#(0b1f3a|f7f5f0)$/i.test(x))].map((x) => x.toUpperCase()))].slice(0, 6);
+  const swatches = [...new Set([st.accent, BRAND.captionColor, ...brandColors.filter((x) => !/^#(0b1f3a|f7f5f0)$/i.test(x)), "#FFFFFF", "#F5C542", "#3CF2B4", "#FF5A5F", "#4D8BFF", "#FF9F1C"].map((x) => x.toUpperCase()))].slice(0, 8);
   const setCaptions = (patch: Partial<OverlayOptions["captions"]>) => onChange({ ...value, captions: { ...c, ...patch } }, "captions");
   const setExtras = (patch: Partial<StyleExtras>) => onChange({ ...value, extras: { ...ex, ...patch } }, null);
   const pickStyle = (id: StyleId) => {
@@ -66,24 +62,21 @@ export function LookPanel({
 
   return (
     <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="eyebrow">Style</div>
-        <div className="flex gap-1">
-          {CATEGORIES.map((k) => (
-            <button key={k} onClick={() => setCat(k)} className={cn("cursor-pointer rounded-full px-2.5 py-0.5 text-[11px] transition-colors", cat === k ? "bg-navy text-navy-foreground dark:bg-primary dark:text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
-              {k}
-            </button>
-          ))}
-        </div>
+      {/* The preview shows the result live: no per-style thumbnails here. */}
+      <div className="flex items-center gap-3">
+        <span className="w-14 shrink-0 text-[12px] font-medium">Style</span>
+        <Select value={c.style} onValueChange={(v) => pickStyle(v as StyleId)}>
+          <SelectTrigger className="w-full" aria-label="Edit style"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {STYLES.map((s) => (
+              <SelectItem key={s.id} value={s.id}>{s.name} <span className="text-muted-foreground">· {s.category}</span></SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 2xl:grid-cols-5">
-        {STYLES.filter((s) => cat === "All" || s.category === cat).map((s) => (
-          <StyleCard key={s.id} style={s} frame={frame} selected={s.id === c.style} onClick={() => pickStyle(s.id)} textCase={captionCase(c)} highlight={captionHighlight(c)} />
-        ))}
-      </div>
-      <p className="mt-2 text-[11px] leading-snug text-muted-foreground">{st.description}</p>
+      <p className="mt-1.5 pl-[68px] text-[11px] leading-snug text-muted-foreground">{st.description}</p>
 
-      <div className="mt-4 space-y-3 border-t border-border pt-4">
+      <div className="mt-3 space-y-3 border-t border-border pt-3">
         <Row label="Captions" checked={c.enabled} onChange={(v) => setCaptions({ enabled: v })} />
         <div className={cn("space-y-2.5 transition-opacity", !c.enabled && "pointer-events-none opacity-40")}>
           <ToggleGroup type="single" value={c.y === undefined ? c.position : ""} onValueChange={(v) => v && setCaptions({ position: v as CaptionPosition, y: undefined })} className="w-full" aria-label="Caption position">
@@ -129,7 +122,7 @@ export function LookPanel({
                 className={cn("grid size-6 cursor-pointer place-items-center rounded-full border border-border shadow-soft", c.color.toUpperCase() === hex && "ring-2 ring-ring ring-offset-2 ring-offset-card")}
                 style={{ background: hex }}
               >
-                {c.color.toUpperCase() === hex && <Check className={cn("size-3", /^#(FFFFFF|F5C542|D9B97E|C6FF3D|3CF2B4)$/i.test(hex) ? "text-[#0B1F3A]" : "text-white")} />}
+                {c.color.toUpperCase() === hex && <Check className={cn("size-3", /^#(FFFFFF|F5C542|D9B97E|C6FF3D|3CF2B4|FF9F1C)$/i.test(hex) ? "text-[#0B1F3A]" : "text-white")} />}
               </button>
             ))}
             <label className="relative ml-auto cursor-pointer text-[12px] text-muted-foreground underline-offset-2 hover:underline">
@@ -318,26 +311,7 @@ export function StyledCaption({ words, accent, keys, frameH, textCase = "lower",
   );
 }
 
-const SAMPLE = ["Your", "bracket", "drops", "at", "65"];
 
-function StyleCard({ style, frame, selected, onClick, textCase, highlight }: { style: StyleDef; frame?: string; selected: boolean; onClick: () => void; textCase: CaptionCase; highlight: CaptionHighlight }) {
-  return (
-    <button onClick={onClick} className={cn("group cursor-pointer rounded-xl p-0.5 text-left transition-all", selected ? "bg-primary" : "hover:bg-border")} aria-pressed={selected}>
-      <div className="relative aspect-[9/14] overflow-hidden rounded-[10px] bg-gradient-to-b from-[#2A3B55] to-[#0E1A2E]" style={{ containerType: "size" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        {frame && <img src={frame} alt="" className="absolute inset-0 h-full w-full object-cover" />}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-        {style.card === "backdrop" && <span className="absolute inset-x-0 top-[12%] text-center font-[Anton] text-[22cqh] leading-none tracking-tight text-transparent" style={{ WebkitTextStroke: `1px ${style.accent}`, fontFamily: "Anton" }}>65</span>}
-        {style.card === "banner" && <span className="absolute inset-x-0 top-[66%] bg-[#2347E6] py-[2cqh] text-center text-[9cqh] font-black text-white" style={{ fontFamily: '"Montserrat Black"' }}>BRACKET</span>}
-        <div className="absolute inset-x-[6%] top-[40%] text-center">
-          <StyledCaption style={style} words={SAMPLE.slice(0, Math.max(3, Math.min(5, style.words[0] + 1))).map((w, i) => ({ w, on: i === 1, past: i <= 1 }))} accent={style.accent} keys={new Set(["65"])} frameH={1920 * 1.25} textCase={textCase} highlight={highlight} />
-        </div>
-        <span className="absolute inset-x-0 bottom-[5%] text-center text-[11px] font-semibold text-white drop-shadow">{style.name}</span>
-        {selected && <span className="absolute top-1.5 right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="size-2.5" /></span>}
-      </div>
-    </button>
-  );
-}
 
 /** Caption words on screen at time t (source timeline), chunked like the renderer. */
 export function captionAt(transcript: TranscriptWord[], t: number, style: StyleDef, vertical: boolean): Word[] | null {
