@@ -57,6 +57,12 @@ export function appUrl(request: Request) {
   return new URL(request.url).origin;
 }
 
+/** The app's address when there's no request to go by (scheduled emails). */
+export function baseUrl() {
+  const set = process.env.APP_URL?.trim() || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "http://localhost:3000");
+  return set.replace(/\/+$/, "");
+}
+
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /** The wordmark at the top of every email (images served from the app); the name in type for a reseller's brand. */
@@ -80,7 +86,7 @@ export function buttonEmail(o: { heading: string; body: string; button: string; 
 <table role="presentation" width="100%" style="max-width:480px;background:#ffffff;border-radius:16px;padding:32px" cellpadding="0" cellspacing="0"><tr><td>
 ${masthead(o.url)}
 <h1 style="font-family:Georgia,serif;font-weight:normal;font-size:26px;margin:0 0 12px">${esc(o.heading)}</h1>
-<p style="font-size:15px;line-height:1.55;margin:0 0 24px;color:#3a4657">${esc(o.body)}</p>
+<p style="font-size:15px;line-height:1.55;margin:0 0 24px;color:#3a4657;white-space:pre-line">${esc(o.body)}</p>
 <a href="${esc(o.url)}" style="display:inline-block;background:#0B1F3A;color:#ffffff;text-decoration:none;font-size:15px;padding:12px 22px;border-radius:999px">${esc(o.button)}</a>
 <p style="font-size:12px;line-height:1.5;margin:24px 0 0;color:#7a8494">${esc(o.footer)}<br><br>Or paste this link into your browser:<br><span style="word-break:break-all">${esc(o.url)}</span></p>
 </td></tr></table></td></tr></table></body></html>`;

@@ -49,7 +49,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   // The studio has its own controls along the bottom on phones.
   const inStudio = pathname.startsWith("/studio");
-  const { hydrated, onboarded, account } = useStore();
+  const { hydrated, onboarded, account, profile, updateProfile } = useStore();
+  // Reminders go out on the advisor's record day in their own time zone.
+  React.useEffect(() => {
+    if (!hydrated || !account) return;
+    let tz = "";
+    try {
+      tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+      return;
+    }
+    if (tz && profile.timezone !== tz) updateProfile({ timezone: tz });
+  }, [hydrated, account, profile.timezone, updateProfile]);
   usePostingSync();
   const [palette, setPalette] = React.useState(false);
   const [newVideo, setNewVideo] = React.useState(false);

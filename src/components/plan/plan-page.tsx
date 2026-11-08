@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight, Clapperboard, Flame, LoaderCircle, PenLine, 
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -269,8 +270,25 @@ function GoalsDialog({ open, onOpenChange, goals, onSave }: { open: boolean; onO
   const [videoDays, setVideoDays] = React.useState(goals.videoDays);
   const [postDays, setPostDays] = React.useState(goals.postDays);
   const [recordDay, setRecordDay] = React.useState(goals.recordDay);
+  const [emailReminder, setEmailReminder] = React.useState(goals.emailReminder !== false);
+  const [testing, setTesting] = React.useState(false);
+  const sendTest = async () => {
+    setTesting(true);
+    try {
+      const r = await fetch("/api/notifications/test", { method: "POST" });
+      const j = (await r.json().catch(() => null)) as { ok?: boolean; error?: string; emailed?: boolean; emailSetUp?: boolean } | null;
+      if (!r.ok || !j?.ok) throw new Error(j?.error ?? "Couldn’t send it.");
+      window.dispatchEvent(new Event("renom:notifications"));
+      toast.success("Reminder sent", { description: j.emailed ? "Check the bell at the top right, and your inbox." : j.emailSetUp ? "It’s in the bell at the top right (emails are off in your goal)." : "It’s in the bell at the top right. Email isn’t switched on for this studio yet." });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setTesting(false);
+    }
+  };
   React.useEffect(() => {
     if (open) {
+      setEmailReminder(goals.emailReminder !== false);
       setVideoDays(goals.videoDays);
       setPostDays(goals.postDays);
       setRecordDay(goals.recordDay);
@@ -303,11 +321,18 @@ function GoalsDialog({ open, onOpenChange, goals, onSave }: { open: boolean; onO
               <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
               <SelectContent>{[1, 2, 3, 4, 5, 6, 0].map((d) => <SelectItem key={d} value={String(d)}>{DAY_NAMES[d]}</SelectItem>)}</SelectContent>
             </Select>
-            <p className="mt-1.5 text-[12px] text-muted-foreground">Batch the week’s videos in one sitting. Renom nudges you on this day if you’re behind.</p>
+            <p className="mt-1.5 text-[12px] text-muted-foreground">Batch the week’s videos in one sitting. On this day Renom sends you a reminder with where you stand and what’s ready to record.</p>
+          </div>
+          <div className="rounded-xl border border-border p-3">
+            <label className="flex cursor-pointer items-start gap-2.5 text-[13px]">
+              <Checkbox checked={emailReminder} onCheckedChange={(v) => setEmailReminder(v === true)} className="mt-0.5" />
+              <span><span className="font-medium">Email me on my record day</span><span className="block text-[12px] text-muted-foreground">You’ll always get it in the bell at the top right; this also sends it to your inbox.</span></span>
+            </label>
+            <button type="button" onClick={sendTest} disabled={testing} className="mt-2 ml-6.5 cursor-pointer text-[12px] text-primary underline-offset-2 hover:underline disabled:opacity-60">{testing ? "Sending…" : "Send me this week’s reminder now"}</button>
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button onClick={() => { onSave({ videosPerWeek: videoDays.length, postsPerWeek: postDays.length, videoDays, postDays, recordDay }); onOpenChange(false); }}>Save goal</Button>
+            <Button onClick={() => { onSave({ videosPerWeek: videoDays.length, postsPerWeek: postDays.length, videoDays, postDays, recordDay, emailReminder }); onOpenChange(false); }}>Save goal</Button>
           </div>
         </div>
       </DialogContent>

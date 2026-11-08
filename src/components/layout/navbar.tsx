@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { Logo } from "./logo";
 import { NAV } from "./nav";
 import { useShell } from "./shell-context";
+import { NotificationsBell } from "./notifications";
 import { BRAND } from "@/lib/brand";
 
 export function Navbar({ className }: { className?: string }) {
@@ -52,6 +53,7 @@ export function Navbar({ className }: { className?: string }) {
           <Button size="sm" className="hidden rounded-full px-4 md:inline-flex" onClick={openNewVideo}>
             <Plus /> New video
           </Button>
+          <NotificationsBell />
           <DropdownMenu>
             <DropdownMenuTrigger className="flex size-9 cursor-pointer items-center justify-center rounded-full bg-gradient-to-br from-[#D2B07A] to-[#9C7A47] font-serif text-[13px] text-[#0B1F3A] outline-none focus-visible:ring-2 focus-visible:ring-ring/50" aria-label="Account">
               {monogram}

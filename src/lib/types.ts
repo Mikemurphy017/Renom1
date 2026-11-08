@@ -233,6 +233,8 @@ export interface AdvisorProfile {
   ideaLog?: { title: string; subject?: string; angle?: string }[];
   /** How much the advisor means to publish, and when they record and post (see lib/plan). */
   goals?: PostingGoals;
+  /** The advisor's time zone (IANA, from their browser), so reminders arrive on their record day. */
+  timezone?: string;
 }
 
 export type CoverPhotos = "ai" | "real" | "none";
@@ -278,6 +280,8 @@ export interface PostingGoals {
   /** Days of the week videos and posts go out. */
   videoDays: number[];
   postDays: number[];
+  /** Email a reminder on record day (unset: on). */
+  emailReminder?: boolean;
 }
 
 /** One thing on the content calendar: a video or a post planned for a day. */
