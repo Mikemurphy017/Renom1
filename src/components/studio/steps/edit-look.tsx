@@ -76,7 +76,7 @@ export function LookPanel({
           ))}
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 2xl:grid-cols-5">
         {STYLES.filter((s) => cat === "All" || s.category === cat).map((s) => (
           <StyleCard key={s.id} style={s} frame={frame} selected={s.id === c.style} onClick={() => pickStyle(s.id)} textCase={captionCase(c)} highlight={captionHighlight(c)} />
         ))}

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, Pause, Play, RotateCcw, Sparkles, TriangleAlert, Video as VideoIcon, Wand2, Scissors, Undo2 } from "lucide-react";
+import { Check, ArrowRight, Pause, Play, RotateCcw, Sparkles, TriangleAlert, Video as VideoIcon, Wand2, Scissors, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -211,7 +211,13 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
   // Before anything renders, the advisor approves a storyboard of the edit; the render uses exactly that plan.
   const storyboard = useStoryboard({ video, sourceId, analysisJobId: result?.jobId, aspect, cuts, look, script: scriptLines(video) });
   const boardRef = React.useRef<HTMLElement>(null);
-  const showBoard = () => boardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const [tab, setTab] = React.useState<"trim" | "look" | "storyboard">("trim");
+  const [showTimeline, setShowTimeline] = React.useState(false);
+  const showBoard = () => {
+    setTab("storyboard");
+    requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
   // Plan it as soon as the take has been read (once; after a change the advisor asks for a new plan).
   const autoPlanned = React.useRef(false);
   React.useEffect(() => {
@@ -298,23 +304,32 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
         : { label: storyboard.planning ? "Planning storyboard…" : "Plan storyboard", run: () => { showBoard(); void storyboard.plan(); }, why: storyboard.state === "stale" ? "Your edits changed the storyboard. Plan it again." : "Renom plans every scene before rendering." };
   const finishOff = !!busy || rendering || !sourceId || storyboard.planning;
 
+  const cutCount = segments.filter((s) => s.removed).length;
+  const tabDone = { trim: cutCount > 0, look: true, storyboard: storyboard.state === "approved" };
+
   return (
-    <div className="space-y-6 pb-20 md:pb-0">
-      <div className="text-center">
-        <h1 className="font-serif text-[30px] leading-tight tracking-tight sm:text-[40px]">Cut the pauses. Keep you.</h1>
-        <p className="mt-2 text-[15px] text-muted-foreground">{BRAND.name} found the pauses in your audio. Click any phrase to cut or restore it, pick your look, then approve the storyboard to render.</p>
+    <div className="space-y-5 pb-20 md:pb-0">
+      {/* One header, one way forward. */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="font-serif text-[28px] leading-tight tracking-tight sm:text-[34px]">Edit</h1>
+          <p className="mt-1 text-[14px] text-muted-foreground">Trim it, pick the look, approve the storyboard. {BRAND.name} renders the rest.</p>
+        </div>
+        <div className="hidden items-center gap-3 md:flex">
+          <span className="text-right text-[12px] leading-tight text-muted-foreground">
+            <span className="tnum">{cutCount}</span> cuts · final <span className="font-medium text-foreground tnum">{fmtDuration(kept)}</span>
+            {finish.why && <span className="block">{finish.why}</span>}
+          </span>
+          <Button className="rounded-full px-5" onClick={finish.run} disabled={finishOff}>{finish.label} <ArrowRight /></Button>
+        </div>
       </div>
       {result && video.take && video.source !== "clip" && clippable(result.durationSec) && <ClipMaker video={video} result={result} take={video.take} />}
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
-        {/* Preview + look */}
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="eyebrow">Preview</div>
-              <span className="text-[12px] text-muted-foreground">Your take, with cuts skipped</span>
-            </div>
-            <div className="flex justify-center rounded-md bg-[#06101F] p-4">
-              <div className={cn("relative overflow-hidden rounded-md bg-gradient-to-b from-[#2A3B55] to-[#1A2840]", vertical ? "aspect-[9/16] h-[520px] max-h-[60vh]" : "aspect-video w-full")} style={{ containerType: "size" }}>
+
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
+        {/* Preview: stays in view while you work. */}
+        <div className="rounded-2xl border border-border bg-card p-3 shadow-soft lg:sticky lg:top-36">
+            <div className="flex justify-center rounded-md bg-[#06101F] p-2 sm:p-4">
+              <div className={cn("relative overflow-hidden rounded-md bg-gradient-to-b from-[#2A3B55] to-[#1A2840]", vertical ? "aspect-[9/16] h-[520px] max-h-[40vh] lg:max-h-[60vh]" : "aspect-video w-full")} style={{ containerType: "size" }}>
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_30%,#3A4E6E_0%,transparent_70%)]" />
                 {take && (
                   <video
@@ -358,154 +373,166 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
                 Final length <span className="font-medium text-foreground tnum">{fmtDuration(kept)}</span>
               </span>
             </div>
-          </div>
-          <LookPanel value={look} onChange={changeLook} brandColors={profile.brandColors} frame={frame} stockFootage={stockFootage} booking={{ url: calendarUrl, on: booking, onToggle: setBooking }} vertical={vertical} />
         </div>
 
-        {/* Transcript */}
-        <div className="flex min-h-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-soft">
-          <Tabs defaultValue="captions" className="min-h-0 flex-1">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <TabsList>
-                <TabsTrigger value="captions">Captions</TabsTrigger>
-                <TabsTrigger value="script">Script</TabsTrigger>
-              </TabsList>
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] text-muted-foreground">
-                  <span className="tnum">{segments.filter((s) => s.removed).length}</span> cuts · saves <span className="tnum">{fmtDuration(total - kept)}</span>
-                </span>
-                <Button size="sm" onClick={finish.run} disabled={finishOff} title={finish.why || undefined}>{finish.label} <ArrowRight /></Button>
-              </div>
-            </div>
-            <TabsContent value="captions" className="scrollbar-thin mt-2 max-h-[560px] overflow-y-auto rounded-md border border-border bg-background/50 p-4">
-              <ProcessingNotice analysis={analysis} hasTake={!!take} takeSec={take?.durationSec} onProcess={processTake} />
-              <p className="mb-3 text-[12px] text-muted-foreground">
-                Click any phrase to cut or restore it. <span className="text-destructive line-through decoration-destructive/70">Red strikethrough</span> is removed from the final video.
-              </p>
-              <div className={cn("text-[15px] leading-[2] transition-opacity", busy && "pointer-events-none opacity-40")}>
-                {timeline.map((s) => (
-                  <span key={s.id}>
-                    <button
-                      onClick={() => toggleSeg(s.id)}
-                      onDoubleClick={() => setT(s.start)}
-                      title={s.removed ? `Restore · ${KIND_LABEL[s.kind] || "Cut"}` : "Click to cut · double-click to seek"}
-                      className={cn(
-                        "cursor-pointer rounded px-0.5 text-left transition-colors",
-                        s.removed ? "bg-warning-soft text-destructive line-through decoration-destructive/70" : "hover:bg-muted",
-                        current?.id === s.id && !s.removed && "bg-brass-soft",
-                        s.kind === "silence" && "font-mono text-[12px]"
-                      )}
-                    >
-                      {s.text}
-                      {s.removed && s.kind !== "speech" && (
-                        <span className="ml-1 inline-flex items-center gap-0.5 align-middle text-[10px] font-medium no-underline opacity-80"><Undo2 className="size-2.5" /></span>
-                      )}
-                    </button>{" "}
-                  </span>
+        {/* Trim · Look · Storyboard */}
+        <div ref={panelRef} className="min-w-0 scroll-mt-36 rounded-2xl border border-border bg-card shadow-soft">
+          <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+            <div className="border-b border-border px-3 pt-3">
+              <TabsList className="w-full">
+                {([
+                  ["trim", "1", "Trim"],
+                  ["look", "2", "Look"],
+                  ["storyboard", "3", "Storyboard"],
+                ] as const).map(([id, n, label]) => (
+                  <TabsTrigger key={id} value={id} className="flex-1 gap-1.5">
+                    <span className={cn("flex size-4 items-center justify-center rounded-full text-[10px] font-semibold", id === "storyboard" && tabDone.storyboard ? "bg-success text-white" : "bg-muted-foreground/15")}>{id === "storyboard" && tabDone.storyboard ? <Check className="size-2.5" /> : n}</span>
+                    {label}
+                  </TabsTrigger>
                 ))}
+              </TabsList>
+            </div>
+
+            <TabsContent value="trim" className="mt-0 p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[12px] text-muted-foreground">
+                  Click a phrase to cut or restore it. <span className="text-destructive line-through decoration-destructive/70">Struck through</span> is left out.
+                </p>
+                <div className="flex items-center gap-1">
+                  <Button size="sm" variant="ghost" disabled={!result} onClick={() => { if (result) setSegments(segmentsFromResult(result)); toast("Auto-cuts re-applied"); }}><Wand2 /> Reset cuts</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setShowTimeline((v) => !v)} aria-pressed={showTimeline}><Scissors /> {showTimeline ? "Hide timeline" : "Show timeline"}</Button>
+                </div>
+              </div>
+              <div className="scrollbar-thin max-h-[560px] overflow-y-auto rounded-md border border-border bg-background/50 p-4">
+              <ProcessingNotice analysis={analysis} hasTake={!!take} takeSec={take?.durationSec} onProcess={processTake} />
+                                <div className={cn("text-[15px] leading-[2] transition-opacity", busy && "pointer-events-none opacity-40")}>
+                  {timeline.map((s) => (
+                    <span key={s.id}>
+                      <button
+                        onClick={() => toggleSeg(s.id)}
+                        onDoubleClick={() => setT(s.start)}
+                        title={s.removed ? `Restore · ${KIND_LABEL[s.kind] || "Cut"}` : "Click to cut · double-click to seek"}
+                        className={cn(
+                          "cursor-pointer rounded px-0.5 text-left transition-colors",
+                          s.removed ? "bg-warning-soft text-destructive line-through decoration-destructive/70" : "hover:bg-muted",
+                          current?.id === s.id && !s.removed && "bg-brass-soft",
+                          s.kind === "silence" && "font-mono text-[12px]"
+                        )}
+                      >
+                        {s.text}
+                        {s.removed && s.kind !== "speech" && (
+                          <span className="ml-1 inline-flex items-center gap-0.5 align-middle text-[10px] font-medium no-underline opacity-80"><Undo2 className="size-2.5" /></span>
+                        )}
+                      </button>{" "}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              {showTimeline && (
+                <div className="mt-4">
+                  <div className="mb-2 flex flex-wrap items-center gap-x-5 gap-y-2">
+                    {[
+                      ["Show cuts", showCuts, setShowCuts],
+                      ["Play without cuts", skipCuts, setSkipCuts],
+                    ].map(([label, val, set]) => (
+                      <label key={label as string} className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                        <Switch checked={val as boolean} onCheckedChange={set as (v: boolean) => void} /> {label as string}
+                      </label>
+                    ))}
+                    <div className="ml-auto flex w-44 items-center gap-2">
+                      <span className="text-[11px] text-muted-foreground">Zoom</span>
+                      <Slider value={[zoom]} min={1} max={4} step={0.1} onValueChange={([v]) => setZoom(v)} aria-label="Zoom" />
+                    </div>
+                  </div>
+                  <div className="scrollbar-thin overflow-x-auto">
+                    <div
+                      className="relative cursor-pointer select-none"
+                      style={{ width: Math.max(total * pxPerSec, 600) }}
+                      onClick={(e) => {
+                        const r = e.currentTarget.getBoundingClientRect();
+                        const next = Math.max(0, Math.min(total - 0.01, (e.clientX - r.left) / pxPerSec));
+                        setT(next);
+                        if (takeRef.current) takeRef.current.currentTime = Math.min(next, takeRef.current.duration || next);
+                      }}
+                    >
+                      {/* ruler */}
+                      <div className="relative h-5 border-b border-border text-[10px] text-muted-foreground">
+                        {Array.from({ length: Math.ceil(total / 5) + 1 }).map((_, i) => (
+                          <span key={i} className="absolute top-0 border-l border-border pl-1 tnum" style={{ left: i * 5 * pxPerSec }}>{fmtDuration(i * 5)}</span>
+                        ))}
+                      </div>
+                      {/* filmstrip */}
+                      <Filmstrip src={take?.url} total={total} width={Math.max(total * pxPerSec, 600)} />
+                      {/* waveform */}
+                      <div className="mt-1.5 flex h-8 items-center gap-px">
+                        {Array.from({ length: Math.floor((total * pxPerSec) / 3) }).map((_, i) => {
+                          const sec = (i * 3) / pxPerSec;
+                          const lv = result?.levels?.[Math.floor(sec * 10)];
+                          const h = lv === undefined ? 4 : 6 + lv * 94;
+                          return <span key={i} className="w-[2px] shrink-0 rounded-full bg-muted-foreground/40" style={{ height: `${Math.round(Math.min(100, h))}%` }} />;
+                        })}
+                      </div>
+                      {/* cuts */}
+                      {showCuts &&
+                        timeline.filter((s) => s.removed).map((s) => (
+                          <div
+                            key={s.id}
+                            className="absolute top-5 bottom-0 border-x border-destructive/70"
+                            style={{
+                              left: s.start * pxPerSec,
+                              width: s.dur * pxPerSec,
+                              background: "repeating-linear-gradient(135deg, rgba(139,46,46,.35) 0 4px, rgba(139,46,46,.15) 4px 8px)",
+                            }}
+                            title={`${KIND_LABEL[s.kind] || "Cut"} · ${s.dur.toFixed(1)}s`}
+                          >
+                            <span className="absolute -top-0.5 left-1/2 size-2 -translate-x-1/2 rotate-45 bg-destructive" />
+                          </div>
+                        ))}
+                      {/* playhead */}
+                      <div className="pointer-events-none absolute top-0 bottom-0 w-px bg-primary" style={{ left: t * pxPerSec }}>
+                        <span className="absolute -top-1 left-1/2 size-2.5 -translate-x-1/2 rounded-sm bg-primary" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="mt-4 flex justify-end">
+                <Button variant="outline" className="rounded-full" onClick={() => setTab("look")}>Next: pick the look <ArrowRight /></Button>
               </div>
             </TabsContent>
-            <TabsContent value="script" className="scrollbar-thin mt-2 max-h-[560px] overflow-y-auto rounded-md border border-border bg-background/50 p-4 text-[14px] leading-relaxed">
-              {(video.script ? [video.script.hook, ...video.script.body, video.script.cta] : []).map((l, i) => (
-                <p key={i} className="mb-3">{l}</p>
-              ))}
-              {!video.script && <p className="text-muted-foreground">No approved script attached — captions are generated from the recording.</p>}
+
+            <TabsContent value="look" className="mt-0 space-y-4 p-4">
+              <LookPanel value={look} onChange={changeLook} brandColors={profile.brandColors} frame={frame} stockFootage={stockFootage} booking={{ url: calendarUrl, on: booking, onToggle: setBooking }} vertical={vertical} />
+              <div className="rounded-xl border border-border p-3">
+                <div className="mb-2 text-[13px] font-medium">Export</div>
+                <div className="flex flex-wrap gap-x-6 gap-y-2">
+                  <label className="flex items-center gap-2 text-[13px] text-muted-foreground"><Switch checked={enhance} onCheckedChange={setEnhance} /> Studio sound</label>
+                  {can4k && isPro && <label className="flex items-center gap-2 text-[13px] text-muted-foreground"><Switch checked={export4k} onCheckedChange={setExport4k} /> 4K export</label>}
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button variant="outline" className="rounded-full" onClick={showBoard}>Next: the storyboard <ArrowRight /></Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="storyboard" forceMount className="mt-0 p-4 data-[state=inactive]:hidden">
+              <StoryboardPanel
+                ref={boardRef}
+                video={video}
+                api={storyboard}
+                look={look}
+                cuts={cuts}
+                result={result}
+                takeUrl={take?.url}
+                vertical={vertical}
+                enhanceAudio={enhance}
+                rendering={rendering}
+                onRender={(approved) => void doExport(approved)}
+              />
             </TabsContent>
           </Tabs>
         </div>
       </div>
-
-      {/* Timeline */}
-      <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
-        <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-2">
-          <div className="eyebrow">Timeline</div>
-          {[
-            ["Show cuts", showCuts, setShowCuts],
-            ["Skip cuts", skipCuts, setSkipCuts],
-            ["Studio sound", enhance, setEnhance],
-            // Off by default: 1080p is what the networks show, and renders several times faster.
-            ...(can4k && isPro ? [["4K export", export4k, setExport4k]] : []),
-          ].map(([label, val, set]) => (
-            <label key={label as string} className="flex items-center gap-2 text-[12px] text-muted-foreground">
-              <Switch checked={val as boolean} onCheckedChange={set as (v: boolean) => void} /> {label as string}
-            </label>
-          ))}
-          <div className="ml-auto flex w-48 items-center gap-2">
-            <Scissors className="size-3.5 text-muted-foreground" />
-            <Slider value={[zoom]} min={1} max={4} step={0.1} onValueChange={([v]) => setZoom(v)} aria-label="Zoom" />
-            <span className="w-8 text-right text-[11px] text-muted-foreground tnum">{zoom.toFixed(1)}×</span>
-          </div>
-        </div>
-        <div className="scrollbar-thin overflow-x-auto">
-          <div
-            className="relative cursor-pointer select-none"
-            style={{ width: Math.max(total * pxPerSec, 600) }}
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect();
-              const next = Math.max(0, Math.min(total - 0.01, (e.clientX - r.left) / pxPerSec));
-              setT(next);
-              if (takeRef.current) takeRef.current.currentTime = Math.min(next, takeRef.current.duration || next);
-            }}
-          >
-            {/* ruler */}
-            <div className="relative h-5 border-b border-border text-[10px] text-muted-foreground">
-              {Array.from({ length: Math.ceil(total / 5) + 1 }).map((_, i) => (
-                <span key={i} className="absolute top-0 border-l border-border pl-1 tnum" style={{ left: i * 5 * pxPerSec }}>{fmtDuration(i * 5)}</span>
-              ))}
-            </div>
-            {/* filmstrip */}
-            <Filmstrip src={take?.url} total={total} width={Math.max(total * pxPerSec, 600)} />
-            {/* waveform */}
-            <div className="mt-1.5 flex h-8 items-center gap-px">
-              {Array.from({ length: Math.floor((total * pxPerSec) / 3) }).map((_, i) => {
-                const sec = (i * 3) / pxPerSec;
-                const lv = result?.levels?.[Math.floor(sec * 10)];
-                const h = lv === undefined ? 4 : 6 + lv * 94;
-                return <span key={i} className="w-[2px] shrink-0 rounded-full bg-muted-foreground/40" style={{ height: `${Math.round(Math.min(100, h))}%` }} />;
-              })}
-            </div>
-            {/* cuts */}
-            {showCuts &&
-              timeline.filter((s) => s.removed).map((s) => (
-                <div
-                  key={s.id}
-                  className="absolute top-5 bottom-0 border-x border-destructive/70"
-                  style={{
-                    left: s.start * pxPerSec,
-                    width: s.dur * pxPerSec,
-                    background: "repeating-linear-gradient(135deg, rgba(139,46,46,.35) 0 4px, rgba(139,46,46,.15) 4px 8px)",
-                  }}
-                  title={`${KIND_LABEL[s.kind] || "Cut"} · ${s.dur.toFixed(1)}s`}
-                >
-                  <span className="absolute -top-0.5 left-1/2 size-2 -translate-x-1/2 rotate-45 bg-destructive" />
-                </div>
-              ))}
-            {/* playhead */}
-            <div className="pointer-events-none absolute top-0 bottom-0 w-px bg-primary" style={{ left: t * pxPerSec }}>
-              <span className="absolute -top-1 left-1/2 size-2.5 -translate-x-1/2 rounded-sm bg-primary" />
-            </div>
-          </div>
-        </div>
-        <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-4">
-          <Button variant="outline" disabled={!result} onClick={() => { if (result) setSegments(segmentsFromResult(result)); toast("Auto-cuts re-applied"); }}><Wand2 /> Re-run auto-cut</Button>
-          {finish.why && <span className="mr-auto text-[12px] text-muted-foreground">{finish.why}</span>}
-          <Button onClick={finish.run} disabled={finishOff}>{finish.label} <ArrowRight /></Button>
-        </div>
-      </div>
-
-      <StoryboardPanel
-        ref={boardRef}
-        video={video}
-        api={storyboard}
-        look={look}
-        cuts={cuts}
-        result={result}
-        takeUrl={take?.url}
-        vertical={vertical}
-        enhanceAudio={enhance}
-        rendering={rendering}
-        onRender={(approved) => void doExport(approved)}
-      />
 
       {/* Phones: finishing is always one tap away. */}
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-background/90 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur-xl md:hidden">
