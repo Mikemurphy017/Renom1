@@ -76,16 +76,22 @@ async function tokenRequest(fields: Record<string, string>): Promise<Tokens> {
   try {
     res = await fetch(TOKEN_URL, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body, cache: "no-store", signal: AbortSignal.timeout(20_000) });
   } catch {
-    throw new OAuthError("Couldn’t reach Buffer. Try again in a moment.");
+    throw new OAuthError("Couldn’t reach Buffer. Try again in a moment.", "network");
+  }
+  // Buffer's side having trouble is not the advisor's connection being revoked.
+  if (res.status >= 500 || res.status === 429) {
+    console.error(`[buffer-oauth] ${fields.grant_type}: Buffer answered ${res.status}`);
+    throw new OAuthError("Buffer is having trouble right now. Try again in a moment.", "temporarily_unavailable");
   }
   const j = (await res.json().catch(() => ({}))) as { access_token?: string; refresh_token?: string; expires_in?: number; error?: string; error_description?: string };
   if (!res.ok || !j.access_token) {
     console.error(`[buffer-oauth] ${res.status} ${j.error ?? ""} ${j.error_description ?? ""}`);
     throw new OAuthError(j.error_description || "Buffer didn’t connect.", j.error);
   }
-  // Refresh tokens rotate: a refresh that comes back without a new one can't be refreshed again.
-  if (!j.refresh_token && fields.grant_type === "refresh_token") throw new OAuthError("Buffer didn’t return a new refresh token.", "invalid_grant");
-  return { access: j.access_token, refresh: j.refresh_token ?? "", expiresAt: Date.now() + Math.max(60, (j.expires_in ?? 3600) - 60) * 1000 };
+  // Refresh tokens usually rotate. When a refresh comes back without a new one, the one just used stays good.
+  const refresh = j.refresh_token ?? (fields.grant_type === "refresh_token" ? fields.refresh_token : "");
+  console.info(`[buffer-oauth] ${fields.grant_type}: ok, expires in ${j.expires_in ?? "?"}s, refresh token ${j.refresh_token ? "issued" : refresh ? "kept" : "NOT issued (connection lasts until the access token expires)"}`);
+  return { access: j.access_token, refresh, expiresAt: Date.now() + Math.max(60, (j.expires_in ?? 3600) - 60) * 1000 };
 }
 
 export const exchangeCode = (code: string, verifier: string, redirect: string) => tokenRequest({ grant_type: "authorization_code", code, redirect_uri: redirect, code_verifier: verifier });

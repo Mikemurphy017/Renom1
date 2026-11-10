@@ -25,6 +25,8 @@ const API_URL = process.env.BUFFER_API_URL || "https://api.buffer.com";
 
 /** `status` is the HTTP status our routes should answer with. */
 export class BufferError extends Error {
+  /** Buffer refused the token itself (expired or revoked), as opposed to any other failure. */
+  auth = false;
   constructor(message: string, public status = 502) {
     super(message);
   }
@@ -50,9 +52,15 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}, as
   try {
     body = JSON.parse(text);
   } catch {
+    if (res.status === 429) throw new BufferError("Buffer is limiting requests right now. Try again in a few minutes.", 429);
     throw new BufferError(`Buffer returned ${res.status}: ${text.slice(0, 200)}`);
   }
-  if (res.status === 401 || res.status === 403) throw new BufferError(as ? "Buffer didn’t accept that API key." : "Buffer rejected the API key. Check BUFFER_API_KEY.", as ? 400 : 502);
+  if (res.status === 401 || res.status === 403) {
+    const e = new BufferError(as ? "Buffer didn’t accept that API key." : "Buffer rejected the API key. Check BUFFER_API_KEY.", as ? 400 : 502);
+    e.auth = true;
+    throw e;
+  }
+  if (res.status === 429) throw new BufferError("Buffer is limiting requests right now. Try again in a few minutes.", 429);
   if (body.errors?.length) throw new BufferError(body.errors.map((e) => e.message).join("; "));
   if (!res.ok || !body.data) throw new BufferError(`Buffer request failed (${res.status})`);
   return body.data;
