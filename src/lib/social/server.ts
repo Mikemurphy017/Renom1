@@ -146,16 +146,23 @@ export async function saveConnection(user: User, t: Tokens) {
   let last: unknown;
   // A brand-new token can take a moment to be accepted: try a few times before giving up.
   for (let i = 0; i < 3 && !acct; i++) {
-    if (i) await sleep(1200 * i);
+    if (i) await sleep(Math.min(6000, ((last as BufferError)?.retryAfterSec ?? 1.2 * i) * 1000));
     acct = await bufferAccountOf(t.access).catch((e) => {
       last = e;
       return undefined;
     });
+    if (last instanceof BufferError && (last.auth || last.status === 400)) break;
   }
   if (!acct) {
-    console.error(`[buffer] connected, but reading the account failed for ${user.id}: ${(last as Error)?.message ?? last}`);
     const e = last as BufferError;
-    throw new SocialError(e instanceof BufferError && e.status === 429 ? "Buffer is limiting requests right now. Try connecting again in a few minutes." : e instanceof BufferError && !e.auth && e.status === 400 ? e.message : "Connected, but couldn’t read your Buffer. Try again.", 502);
+    console.error(`[buffer] connected, but reading the account failed for ${user.id}: ${(last as Error)?.message ?? last}`);
+    if (e instanceof BufferError && (e.auth || e.status === 400)) throw new SocialError(e.auth ? "Connected, but couldn’t read your Buffer. Try again." : e.message, 502);
+    // Buffer granted the connection but wouldn't answer just now (rate limit, outage): keep it.
+    // Whose Buffer it is gets checked on the first successful read, before anything can be posted.
+    await saveLink(user.id, { access: seal(t.access), refresh: t.refresh ? seal(t.refresh) : "", expiresAt: t.expiresAt, orgId: "", orgName: "", email: "", connectedAt: new Date().toISOString() });
+    channelsCache.delete(user.id);
+    lastRead.delete(user.id);
+    return;
   }
   // The studio's Buffer holds every advisor's channels: never let an advisor act through it.
   if (bufferConfigured() && !isAdmin(user)) {
@@ -174,42 +181,66 @@ export async function disconnect(user: User) {
 
 const RECONNECT = "Buffer disconnected Renom. Connect again.";
 
+/** Reads in flight, and when each advisor's Buffer was last asked: several parts of a page ask at once. */
+const reading = new Map<string, Promise<SocialStatus>>();
+const lastRead = new Map<string, number>();
+
 export async function socialStatus(user: User, fresh = false): Promise<SocialStatus> {
   if (!socialAvailable()) return { available: false, connected: false, channels: [] };
   const l = await readLink(user.id);
   if (!l) return { available: true, connected: false, channels: [] };
-  const base = { available: true, connected: true, email: l.email, organization: l.orgName };
+  const base = { available: true, connected: true, email: l.email, organization: l.orgName || "your Buffer" };
   if (l.broken) return { ...base, channels: [], error: l.refresh ? RECONNECT : "Your Buffer connection timed out. Connect again (one click)." };
   const hit = channelsCache.get(user.id);
-  if (!fresh && hit && Date.now() - hit.at < 60_000) return { ...base, channels: hit.channels };
+  // Fresh means "not older than a few seconds", not "ask Buffer on every call".
+  if (hit && Date.now() - hit.at < (fresh ? 10_000 : 60_000)) return { ...base, channels: hit.channels };
+  const running = reading.get(user.id);
+  if (running) return running;
   // Buffer can't be reached right now, but the connection stands: show the channels as last read.
   const known = hit?.channels ?? l.channels;
-  const later = (): SocialStatus => (known?.length ? { ...base, channels: known } : { ...base, channels: [], error: "Couldn’t reach Buffer just now. Your connection is still in place; try again in a minute." });
-  let st = await tokenState(user.id);
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (st.token === null) return st.reason === "transient" ? later() : { ...base, channels: [], error: l.refresh ? RECONNECT : "Your Buffer connection timed out. Connect again (one click)." };
-    try {
-      const acct = await bufferAccountOf(st.token);
-      const channels = acct.channels.map(toChannel);
-      channelsCache.set(user.id, { at: Date.now(), channels });
-      if (JSON.stringify(channels) !== JSON.stringify(l.channels ?? null)) {
-        // Keep them with the link (re-read first: the tokens may have just been refreshed).
-        const cur = await readLink(user.id).catch(() => null);
-        if (cur && !cur.broken) await saveLink(user.id, { ...cur, channels }).catch(() => {});
+  const later = (limited = false): SocialStatus =>
+    known?.length ? { ...base, channels: known } : { ...base, channels: [], error: limited ? "Connected. Buffer is limiting requests right now, so your channels will show up in a few minutes." : "Couldn’t reach Buffer just now. Your connection is still in place; try again in a minute." };
+  // After a refusal, give Buffer a moment before asking again.
+  if (Date.now() - (lastRead.get(user.id) ?? 0) < 15_000 && !hit) return later(true);
+  const p = (async (): Promise<SocialStatus> => {
+    let st = await tokenState(user.id);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (st.token === null) return st.reason === "transient" ? later() : { ...base, channels: [], error: l.refresh ? RECONNECT : "Your Buffer connection timed out. Connect again (one click)." };
+      try {
+        const acct = await bufferAccountOf(st.token);
+        const channels = acct.channels.map(toChannel);
+        // Connected while Buffer wouldn't answer: check whose Buffer it is now, before it can be used.
+        if (!l.orgId && bufferConfigured() && !isAdmin(user)) {
+          const studio = await getOrganization().catch(() => null);
+          if (!studio) return later();
+          if (studio.id === acct.organization.id) {
+            await saveLink(user.id, null);
+            return { available: true, connected: false, channels: [], error: "That’s the studio’s Buffer. Sign in to Buffer with your own account and connect again." };
+          }
+        }
+        channelsCache.set(user.id, { at: Date.now(), channels });
+        if (!l.orgId || JSON.stringify(channels) !== JSON.stringify(l.channels ?? null)) {
+          // Keep them with the link (re-read first: the tokens may have just been refreshed).
+          const cur = await readLink(user.id).catch(() => null);
+          if (cur && !cur.broken) await saveLink(user.id, { ...cur, orgId: acct.organization.id, orgName: acct.organization.name, email: acct.email, channels }).catch(() => {});
+        }
+        return { ...base, email: acct.email, organization: acct.organization.name, channels };
+      } catch (e) {
+        // Buffer refused the access token: it may have expired early. Refresh once and try again.
+        if (e instanceof BufferError && e.auth && attempt === 0) {
+          st = await tokenState(user.id, st.token);
+          continue;
+        }
+        lastRead.set(user.id, Date.now());
+        console.warn(`[buffer] reading channels failed for ${user.id}: ${(e as Error).message}`);
+        if (e instanceof BufferError && e.auth) return { ...base, channels: [], error: RECONNECT };
+        return later(e instanceof BufferError && e.status === 429);
       }
-      return { ...base, channels };
-    } catch (e) {
-      // Buffer refused the access token: it may have expired early. Refresh once and try again.
-      if (e instanceof BufferError && e.auth && attempt === 0) {
-        st = await tokenState(user.id, st.token);
-        continue;
-      }
-      console.warn(`[buffer] reading channels failed for ${user.id}: ${(e as Error).message}`);
-      if (e instanceof BufferError && e.auth) return { ...base, channels: [], error: RECONNECT };
-      return later();
     }
-  }
-  return later();
+    return later();
+  })().finally(() => reading.delete(user.id));
+  reading.set(user.id, p);
+  return p;
 }
 
 // ── posts ──

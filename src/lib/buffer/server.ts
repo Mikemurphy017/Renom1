@@ -27,6 +27,8 @@ const API_URL = process.env.BUFFER_API_URL || "https://api.buffer.com";
 export class BufferError extends Error {
   /** Buffer refused the token itself (expired or revoked), as opposed to any other failure. */
   auth = false;
+  /** Rate limited: how long Buffer asked us to wait, when it said. */
+  retryAfterSec?: number;
   constructor(message: string, public status = 502) {
     super(message);
   }
@@ -48,19 +50,24 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}, as
     throw new BufferError("Couldn’t reach Buffer. Try again in a moment.", 502);
   }
   const text = await res.text();
+  if (res.status === 429 || /rate.?limit|too many requests/i.test(text.slice(0, 600))) {
+    const h = (n: string) => res.headers.get(n);
+    console.warn(`[buffer] rate limited (${as ? "advisor" : "studio"} key): HTTP ${res.status}, retry-after=${h("retry-after")}, limit=${h("x-ratelimit-limit") ?? h("ratelimit-limit")}, remaining=${h("x-ratelimit-remaining") ?? h("ratelimit-remaining")}, reset=${h("x-ratelimit-reset") ?? h("ratelimit-reset")}, body=${text.slice(0, 400).replace(/\s+/g, " ")}`);
+    const e = new BufferError("Buffer is limiting requests right now. Try again in a few minutes.", 429);
+    e.retryAfterSec = Number(h("retry-after")) || undefined;
+    throw e;
+  }
   let body: { data?: T; errors?: { message: string }[] };
   try {
     body = JSON.parse(text);
   } catch {
-    if (res.status === 429) throw new BufferError("Buffer is limiting requests right now. Try again in a few minutes.", 429);
-    throw new BufferError(`Buffer returned ${res.status}: ${text.slice(0, 200)}`);
+      throw new BufferError(`Buffer returned ${res.status}: ${text.slice(0, 200)}`);
   }
   if (res.status === 401 || res.status === 403) {
     const e = new BufferError(as ? "Buffer didn’t accept that API key." : "Buffer rejected the API key. Check BUFFER_API_KEY.", as ? 400 : 502);
     e.auth = true;
     throw e;
   }
-  if (res.status === 429) throw new BufferError("Buffer is limiting requests right now. Try again in a few minutes.", 429);
   if (body.errors?.length) throw new BufferError(body.errors.map((e) => e.message).join("; "));
   if (!res.ok || !body.data) throw new BufferError(`Buffer request failed (${res.status})`);
   return body.data;
