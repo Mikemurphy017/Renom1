@@ -105,7 +105,7 @@ export function ScriptAheadDialog({ open, onOpenChange, month }: { open: boolean
             });
             const copy = out.posts.filter((c) => platforms.includes(c.platform)).map((c) => ({ platform: c.platform, text: c.text, hashtags: c.hashtags.map((h) => h.replace(/^#/, "")) }));
             if (copy[0]?.text) postOpenings.push(copy[0].text.split("\n")[0].slice(0, 200));
-            updatePost(p.id, { copy, imageIdea: out.imageScene || p.imageIdea });
+            updatePost(p.id, { copy, imageIdea: out.imageScene || p.imageIdea, graphicHeadline: out.imageHeadline?.trim() || p.graphicHeadline });
             postsDone++;
             setRuns((r) => ({ ...r, [item.id]: { state: "done", note: `${copy.length} ${copy.length === 1 ? "platform" : "platforms"}` } }));
             continue;

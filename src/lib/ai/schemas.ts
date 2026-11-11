@@ -63,6 +63,7 @@ export const PostSchema = z.object({
   imageScene: z
     .string()
     .describe("A photo that would carry this post, featuring the advisor: setting, what they're doing, who's with them, framing. Realistic and professional, no readable text in the picture. One or two sentences."),
+  imageHeadline: z.string().describe("The headline for a graphic that goes out with this post: the post's one idea in six to ten plain words, sentence case, no hashtags, no emoji, no quotation marks"),
   note: z.string().describe("One short sentence to the advisor"),
 });
 

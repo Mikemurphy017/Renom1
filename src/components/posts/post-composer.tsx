@@ -4,7 +4,7 @@
 import { ProUpsell } from "@/components/shared/pro";
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, CalendarClock, Check, CircleCheck, Copy, Download, ExternalLink, ImagePlus, LoaderCircle, Plug, Send, Sparkles, TriangleAlert, Type, Image as ImageIcon, Wand2 } from "lucide-react";
+import { ArrowLeft, CalendarClock, Check, CircleCheck, Copy, Download, ExternalLink, ImagePlus, LayoutTemplate, LoaderCircle, Plug, Send, Sparkles, TriangleAlert, Type, Image as ImageIcon, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,8 @@ import { isAbort, useWriter } from "@/lib/ai/writer";
 import { activeDisclosure, composeCaption } from "@/lib/compose";
 import { getPlatform } from "@/lib/mock/platforms";
 import { uploadImage } from "@/lib/media/upload";
+import { headlineFrom } from "@/lib/posts/graphic";
+import { GraphicMaker } from "./post-graphic";
 import { SERVICE_OF } from "@/lib/social/types";
 import { connectBuffer, publishPost, useSocialPosts, useSocialStatus } from "@/lib/social/use-social";
 import { POST_PLATFORMS, type PostAspect, type PostCopy, type PostDraft, type PostImage, type PostPlatform } from "@/lib/types";
@@ -96,7 +98,7 @@ function Composer({ post, update, profile }: { post: PostDraft; update: (patch: 
       const others = posts.filter((p) => p.id !== post.id && p.copy[0]?.text).slice(0, 15).map((p) => p.copy[0].text.split("\n")[0].slice(0, 200));
       const out = await write({ task: "post", profile: voiceProfileOf(profile), topic: post.topic, kind: post.kind, platforms: chosen, others, current: instruction && post.copy.length ? post.copy : undefined, instruction });
       const copy = out.posts.filter((p) => chosen.includes(p.platform)).map((p) => ({ platform: p.platform, text: p.text, hashtags: p.hashtags.map((h) => h.replace(/^#/, "")) }));
-      update({ copy, imageIdea: out.imageScene || post.imageIdea });
+      update({ copy, imageIdea: out.imageScene || post.imageIdea, graphicHeadline: out.imageHeadline?.trim() || post.graphicHeadline });
       setTab(copy[0]?.platform ?? chosen[0]);
     } catch (e) {
       if (!isAbort(e)) toast.error("Couldn’t write the post", { description: (e as Error).message });
@@ -191,11 +193,16 @@ function Composer({ post, update, profile }: { post: PostDraft; update: (patch: 
 /* ------------------------------------------------------------------ */
 
 type Scene = { id: string; label: string; brief: string };
+/** The picture: an AI photo, an AI photo with a headline graphic on it, a graphic with no photo, or the advisor's own. */
+type Mode = "ai" | "ai-graphic" | "graphic" | "upload";
+const SOURCE_LABEL = { ai: "AI", upload: "Yours", graphic: "Graphic" } as const;
 
 function ImageStep({ post, update }: { post: PostDraft; update: (patch: Partial<PostDraft> | ((p: PostDraft) => Partial<PostDraft>)) => void }) {
   const { profile } = useStore();
   const headshots = profile.headshots.filter((h) => h.url);
-  const [mode, setMode] = React.useState<"ai" | "upload">("ai");
+  const [mode, setMode] = React.useState<Mode>(() => (post.image?.source === "graphic" ? (post.image.baseId ? "ai-graphic" : "graphic") : post.image?.source === "upload" ? "upload" : "ai"));
+  const headline = post.graphicHeadline ?? headlineFrom(post.copy[0]?.text ?? "", post.topic);
+  const setHeadline = (h: string) => update({ graphicHeadline: h });
   const [scenes, setScenes] = React.useState<Scene[]>([]);
   const [configured, setConfigured] = React.useState<boolean | null>(null);
   const [scene, setScene] = React.useState(post.imageIdea ?? "");
@@ -247,15 +254,38 @@ function ImageStep({ post, update }: { post: PostDraft; update: (patch: Partial<
   };
 
   const gallery = post.images ?? (post.image ? [post.image] : []);
+  // The picture the graphics go on: the chosen one, the one under the chosen graphic, or the newest.
+  const plain = gallery.filter((g) => g.source !== "graphic");
+  const base = post.image && post.image.source !== "graphic" ? post.image : (plain.find((g) => g.id === post.image?.baseId) ?? plain[0]);
 
   return (
-    <Step n={3} title="The picture" desc="A photo of you made from your headshots, or one of your own.">
-      <ToggleGroup type="single" value={mode} onValueChange={(v) => v && setMode(v as "ai" | "upload")} className="mb-4 rounded-full">
-        <ToggleGroupItem value="ai" className="rounded-full"><Wand2 /> AI photo of you</ToggleGroupItem>
-        <ToggleGroupItem value="upload" className="rounded-full"><ImagePlus /> Upload your own</ToggleGroupItem>
-      </ToggleGroup>
+    <Step n={3} title="The picture" desc="A photo of you, a photo with your headline on it, or a headline graphic with no photo.">
+      <div className="mb-3 grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Kind of picture">
+        {(
+          [
+            ["ai", Wand2, "AI image", "A photo of you, made from your headshots."],
+            ["ai-graphic", Sparkles, "AI image with graphics", "That photo with your headline and name on it."],
+            ["graphic", LayoutTemplate, "Graphic, no image", "Your headline on a clean branded card."],
+          ] as const
+        ).map(([id, Icon, title, body]) => (
+          <button key={id} type="button" role="radio" aria-checked={mode === id} onClick={() => setMode(id)} className={cn("flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-left transition", mode === id ? "border-primary bg-brass-soft/50" : "border-border hover:bg-muted/50")}>
+            <Icon className={cn("mt-0.5 size-4 shrink-0", mode === id ? "text-primary" : "text-muted-foreground")} />
+            <span className="min-w-0"><span className="block text-[13px] font-semibold">{title}</span><span className="mt-0.5 block text-[12px] text-muted-foreground">{body}</span></span>
+          </button>
+        ))}
+      </div>
+      <button type="button" onClick={() => setMode(mode === "upload" ? "ai" : "upload")} className="mb-4 inline-flex cursor-pointer items-center gap-1.5 text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+        <ImagePlus className="size-3.5" /> {mode === "upload" ? "Back to the options above" : "Or upload a picture of your own"}
+      </button>
 
-      {mode === "ai" ? (
+      {mode === "graphic" ? (
+        <div className="space-y-3">
+          <ToggleGroup type="single" value={aspect} onValueChange={(v) => v && setAspect(v as PostAspect)}>
+            {ASPECTS.map((a) => <ToggleGroupItem key={a.id} value={a.id} className="text-[12px]">{a.label}</ToggleGroupItem>)}
+          </ToggleGroup>
+          <GraphicMaker aspect={aspect} headline={headline} onHeadline={setHeadline} onAdd={add} />
+        </div>
+      ) : mode !== "upload" ? (
         configured === false ? (
           <p className="text-[13px] text-muted-foreground">AI images aren’t set up for this studio yet (it needs a Gemini key). You can upload your own picture instead.</p>
         ) : !headshots.length ? (
@@ -296,6 +326,16 @@ function ImageStep({ post, update }: { post: PostDraft; update: (patch: Partial<
         </label>
       )}
 
+      {mode === "ai-graphic" && (
+        <div className="mt-4 border-t border-border pt-4">
+          {base ? (
+            <GraphicMaker base={base} aspect={base.aspect ?? aspect} headline={headline} onHeadline={setHeadline} onAdd={add} />
+          ) : (
+            <p className="text-[13px] text-muted-foreground">Make the picture first. Your headline and name then go on it here, with a preview before you use it.</p>
+          )}
+        </div>
+      )}
+
       {gallery.length > 0 && (
         <div className="mt-5">
           <div className="mb-2 text-[12px] text-muted-foreground">{gallery.length > 1 ? "Pick the one to post" : "Your picture"}</div>
@@ -303,12 +343,12 @@ function ImageStep({ post, update }: { post: PostDraft; update: (patch: Partial<
             {gallery.map((g) => {
               const on = post.image?.id === g.id;
               return (
-                <button key={g.id} type="button" onClick={() => update({ image: g })} className={cn("group relative cursor-pointer overflow-hidden rounded-xl border-2 transition-colors", on ? "border-primary" : "border-transparent hover:border-border")} aria-pressed={on}>
+                <button key={g.id} type="button" onClick={() => update({ image: g })} className={cn("group relative cursor-pointer self-start overflow-hidden rounded-xl border-2 transition-colors", on ? "border-primary" : "border-transparent hover:border-border")} aria-pressed={on}>
                   <div className={cn("relative bg-muted", aspectClass(g.aspect))}>
                     <img src={g.url} alt="" className="absolute inset-0 h-full w-full object-cover" />
                   </div>
                   {on && <span className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="size-3.5" /></span>}
-                  <span className="absolute bottom-2 left-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-white">{g.source === "ai" ? "AI" : "Yours"}</span>
+                  <span className="absolute bottom-2 left-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-white">{g.source === "graphic" && g.baseId ? "With graphics" : SOURCE_LABEL[g.source]}</span>
                 </button>
               );
             })}

@@ -151,7 +151,8 @@ ${req.transcript.slice(0, 40000)}
 Write it natively for each of these platforms:
 ${req.platforms.map((p) => `- ${guide[p]}`).join("\n")}
 It's a post in its own right, not a caption for a video: it gives the reader one useful idea, in the advisor's voice, and ends with a natural next step. Where a link to book a call belongs, use the placeholder {{BOOKING_LINK}}. Don't add disclosures — the app appends them.${req.others?.length ? `\nThe advisor's recent posts open like this; this one must open differently and make its own point:\n${req.others.map((o) => `- ${o}`).join("\n")}` : ""}
-Also describe the photo that would carry it (imageScene): the advisor in a real, professional moment that fits the post (presenting to clients in a boardroom, at a kitchen table with a couple, on a call at their desk, walking through the city), so it can be generated from their headshots. No readable words or numbers in the picture.${revise(req.current, req.instruction)}`;
+Also describe the photo that would carry it (imageScene): the advisor in a real, professional moment that fits the post (presenting to clients in a boardroom, at a kitchen table with a couple, on a call at their desk, walking through the city), so it can be generated from their headshots. No readable words or numbers in the picture.
+Also give the headline for a graphic that can go out with it (imageHeadline): the post's one idea in six to ten plain words, the way a good magazine pull-quote reads. No promises of returns or guarantees.${revise(req.current, req.instruction)}`;
     }
 
     case "covers":

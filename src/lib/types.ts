@@ -176,10 +176,15 @@ export interface PostImage {
   /** Media id. */
   id: string;
   url: string;
-  source: "upload" | "ai";
+  /** "graphic": a headline graphic, over a picture (baseId) or on its own card. */
+  source: "upload" | "ai" | "graphic";
   /** The scene asked for, for AI images. */
   scene?: string;
   aspect?: PostAspect;
+  /** For a graphic over a picture: that picture's media id. */
+  baseId?: string;
+  /** The words on a graphic. */
+  headline?: string;
 }
 
 export interface PostDraft {
@@ -194,6 +199,8 @@ export interface PostDraft {
   images?: PostImage[];
   /** Claude's suggestion for the picture. */
   imageIdea?: string;
+  /** The headline for this post's graphic (suggested by Claude, edited by the advisor). */
+  graphicHeadline?: string;
   status: "draft" | "scheduled" | "published";
   scheduledFor?: string;
   publishedAt?: string;
