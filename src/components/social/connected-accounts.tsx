@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ExternalLink, LoaderCircle, Plug, RefreshCw, TriangleAlert } from "lucide-react";
+import { CircleCheck, ExternalLink, LoaderCircle, Plug, RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PlatformIcon } from "@/components/shared/platform-icon";
@@ -69,7 +69,9 @@ export function ConnectedAccounts({ back = "/settings#publishing" }: { back?: st
       <p className="text-[13px] text-muted-foreground">
         Connected to <span className="font-medium text-foreground">{status.organization}</span>{status.email ? ` (${status.email})` : ""}.
       </p>
-      {status.error && <p className="flex items-center gap-1.5 text-[13px] text-destructive"><TriangleAlert className="size-4" /> {status.error}</p>}
+      {status.error && (status.pending
+        ? <p className="flex items-start gap-2 rounded-xl border border-primary/30 bg-brass-soft/50 px-3 py-2.5 text-[13px]"><CircleCheck className="mt-0.5 size-4 shrink-0 text-primary" /> {status.error}</p>
+        : <p className="flex items-start gap-1.5 text-[13px] text-destructive"><TriangleAlert className="mt-0.5 size-4 shrink-0" /> {status.error}</p>)}
       {status.channels.length ? (
         <ul className="grid gap-2 sm:grid-cols-2">
           {status.channels.map((c) => {
@@ -90,7 +92,7 @@ export function ConnectedAccounts({ back = "/settings#publishing" }: { back?: st
             );
           })}
         </ul>
-      ) : (
+      ) : status.pending ? null : (
         <p className="text-[13px] text-muted-foreground">No channels in your Buffer yet. Add your social accounts in Buffer, then come back.</p>
       )}
       {error && <p className="text-[13px] text-destructive">{error}</p>}

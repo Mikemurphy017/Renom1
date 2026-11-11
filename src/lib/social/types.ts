@@ -38,6 +38,8 @@ export interface SocialStatus {
   channels: OwnChannel[];
   /** The key stopped working (revoked, say). */
   error?: string;
+  /** Connected, but the channels haven't been read from Buffer yet. */
+  pending?: boolean;
 }
 
 export type SocialPostStatus = "scheduled" | "posting" | "posted" | "failed" | "cancelled";

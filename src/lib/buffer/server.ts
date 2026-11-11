@@ -34,10 +34,25 @@ export class BufferError extends Error {
   }
 }
 
+/**
+ * Buffer gives the Renom app a fixed number of requests a day across all
+ * advisors. Once it says the day's are used up, nothing more is sent until its
+ * reset time: more requests only get refused.
+ */
+let advisorLimitedUntil = 0;
+/** When advisors' Buffer requests can resume (ms epoch), or 0 when they aren't being limited. */
+export const bufferLimitedUntil = () => (advisorLimitedUntil > Date.now() ? advisorLimitedUntil : 0);
+const limitedError = () => {
+  const e = new BufferError("Buffer is limiting requests right now. Try again in a few minutes.", 429);
+  e.retryAfterSec = Math.max(1, Math.ceil((advisorLimitedUntil - Date.now()) / 1000));
+  return e;
+};
+
 /** `as` is an advisor's own API key (their own Buffer); without it, the studio's. */
 async function gql<T>(query: string, variables: Record<string, unknown> = {}, as?: string): Promise<T> {
   const key = as ?? process.env.BUFFER_API_KEY;
   if (!key) throw new BufferError("Buffer is not connected", 503);
+  if (as && advisorLimitedUntil > Date.now()) throw limitedError();
   let res: Response;
   try {
     res = await fetch(API_URL, {
@@ -55,6 +70,8 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}, as
     console.warn(`[buffer] rate limited (${as ? "advisor" : "studio"} key): HTTP ${res.status}, retry-after=${h("retry-after")}, limit=${h("x-ratelimit-limit") ?? h("ratelimit-limit")}, remaining=${h("x-ratelimit-remaining") ?? h("ratelimit-remaining")}, reset=${h("x-ratelimit-reset") ?? h("ratelimit-reset")}, body=${text.slice(0, 400).replace(/\s+/g, " ")}`);
     const e = new BufferError("Buffer is limiting requests right now. Try again in a few minutes.", 429);
     e.retryAfterSec = Number(h("retry-after")) || undefined;
+    // A long wait means the daily budget is gone: hold every advisor request until it resets (an hour at most without a time).
+    if (as) advisorLimitedUntil = Date.now() + Math.min(24 * 3600, Math.max(60, e.retryAfterSec ?? 300)) * 1000;
     throw e;
   }
   let body: { data?: T; errors?: { message: string }[] };
@@ -90,6 +107,16 @@ export async function bufferAccountOf(key: string): Promise<{ email: string; org
     key
   );
   return { email: account.email, organization: org, channels };
+}
+
+/** Just the channels of an organization we already know: one request instead of two. */
+export async function bufferChannelsOf(key: string, orgId: string): Promise<BufferChannel[]> {
+  const { channels } = await gql<{ channels: BufferChannel[] }>(
+    `query RenomOwnChannels($org: OrganizationId!) { channels(input: { organizationId: $org }) { id name displayName service type avatar timezone isDisconnected isLocked isQueuePaused } }`,
+    { org: orgId },
+    key
+  );
+  return channels;
 }
 
 export async function getBufferStatus(): Promise<BufferStatus> {

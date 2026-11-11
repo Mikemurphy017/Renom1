@@ -16,14 +16,14 @@ async function json<T>(res: Response, fallback: string): Promise<T> {
   return j as T;
 }
 
-/** The advisor's own Buffer and its channels; re-checked when the tab regains focus (they add channels in Buffer). */
+/** The advisor's own Buffer and its channels; re-read when the tab regains focus; Refresh asks Buffer itself (they add channels there). */
 export function useSocialStatus() {
   const [status, setStatus] = React.useState<SocialStatus | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const refresh = React.useCallback(async (fresh = false) => {
     try {
       const j = await json<SocialStatus>(await fetch(`/api/social${fresh ? "?fresh" : ""}`, { cache: "no-store" }), "Couldn’t load your channels.");
-      setStatus({ available: j.available, connected: j.connected, email: j.email, organization: j.organization, channels: j.channels, error: j.error });
+      setStatus({ available: j.available, connected: j.connected, email: j.email, organization: j.organization, channels: j.channels, error: j.error, pending: j.pending });
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -32,7 +32,8 @@ export function useSocialStatus() {
   }, []);
   React.useEffect(() => {
     void refresh();
-    const onFocus = () => void refresh(true);
+    // Not a forced read: Buffer allows the app only so many requests a day. Refresh asks Buffer.
+    const onFocus = () => void refresh();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [refresh]);
