@@ -5,18 +5,16 @@ import { GettingStarted } from "@/components/guide/guide";
 import { ThisWeekCard } from "@/components/plan/this-week";
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Monitor, Smartphone, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { ArrowUpRight } from "lucide-react";
 import { PageContainer } from "@/components/shared/page";
 import { VideoThumb } from "@/components/shared/video-thumb";
 import { StepDots } from "@/components/shared/step-dots";
 import { PlatformIcon } from "@/components/shared/platform-icon";
-import { useStartVideo } from "@/components/layout/use-start-video";
+import { StartBox } from "@/components/home/start-box";
 import { useStore } from "@/lib/store";
 import { getStage, stageIndex } from "@/lib/stages";
 import { inPipeline, isPublished } from "@/lib/selectors";
-import type { PlatformId, VideoFormat } from "@/lib/types";
+import type { PlatformId } from "@/lib/types";
 import { TODAY, relativeTime } from "@/lib/utils";
 import { BRAND } from "@/lib/brand";
 
@@ -28,9 +26,6 @@ function greeting() {
 
 export default function HomePage() {
   const { videos, reviews, profile, requireApproval } = useStore();
-  const start = useStartVideo();
-  const [topic, setTopic] = React.useState("");
-  const [format, setFormat] = React.useState<VideoFormat>("short");
 
   const inProgress = videos.filter(inPipeline).filter((v) => v.status === "in_progress").sort((a, b) => stageIndex(b.stage) - stageIndex(a.stage) || b.lastEdited.localeCompare(a.lastEdited)).slice(0, 3);
   const waiting = reviews.filter((r) => r.status === "submitted").length;
@@ -60,35 +55,7 @@ export default function HomePage() {
         </h1>
         <p className="mt-3 text-[15px] text-muted-foreground">{summary}.</p>
 
-        <div className="mt-8 rounded-2xl border border-border bg-card p-2 shadow-[0_1px_2px_rgba(11,31,58,.04),0_12px_32px_-12px_rgba(11,31,58,.12)]">
-          <textarea
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                start(topic, format);
-              }
-            }}
-            rows={2}
-            placeholder="What do you want to talk about this week?"
-            className="block w-full resize-none bg-transparent px-4 pt-4 pb-2 font-serif text-xl outline-none placeholder:text-muted-foreground/60 sm:text-2xl"
-          />
-          <div className="flex flex-wrap items-center justify-between gap-3 px-2 pb-2">
-            <ToggleGroup type="single" value={format} onValueChange={(v) => v && setFormat(v as VideoFormat)} className="rounded-full">
-              <ToggleGroupItem value="short" className="rounded-full"><Smartphone /> Short</ToggleGroupItem>
-              <ToggleGroupItem value="long" className="rounded-full"><Monitor /> Long</ToggleGroupItem>
-            </ToggleGroup>
-            <div className="ml-auto flex items-center gap-2">
-              <Button variant="ghost" className="rounded-full text-muted-foreground" onClick={() => start("", format)}>
-                <Sparkles /> Suggest ideas
-              </Button>
-              <Button className="rounded-full px-5" onClick={() => start(topic, format)}>
-                Start <ArrowRight />
-              </Button>
-            </div>
-          </div>
-        </div>
+        <div className="mt-8"><StartBox /></div>
         <div className="mt-3 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
           Already made a video? Skip the script and go straight to editing:
           <UploadFinishedButton variant="ghost" className="h-8 rounded-full px-3 text-[13px] text-primary hover:text-primary" label="Upload it" />
@@ -102,7 +69,7 @@ export default function HomePage() {
       {videos.length === 0 && (
         <section className="grid gap-4 sm:grid-cols-3">
           {[
-            ["1", "Say what’s on your mind", "One sentence. Claude turns it into ideas in your voice, then writes the script."],
+            ["1", "Say what’s on your mind", "One sentence. Turn it into a video, posts, or both, written in your voice."],
             ["2", "Record and trim", "Read from the teleprompter. The edit marks the pauses and retakes for you."],
             ["3", requireApproval ? "Approve and post" : "Post", "Captions for every platform with your disclosure locked on. Our team posts it for you, or download it and post it yourself."],
           ].map(([n, t, d]) => (

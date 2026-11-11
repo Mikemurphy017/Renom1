@@ -18,6 +18,7 @@ import { activeDisclosure, composeCaption } from "@/lib/compose";
 import { getPlatform } from "@/lib/mock/platforms";
 import { uploadImage } from "@/lib/media/upload";
 import { headlineFrom } from "@/lib/posts/graphic";
+import { postSourceOf } from "@/lib/posts/from-video";
 import { GraphicMaker } from "./post-graphic";
 import { SERVICE_OF } from "@/lib/social/types";
 import { connectBuffer, publishPost, useSocialPosts, useSocialStatus } from "@/lib/social/use-social";
@@ -71,8 +72,9 @@ export function PostComposer({ id }: { id: string }) {
 }
 
 function Composer({ post, update, profile }: { post: PostDraft; update: (patch: Partial<PostDraft> | ((p: PostDraft) => Partial<PostDraft>)) => void; profile: ReturnType<typeof useStore>["profile"] }) {
-  const { posts } = useStore();
+  const { posts, videos } = useStore();
   const { write, busy, status } = useWriter();
+  const fromVideo = post.fromVideoId ? videos.find((v) => v.id === post.fromVideoId) : undefined;
   const [tab, setTab] = React.useState<PostPlatform>(post.copy[0]?.platform ?? post.platforms[0] ?? "linkedin");
   const image = post.kind === "image";
   const allowed = POST_PLATFORMS.filter((p) => image || p !== "instagram");
@@ -96,7 +98,7 @@ function Composer({ post, update, profile }: { post: PostDraft; update: (patch: 
     if (!chosen.length) return toast.error("Pick at least one platform.");
     try {
       const others = posts.filter((p) => p.id !== post.id && p.copy[0]?.text).slice(0, 15).map((p) => p.copy[0].text.split("\n")[0].slice(0, 200));
-      const out = await write({ task: "post", profile: voiceProfileOf(profile), topic: post.topic, kind: post.kind, platforms: chosen, others, current: instruction && post.copy.length ? post.copy : undefined, instruction });
+      const out = await write({ task: "post", profile: voiceProfileOf(profile), topic: post.topic, kind: post.kind, platforms: chosen, others, source: postSourceOf(fromVideo), current: instruction && post.copy.length ? post.copy : undefined, instruction });
       const copy = out.posts.filter((p) => chosen.includes(p.platform)).map((p) => ({ platform: p.platform, text: p.text, hashtags: p.hashtags.map((h) => h.replace(/^#/, "")) }));
       update({ copy, imageIdea: out.imageScene || post.imageIdea, graphicHeadline: out.imageHeadline?.trim() || post.graphicHeadline });
       setTab(copy[0]?.platform ?? chosen[0]);
@@ -113,7 +115,7 @@ function Composer({ post, update, profile }: { post: PostDraft; update: (patch: 
       <Link href="/posts" className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" /> Posts</Link>
       <div>
         <h1 className="font-serif text-[30px] leading-tight sm:text-[36px]">{image ? "Text + image post" : "Text post"}</h1>
-        <p className="mt-1 text-[14px] text-muted-foreground">Written in your voice, with your disclosure added when it goes out.</p>
+        <p className="mt-1 text-[14px] text-muted-foreground">{fromVideo ? <>Made from your video <Link href={`/studio/${fromVideo.id}/${fromVideo.stage}`} className="text-foreground underline underline-offset-2">{fromVideo.title}</Link>, in your voice, with your disclosure added when it goes out.</> : "Written in your voice, with your disclosure added when it goes out."}</p>
       </div>
 
       <Step n={1} title="What’s it about?">

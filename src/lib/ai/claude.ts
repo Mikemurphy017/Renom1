@@ -155,7 +155,10 @@ ${req.transcript.slice(0, 40000)}
         instagram: "Instagram: a caption of 40 to 120 words that works under a photo. Strong first line, short lines, a gentle prompt to save or share. Up to 8 hashtags.",
         x: "X: one to three tight sentences, at most 230 characters. At most 2 hashtags.",
       };
-      return `Write a social post${req.kind === "image" ? " that will go out with a photo of the advisor" : " (words only, no picture)"} about: "${req.topic}".
+      const src = req.source
+        ? `\nBuild it from the advisor's own video on this, so it carries the same idea, points and examples:\nVideo: "${req.source.title.slice(0, 200)}"\n${req.source.script ? `Script:\n"""\n${req.source.script.slice(0, 6000)}\n"""` : (req.source.outline ?? []).slice(0, 8).map((o) => `- ${o.slice(0, 200)}`).join("\n")}\nThe post must stand alone for someone who never sees the video: it is not a caption and does not say "in my latest video" unless that is the natural next step.`
+        : "";
+      return `Write a social post${req.kind === "image" ? " that will go out with a photo of the advisor" : " (words only, no picture)"} about: "${req.topic}".${src}
 Write it natively for each of these platforms:
 ${req.platforms.map((p) => `- ${guide[p]}`).join("\n")}
 It's a post in its own right, not a caption for a video: it gives the reader one useful idea, in the advisor's voice, and ends with a natural next step. Where a link to book a call belongs, use the placeholder {{BOOKING_LINK}}. Don't add disclosures — the app appends them.${req.others?.length ? `\nThe advisor's recent posts open like this; this one must open differently and make its own point:\n${req.others.map((o) => `- ${o}`).join("\n")}` : ""}

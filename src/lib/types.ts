@@ -190,6 +190,8 @@ export interface PostImage {
 export interface PostDraft {
   id: string;
   topic: string;
+  /** The video this post was made from, if any: the writer works from its script. */
+  fromVideoId?: string;
   kind: PostKind;
   platforms: PostPlatform[];
   copy: PostCopy[];

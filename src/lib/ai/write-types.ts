@@ -58,6 +58,8 @@ export type WriteRequest =
       platforms: PostPlatform[];
       /** How the advisor's recent posts open, so this one doesn't repeat them. */
       others?: string[];
+      /** The advisor's video this post is made from: the post carries its idea, in its own words. */
+      source?: { title: string; script?: string; outline?: string[] };
       current?: PostCopy[];
       instruction?: string;
     }
