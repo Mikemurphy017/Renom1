@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 /**
- * The switch for cinematic videos (an admin-only tool): they can be made here
- * once the studio's Higgsfield API key is set. The key is checked before it's saved,
+ * The switch for cinematic videos: they're on for every Pro account once the
+ * studio's Higgsfield API key is set. The key is checked before it's saved,
  * stored encrypted, and never shown again.
  */
 
@@ -41,7 +41,7 @@ export function CinematicSetup({ onChange }: { onChange?: () => void }) {
       setStatus(j);
       setKey("");
       setReplacing(false);
-      toast.success(method === "POST" ? "Cinematic videos are on" : "Cinematic videos are off", { description: method === "POST" ? "You can make them below." : undefined });
+      toast.success(method === "POST" ? "Cinematic videos are on" : "Cinematic videos are off", { description: method === "POST" ? "Pro advisors now get the option when they record." : undefined });
       onChange?.();
     } catch (e) {
       toast.error((e as Error).message);
@@ -80,15 +80,15 @@ export function CinematicSetup({ onChange }: { onChange?: () => void }) {
           <p className="mt-1 text-[13px] text-muted-foreground">
             {status.on
               ? status.source === "environment"
-                ? `Admins can make them here. The Higgsfield key (ending ${status.ends}) is set in the server’s settings (HF_CREDENTIALS), so it’s changed there, not here.`
-                : `Admins can make them here. Higgsfield key ending ${status.ends}, saved here.`
-              : "They can’t be made yet because the studio has no Higgsfield API key. Add it here to switch them on. Only admins see this."}
+                ? `Every Pro account can make them. The Higgsfield key (ending ${status.ends}) is set in the server’s settings (HF_CREDENTIALS), so it’s changed there, not here.`
+                : `Every Pro account can make them. Higgsfield key ending ${status.ends}, saved here.`
+              : "No Pro account can make them yet, including yours, because the studio has no Higgsfield API key. Add it here to switch them on for everyone on Pro."}
           </p>
         </div>
         {status.on && status.source === "dashboard" && !replacing && (
           <div className="flex gap-2">
             <Button variant="outline" size="sm" className="rounded-full" onClick={() => setReplacing(true)} disabled={!!busy}>Replace key</Button>
-            <Button variant="ghost" size="sm" className="rounded-full text-destructive hover:text-destructive" onClick={() => window.confirm("Switch cinematic videos off? Videos already made stay.") && void call("DELETE")} disabled={!!busy}>{busy === "off" ? <LoaderCircle className="animate-spin" /> : null} Switch off</Button>
+            <Button variant="ghost" size="sm" className="rounded-full text-destructive hover:text-destructive" onClick={() => window.confirm("Switch cinematic videos off for every account? Videos already made stay.") && void call("DELETE")} disabled={!!busy}>{busy === "off" ? <LoaderCircle className="animate-spin" /> : null} Switch off</Button>
           </div>
         )}
       </div>

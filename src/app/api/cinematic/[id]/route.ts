@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/admin";
+import { currentUser } from "@/lib/auth/server";
+import { isPro, proOnly } from "@/lib/billing/tier";
 import { CinematicError, act, advance, getJob, removeJob, view } from "@/lib/cinematic/server";
 
 export const dynamic = "force-dynamic";
@@ -9,8 +10,8 @@ const fail = (e: unknown) => (e instanceof CinematicError ? NextResponse.json({ 
 
 /** Where one video is. Looking at it also moves it along. */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { admin: user, denied } = await requireAdmin(request);
-  if (denied) return denied;
+  const user = await currentUser(request);
+  if (!user) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
   const { id } = await params;
   const job = await getJob(id);
   if (!job || job.userId !== user.id) return NextResponse.json({ ok: false, error: "Not found." }, { status: 404 });
@@ -20,8 +21,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 /** Body: { action: "approve" | "regenerate" | "retry" }. */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { admin: user, denied } = await requireAdmin(request);
-  if (denied) return denied;
+  const user = await currentUser(request);
+  if (!user) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
+  // Approving, a new scene and a retry each start a paid generation: Pro only, like starting one.
+  if (!(await isPro(user))) return proOnly("Cinematic videos");
   const { id } = await params;
   const b = (await request.json().catch(() => null)) as { action?: string } | null;
   if (b?.action !== "approve" && b?.action !== "regenerate" && b?.action !== "retry") return NextResponse.json({ ok: false, error: "Unknown action." }, { status: 400 });
@@ -33,8 +36,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { admin: user, denied } = await requireAdmin(request);
-  if (denied) return denied;
+  const user = await currentUser(request);
+  if (!user) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
   try {
     await removeJob(user, (await params).id);
     return NextResponse.json({ ok: true });
