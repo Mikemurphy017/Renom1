@@ -8,7 +8,10 @@ import { cn } from "@/lib/utils";
 import { NAV } from "./nav";
 import { useShell } from "./shell-context";
 
-/** Phone navigation: four tabs with New video in the middle, like a native app. */
+/** Seven tabs don't fit a phone: Cinematic is reached from Videos there. */
+const PHONE = NAV.filter((n) => n.href !== "/cinematic");
+
+/** Phone navigation: tabs with New video in the middle, like a native app. */
 export function TabBar() {
   const pathname = usePathname();
   const { reviews, requireApproval } = useStore();
@@ -28,13 +31,13 @@ export function TabBar() {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden" aria-label="Main">
       <div className="mx-auto flex max-w-md items-stretch px-2">
-        {NAV.slice(0, 2).map(tab)}
+        {PHONE.slice(0, 2).map(tab)}
         <div className="flex flex-1 items-center justify-center">
           <button onClick={openNewVideo} aria-label="New video" className="-mt-5 flex size-14 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_8px_24px_-6px_rgba(176,141,87,.7)] ring-4 ring-background active:scale-95">
             <Plus className="size-6" />
           </button>
         </div>
-        {NAV.slice(2).map(tab)}
+        {PHONE.slice(2).map(tab)}
       </div>
     </nav>
   );

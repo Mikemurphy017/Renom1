@@ -47,3 +47,4 @@ next-env.d.ts
 # speech model (downloaded on npm install)
 /.models
 .claude/worktrees/
+.test/

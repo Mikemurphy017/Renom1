@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "buffer": "node scripts/buffer.mjs",
-    "postinstall": "node scripts/fetch-asr-model.mjs || true"
+    "postinstall": "node scripts/fetch-asr-model.mjs || true",
+    "test:cinematic": "esbuild tests/cinematic.test.ts --bundle --platform=node --format=esm --alias:@=./src --packages=external --outfile=.test/cinematic.test.mjs --log-level=error && node --test .test/cinematic.test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
@@ -62,6 +63,7 @@
     "@types/nodemailer": "^8.0.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "15.5.27",
     "tailwindcss": "^4",

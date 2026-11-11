@@ -3,7 +3,7 @@
 import { UploadFinishedButton } from "@/components/layout/upload-finished";
 import * as React from "react";
 import Link from "next/link";
-import { Bookmark, Check, CircleCheck, Clapperboard, Clock, Eye, Lightbulb, ListChecks, MoreHorizontal, Plus, Search, SearchX, Trash2, X } from "lucide-react";
+import { Bookmark, Check, Film, CircleCheck, Clapperboard, Clock, Eye, Lightbulb, ListChecks, MoreHorizontal, Plus, Search, SearchX, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -103,6 +103,7 @@ export default function VideosPage() {
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="font-serif text-[40px] leading-tight tracking-tight">Videos</h1>
           <UploadFinishedButton className="h-9 rounded-full" />
+          <Button variant="outline" className="h-9 rounded-full" asChild><Link href="/cinematic"><Film /> Cinematic video</Link></Button>
         </div>
         {videos.length > 0 && <div className="flex w-full items-center gap-2 sm:w-auto">
           <div className="relative flex-1 sm:w-60 sm:flex-none">

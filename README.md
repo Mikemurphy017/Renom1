@@ -291,3 +291,41 @@ The colors are injected as a small `<style>` in `src/app/layout.tsx` that overri
 ## Shortcuts
 
 - `⌘K` / `Ctrl+K`: command palette (jump to any video, step or page)
+
+## Cinematic videos
+
+A photorealistic video of the advisor speaking their script in a chosen setting, made from one headshot (`/cinematic`, Pro). Two generations through the Higgsfield API: a cinematic still of them in the setting, which they approve, then that still animated into a talking video. Code is in `src/lib/cinematic/`.
+
+**Setup.** Set `HF_CREDENTIALS` to `key-id:key-secret` (server only). Without it the page says cinematic videos aren't switched on.
+
+**Add a setting preset.** Add an entry to `SETTINGS` in `src/lib/cinematic/core.ts`:
+
+```ts
+{
+  id: "vineyard",                      // unique, lowercase
+  name: "Vineyard terrace",            // shown on the picker
+  description: "standing on a stone terrace above a vineyard at dusk. Behind them, rows of vines and soft hills fall into soft focus",
+  lighting: "Low warm sun as a rim light, soft bounced key on the face, golden-and-green color grade",
+  short: "vineyard terrace",           // "The person in the {short} …"
+  backgroundMotion: "Leaves move gently in a light breeze",
+}
+```
+
+`description` continues the sentence "wearing {wardrobe}, …". The camera, lens and film-grain language is added by the prompt templates in the same file, so every setting reads as one brand. Run `npm run test:cinematic` afterwards; one test checks every preset is complete.
+
+**Change the models** (no code change):
+
+| Variable | Default | Other values |
+| --- | --- | --- |
+| `CINEMATIC_VIDEO_MODEL` | `bytedance/seedance-2.5/image-to-video` | `alibaba/wan-3.0/image-to-video`, `xai/grok-imagine-video/v1.5/reference-to-video` |
+| `CINEMATIC_VIDEO_RESOLUTION` | `1080p` | `720p` (well under half the cost on most models) |
+| `CINEMATIC_IMAGE_MODEL` | `xai/grok-imagine-image-2.0` | `ideogram/v4.0` |
+| `CINEMATIC_MONTHLY_LIMIT` | `20` | videos per advisor per month |
+
+The video model is a strategy in `src/lib/cinematic/models.ts`: each entry lists the exact inputs that model accepts (the API rejects fields a model doesn't list) and its length range, which sets the script's word limit. To add one, add an entry there from the model's API reference.
+
+**Intone (real voice, lip-sync) upgrade.** Higgsfield's Intone and Seed Audio models are not in its developer API today (they exist in the consumer app only), so there is no flag to flip yet. When they appear in the API catalog, add them as a `VideoModel` entry in `models.ts` (character image plus a voice audio input) and select it with `CINEMATIC_VIDEO_MODEL`; nothing else in the pipeline changes.
+
+**How a job runs.** Each video is one JSON record (`cinematic/<id>.json`): inputs, consent text and time, both prompts, models, Higgsfield request ids and cost. `advance()` in `server.ts` moves it one step whenever someone looks at it (the page polls) and every ten minutes for jobs nobody has open. Every submission carries an idempotency key saved beforehand, so a retry after a timeout can't create a second, charged request. Plan, balance, credential and validation errors are never retried and are shown under Admin → Cinematic. Finished stills and MP4s are copied into Renom's storage (Higgsfield deletes its copies after seven days).
+
+**Smoke test.** `node --env-file=.env.local scripts/higgsfield/index.ts` makes one billable 5-second Seedance generation through the official SDK and prints the video URL.
