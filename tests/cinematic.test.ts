@@ -100,7 +100,7 @@ test("a retry resumes at the step that failed", () => {
 // ── The pipeline against a mock Higgsfield ──
 
 type Mode = "ok" | "plan" | "moderate_still" | "flaky_submit" | "fail_video";
-const mock = { mode: "ok" as Mode, submits: [] as { path: string; key: string; body: Record<string, unknown> }[], keys: new Map<string, string>(), flaked: false, polls: new Map<string, number>() };
+const mock = { mode: "ok" as Mode, submits: [] as { path: string; key: string; body: Record<string, unknown> }[], keys: new Map<string, string>(), flaked: false, polls: new Map<string, number>(), lastAuth: "" };
 let server: http.Server;
 let dir: string;
 let base: string;
@@ -120,6 +120,8 @@ before(async () => {
     req.on("end", () => {
       const send = (o: unknown, code = 200) => { res.statusCode = code; res.setHeader("content-type", "application/json"); res.end(JSON.stringify(o)); };
       const url = req.url ?? "";
+      if (!url.startsWith("/put/") && !url.startsWith("/out/")) mock.lastAuth = String(req.headers.authorization ?? "");
+      if (/wrong-secret/.test(mock.lastAuth)) return send({ detail: "Invalid credentials" }, 401);
       if (url === "/files/generate-upload-url") return send({ public_url: `${base}/pub/in.jpg`, upload_url: `${base}/put/in.jpg`, upload_headers: { "Content-Type": "image/jpeg" } });
       if (url.startsWith("/put/")) return send({});
       if (url.startsWith("/out/")) { res.setHeader("content-type", url.endsWith(".mp4") ? "video/mp4" : "image/jpeg"); return res.end(readFileSync(path.join(dir, url.endsWith(".mp4") ? "v.mp4" : "s.jpg"))); }
@@ -147,7 +149,7 @@ before(async () => {
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  Object.assign(process.env, { HF_CREDENTIALS: "test-id:test-secret", HF_API_URL: base, VIDEO_DATA_DIR: path.join(dir, "data"), NO_PROXY: "127.0.0.1,localhost" });
+  Object.assign(process.env, { HF_CREDENTIALS: "test-id:test-secret", HF_API_URL: base, SECRETS_KEY: "testsecretkeytestsecretkey123456", VIDEO_DATA_DIR: path.join(dir, "data"), NO_PROXY: "127.0.0.1,localhost" });
   pipeline = await import("@/lib/cinematic/server");
   storage = await import("@/lib/storage/objects");
   media = await import("@/lib/storage/media");
@@ -276,4 +278,56 @@ test("asking for another still goes back to the scene; a failed video retries fr
 test("one advisor can't see or act on another's video", async () => {
   const { id } = await start("ok");
   await assert.rejects(() => pipeline.act({ ...(user as object), id: "usomeoneelse0000001" } as never, id, "approve"), /Not found/);
+});
+
+// ── Switching it on from the admin dashboard ──
+
+test("without a key it's off; a key saved by the admin switches it on, encrypted, and the environment's key wins", async () => {
+  const hf = await import("@/lib/cinematic/higgsfield");
+  const envKey = process.env.HF_CREDENTIALS;
+  delete process.env.HF_CREDENTIALS;
+  try {
+    await hf.removeKey();
+    assert.deepEqual(await hf.keyStatus(), { on: false, source: null, ends: null, canSave: true });
+    await assert.rejects(() => start("ok"), /aren’t switched on/);
+
+    // Not a key at all, then one Higgsfield refuses: neither is stored.
+    await assert.rejects(() => hf.saveKey("just-one-part"), /two parts joined by a colon/);
+    await assert.rejects(() => hf.saveKey("dash-id-0001:wrong-secret-0001"), /didn’t accept that key/);
+    assert.equal((await hf.keyStatus()).on, false);
+    assert.equal(await storage.getJSON("meta/cinematicsetup.json").catch(() => null), null);
+
+    await hf.saveKey("  dash-id-0001:dash-secret-0042 ");
+    assert.deepEqual(await hf.keyStatus(), { on: true, source: "dashboard", ends: "0042", canSave: true });
+    const stored = JSON.stringify(await storage.getJSON("meta/cinematicsetup.json"));
+    assert.ok(!stored.includes("dash-secret-0042") && !stored.includes("dash-id-0001"), "the key is stored encrypted");
+
+    // Videos are made with it.
+    const { id } = await start("ok");
+    await settle(id, (st) => st === "approval");
+    assert.equal(mock.lastAuth, "Key dash-id-0001:dash-secret-0042");
+
+    // A key in the server's environment takes over.
+    process.env.HF_CREDENTIALS = envKey;
+    assert.deepEqual(await hf.keyStatus(), { on: true, source: "environment", ends: "cret", canSave: true });
+    delete process.env.HF_CREDENTIALS;
+
+    await hf.removeKey();
+    assert.equal(await hf.higgsfieldConfigured(), false);
+  } finally {
+    process.env.HF_CREDENTIALS = envKey;
+  }
+});
+
+test("a video started from the Record step remembers which video it's for and its size", async () => {
+  const { id } = await start("ok", { videoId: "vabc123xyz" });
+  await settle(id, (st) => st === "approval");
+  const { u } = { u: { ...(user as object), id: (await pipeline.getJob(id))!.userId } as never };
+  await pipeline.act(u, id, "approve");
+  const done = await settle(id, (st) => st === "ready");
+  const v = pipeline.view(done);
+  assert.equal(v.videoId, "vabc123xyz");
+  assert.match(v.uploadId ?? "", /\w{6,}/);
+  assert.deepEqual([v.width, v.height], [360, 640]);
+  assert.equal(pipeline.view((await pipeline.getJob((await start("ok", { videoId: "../../etc" })).id))!).videoId, undefined);
 });

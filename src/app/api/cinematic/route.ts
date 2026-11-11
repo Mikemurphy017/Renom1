@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUser } from "@/lib/auth/server";
+import { currentUser, isAdmin } from "@/lib/auth/server";
 import { isPro, proOnly } from "@/lib/billing/tier";
 import { higgsfieldConfigured } from "@/lib/cinematic/higgsfield";
 import { videoModel } from "@/lib/cinematic/models";
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   const jobs = await listJobs(user.id);
   const m = videoModel();
   return NextResponse.json(
-    { ok: true, available: higgsfieldConfigured(), pro: await isPro(user), jobs: jobs.map(view), limits: { maxSeconds: m.maxSeconds, maxWords: maxWordsFor(m.maxSeconds), perMonth: monthlyLimit() }, consentText: CONSENT_TEXT },
+    { ok: true, available: await higgsfieldConfigured(), canConfigure: isAdmin(user), pro: await isPro(user), jobs: jobs.map(view), limits: { maxSeconds: m.maxSeconds, maxWords: maxWordsFor(m.maxSeconds), perMonth: monthlyLimit() }, consentText: CONSENT_TEXT },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

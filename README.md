@@ -296,7 +296,9 @@ The colors are injected as a small `<style>` in `src/app/layout.tsx` that overri
 
 A photorealistic video of the advisor speaking their script in a chosen setting, made from one headshot (`/cinematic`, Pro). Two generations through the Higgsfield API: a cinematic still of them in the setting, which they approve, then that still animated into a talking video. Code is in `src/lib/cinematic/`.
 
-**Setup.** Set `HF_CREDENTIALS` to `key-id:key-secret` (server only). Without it the page says cinematic videos aren't switched on.
+**Setup.** Either set `HF_CREDENTIALS` to `key-id:key-secret` in the server's environment, or have an admin paste the key under Admin → Cinematic ("Switch on"). A key entered there is checked with Higgsfield first, stored encrypted (needs `SECRETS_KEY`) and never shown again; the environment's key wins when both exist. Without either, the page says cinematic videos aren't switched on, and the admin gets a link to the switch. Once on, every Pro account can make them.
+
+**From the Record step.** Recording a video offers two ways to make it: *Record yourself* (teleprompter or upload) or *Cinematic video* (no recording). The cinematic option starts from that video's script, offers to shorten it to the word limit, and "Use this video" makes the finished video the take, so it goes on to Edit and Post like a recording.
 
 **Add a setting preset.** Add an entry to `SETTINGS` in `src/lib/cinematic/core.ts`:
 

@@ -74,12 +74,14 @@ export interface CinematicJob {
     aspect: CinematicAspect;
     /** Burn a small "AI-generated" label into the video. */
     aiLabel: boolean;
+    /** The studio video this was made for, when it was started from the Record step. */
+    videoId?: string;
   };
   consent: { at: string; text: string };
   still?: Step & { mediaId?: string };
   /** Earlier stills the advisor passed on (kept for the record). */
   pastStills?: { mediaId: string; requestId: string; at: string }[];
-  video?: Step & { seconds: number; uploadId?: string; durationSec?: number; rawUploadId?: string };
+  video?: Step & { seconds: number; uploadId?: string; durationSec?: number; width?: number; height?: number; rawUploadId?: string };
   costs: CostEntry[];
 }
 
@@ -96,6 +98,12 @@ export interface CinematicView {
   aiLabel: boolean;
   stillUrl?: string;
   videoUrl?: string;
+  /** The finished video as an editor source: its id and size. */
+  uploadId?: string;
+  width?: number;
+  height?: number;
+  /** The studio video it was made for, if any. */
+  videoId?: string;
   durationSec?: number;
   /** Seconds since the current step started, for the progress line. */
   elapsedSec?: number;
@@ -134,6 +142,10 @@ export function view(job: CinematicJob): CinematicView {
     aiLabel: job.inputs.aiLabel,
     stillUrl: job.still?.mediaId ? mediaUrl(job.still.mediaId) : undefined,
     videoUrl: job.video?.uploadId ? `/api/video/files/${job.video.uploadId}` : undefined,
+    uploadId: job.video?.uploadId,
+    width: job.video?.width,
+    height: job.video?.height,
+    videoId: job.inputs.videoId,
     durationSec: job.video?.durationSec,
     elapsedSec: started ? Math.max(0, Math.round((Date.now() - Date.parse(started)) / 1000)) : undefined,
   };
@@ -158,10 +170,11 @@ export interface CreateInput {
   aspect?: unknown;
   aiLabel?: unknown;
   consent?: unknown;
+  videoId?: unknown;
 }
 
 export async function createJob(user: User, b: CreateInput): Promise<CinematicJob> {
-  if (!higgsfieldConfigured()) throw new CinematicError("Cinematic videos aren’t switched on for this studio yet.", 503);
+  if (!(await higgsfieldConfigured())) throw new CinematicError("Cinematic videos aren’t switched on for this studio yet.", 503);
   if (b.consent !== true) throw new CinematicError("Confirm that you’re the person in these photos before we make a video of you.");
   const headshotIds = (Array.isArray(b.headshotIds) ? b.headshotIds : []).filter(isMediaId).slice(0, 3);
   if (!headshotIds.length) throw new CinematicError("Add a clear, front-facing photo of yourself.");
@@ -191,6 +204,7 @@ export async function createJob(user: User, b: CreateInput): Promise<CinematicJo
       voiceId: typeof b.voiceId === "string" ? b.voiceId : "male-us",
       aspect: b.aspect === "16:9" ? "16:9" : "9:16",
       aiLabel: b.aiLabel === true,
+      videoId: typeof b.videoId === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(b.videoId) ? b.videoId : undefined,
     },
     consent: { at: now(), text: CONSENT_TEXT },
     costs: [],
@@ -422,6 +436,8 @@ async function step(job: CinematicJob) {
       video.rawUploadId = rawRec.id;
       video.uploadId = final.id;
       video.durationSec = Math.round(info.durationSec * 10) / 10;
+      video.width = info.width || undefined;
+      video.height = info.height || undefined;
       settle(job, video.requestId, "charged");
       go(job, "video_ready");
       await save(job);
@@ -469,7 +485,7 @@ export async function removeJob(user: User, id: string) {
 
 /** The hourly tick: move along jobs nobody has open. */
 export async function advanceAll() {
-  if (!higgsfieldConfigured()) return;
+  if (!(await higgsfieldConfigured())) return;
   for (const u of await listUsers().catch(() => [])) {
     for (const id of (await readIndex(u.id)).slice(0, 30)) {
       const job = await getJob(id).catch(() => null);

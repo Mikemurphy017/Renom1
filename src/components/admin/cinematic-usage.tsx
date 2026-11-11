@@ -3,6 +3,7 @@
 import * as React from "react";
 import { LoaderCircle, TriangleAlert } from "lucide-react";
 import { cn, relativeTime } from "@/lib/utils";
+import { CinematicSetup } from "./cinematic-setup";
 
 /** What cinematic videos cost per advisor and per video, against the Pro plan's price. */
 
@@ -37,12 +38,13 @@ const usd = (n: number) => `$${n.toFixed(2)}`;
 export function CinematicUsage() {
   const [data, setData] = React.useState<Data | null>(null);
   const [open, setOpen] = React.useState<string | null>(null);
-  React.useEffect(() => {
+  const load = React.useCallback(() => {
     fetch("/api/admin/cinematic", { cache: "no-store" })
       .then((r) => r.json())
       .then((j) => j.ok && setData(j))
       .catch(() => {});
   }, []);
+  React.useEffect(load, [load]);
   if (!data) return <LoaderCircle className="size-5 animate-spin text-muted-foreground" />;
 
   const month = new Date().toISOString().slice(0, 7);
@@ -75,9 +77,10 @@ export function CinematicUsage() {
         </p>
         <p className="mt-1 text-[12px] text-muted-foreground">
           Still: <code>{data.models.image}</code> · Video: <code>{data.models.video}</code>
-          {!data.configured && " · HF_CREDENTIALS is not set"}
         </p>
       </div>
+
+      <CinematicSetup onChange={load} />
 
       <div className="grid gap-4 sm:grid-cols-3">
         {cards.map(([l, v]) => (

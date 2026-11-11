@@ -12,5 +12,5 @@ export async function GET(request: Request) {
   const { denied } = await requireAdmin(request);
   if (denied) return denied;
   const pro = PLANS.find((p) => p.id === "pro");
-  return NextResponse.json({ ok: true, configured: higgsfieldConfigured(), models: { image: imageModel().id, video: videoModel().id }, proMonthly: pro?.monthly ?? 497, advisors: await adminUsage() }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ ok: true, configured: await higgsfieldConfigured(), models: { image: imageModel().id, video: videoModel().id }, proMonthly: pro?.monthly ?? 497, advisors: await adminUsage() }, { headers: { "Cache-Control": "no-store" } });
 }

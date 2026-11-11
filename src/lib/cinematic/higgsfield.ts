@@ -1,3 +1,5 @@
+import { getJSON, objects, putJSON } from "@/lib/storage/objects";
+import { seal, secretsConfigured, unseal } from "@/lib/secrets";
 import { priceFrom } from "./core";
 
 /**
@@ -10,13 +12,74 @@ import { priceFrom } from "./core";
  * not used here: its TypeScript client only does submit-and-wait, has no
  * idempotency option, retries on its own, and replaces a 403's reason with a
  * generic "not enough credits", so a plan limit couldn't be told from a low
- * balance. HF_CREDENTIALS ("key-id:key-secret") is read at call time and never
- * logged.
+ * balance.
+ *
+ * The key ("key-id:key-secret") comes from HF_CREDENTIALS when the server has
+ * it, otherwise from the one the admin saved under Admin → Cinematic (stored
+ * encrypted). It is read at call time and never logged or returned.
  */
 
-const creds = () => process.env.HF_CREDENTIALS?.trim() ?? "";
 const BASE = () => (process.env.HF_API_URL?.trim() || "https://api.higgsfield.ai").replace(/\/+$/, "");
-export const higgsfieldConfigured = () => creds().includes(":");
+const SETUP = "meta/cinematicsetup.json";
+const envKey = () => {
+  const k = process.env.HF_CREDENTIALS?.trim() ?? "";
+  return k.includes(":") ? k : "";
+};
+
+// The saved key, remembered briefly: another server instance may have changed it.
+let saved: { key: string; at: number } | null = null;
+async function savedKey(): Promise<string> {
+  if (saved && Date.now() - saved.at < 45_000) return saved.key;
+  let key = "";
+  if (secretsConfigured()) {
+    const rec = await getJSON<{ key?: string }>(SETUP).catch(() => null);
+    key = (rec?.key && unseal(rec.key)) || "";
+  }
+  saved = { key, at: Date.now() };
+  return key;
+}
+const creds = async () => envKey() || (await savedKey());
+
+/** Whether cinematic videos can be made: a key is set, in the environment or by the admin. */
+export const higgsfieldConfigured = async () => !!(await creds());
+
+export type KeySource = "environment" | "dashboard" | null;
+/** For the admin: whether a key is set, where from, and its last four characters. Never the key. */
+export async function keyStatus(): Promise<{ on: boolean; source: KeySource; ends: string | null; canSave: boolean }> {
+  const env = envKey();
+  const own = env ? "" : await savedKey();
+  const k = env || own;
+  return { on: !!k, source: env ? "environment" : own ? "dashboard" : null, ends: k ? k.slice(-4) : null, canSave: secretsConfigured() };
+}
+
+export class KeyError extends Error {
+  constructor(message: string, readonly status = 400) {
+    super(message);
+  }
+}
+
+/** Checks a key with Higgsfield (a request that costs nothing) and, only if it's accepted, saves it encrypted. */
+export async function saveKey(raw: string) {
+  const key = raw.trim();
+  if (!secretsConfigured()) throw new KeyError("The key can’t be saved until SECRETS_KEY is set on the server.", 503);
+  if (!/^[^\s:]{6,}:[^\s:]{6,}$/.test(key)) throw new KeyError("That doesn’t look like a Higgsfield API key. It has two parts joined by a colon: key-id:key-secret.");
+  let res: Response;
+  try {
+    res = await fetch(`${BASE()}/files/generate-upload-url`, { method: "POST", headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ content_type: "image/jpeg" }), cache: "no-store", signal: AbortSignal.timeout(20_000) });
+  } catch {
+    throw new KeyError("Couldn’t reach Higgsfield to check the key. Nothing was saved; try again in a moment.", 502);
+  }
+  if (res.status === 401 || res.status === 403) throw new KeyError("Higgsfield didn’t accept that key. Check both parts and try again; nothing was saved.");
+  if (!res.ok) throw new KeyError(`Higgsfield answered ${res.status} while checking the key. Nothing was saved; try again in a moment.`, 502);
+  await putJSON(SETUP, { key: seal(key), savedAt: new Date().toISOString() });
+  saved = { key, at: Date.now() };
+}
+
+/** Switches cinematic videos off (when the key was saved here; an environment key stays). */
+export async function removeKey() {
+  await objects().remove(SETUP).catch(() => {});
+  saved = { key: "", at: Date.now() };
+}
 
 /**
  * auth/balance/plan/validation/not_found never fix themselves: don't retry,
@@ -45,10 +108,11 @@ function classify(status: number | undefined, detail: unknown): HfError {
 }
 
 async function http<T>(path: string, init: RequestInit & { timeout?: number } = {}): Promise<T> {
-  if (!higgsfieldConfigured()) throw new HfError("auth", "HF_CREDENTIALS is not set.");
+  const key = await creds();
+  if (!key) throw new HfError("auth", "No Higgsfield key is set (Admin → Cinematic, or HF_CREDENTIALS).");
   let res: Response;
   try {
-    res = await fetch(`${BASE()}${path}`, { ...init, headers: { Authorization: `Key ${creds()}`, Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}), ...(init.headers ?? {}) }, cache: "no-store", signal: AbortSignal.timeout(init.timeout ?? 30_000) });
+    res = await fetch(`${BASE()}${path}`, { ...init, headers: { Authorization: `Key ${key}`, Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}), ...(init.headers ?? {}) }, cache: "no-store", signal: AbortSignal.timeout(init.timeout ?? 30_000) });
   } catch (e) {
     throw new HfError("transient", `Couldn’t reach Higgsfield: ${(e as Error).message}`);
   }
