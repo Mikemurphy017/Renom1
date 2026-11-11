@@ -7,6 +7,7 @@ import { JobCard, NewVideo, NotSwitchedOn, useCinematic, useHeadshots, type Job 
 import { useStore, voiceProfileOf } from "@/lib/store";
 import { streamWrite } from "@/lib/ai/writer";
 import { countWords } from "@/lib/cinematic/core";
+import { peekDraft, seedDraft } from "@/lib/drafts";
 import type { Script, Video } from "@/lib/types";
 
 /**
@@ -22,25 +23,32 @@ export function CinematicOption({ video, script, onUse, using }: { video: Video;
   const full = [script.hook, ...script.body, script.cta].map((l) => l.trim()).filter(Boolean).join(" ");
 
   // The script is written for a camera take (a minute or more); a cinematic video is seconds.
+  // The condensed version is kept with the video, so it's written once per script.
   const shorten = async (text: string, maxWords: number) => {
-    const target = Math.max(20, maxWords - 6);
+    const isFull = text.trim() === full;
+    const saved = peekDraft<{ from: string; max: number; text: string }>(video.id, "cinematic.script");
+    if (isFull && saved && saved.from === full && saved.max === maxWords) return saved.text;
     const out = await streamWrite({
       task: "script",
       profile: voiceProfileOf(profile),
       format: video.format,
       idea: { title: video.title, outline: video.outline.length ? video.outline : [video.title], angle: video.angle },
-      current: text.trim() === full ? script : { hook: text, body: [], cta: "" },
-      instruction: `This overrides the usual length: cut this to ${target} words or fewer in total, counting every word of the hook, body and close together. It is spoken aloud in under 30 seconds. Keep the strongest opening line, one clear point, and a one-sentence close. Plain spoken sentences only.`,
+      current: isFull ? script : { hook: text, body: [], cta: "" },
+      // A little under the limit, so a miscount still fits.
+      maxWords: Math.max(20, maxWords - 5),
     });
-    const short = [out.hook, ...out.body, out.cta].map((l) => l.trim()).filter(Boolean).join(" ");
-    if (countWords(short) <= maxWords) return short;
-    // Still over: keep whole sentences from the top until the limit.
-    const kept: string[] = [];
-    for (const sentence of short.split(/(?<=[.!?])\s+/)) {
-      if (countWords([...kept, sentence].join(" ")) > maxWords) break;
-      kept.push(sentence);
+    let short = [out.hook, ...out.body, out.cta].map((l) => l.trim()).filter(Boolean).join(" ");
+    if (countWords(short) > maxWords) {
+      // Still over: keep whole sentences from the top until the limit.
+      const kept: string[] = [];
+      for (const sentence of short.split(/(?<=[.!?])\s+/)) {
+        if (countWords([...kept, sentence].join(" ")) > maxWords) break;
+        kept.push(sentence);
+      }
+      short = kept.length ? kept.join(" ") : short.split(/\s+/).slice(0, maxWords).join(" ");
     }
-    return kept.length ? kept.join(" ") : short.split(/\s+/).slice(0, maxWords).join(" ");
+    if (isFull) seedDraft(video.id, "cinematic.script", { from: full, max: maxWords, text: short });
+    return short;
   };
 
   if (!config) return <div className="flex justify-center rounded-2xl border border-border bg-card p-10"><LoaderCircle className="size-5 animate-spin text-muted-foreground" /></div>;

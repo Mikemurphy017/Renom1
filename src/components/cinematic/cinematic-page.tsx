@@ -135,7 +135,7 @@ export interface NewVideoProps {
   initialScript?: string;
   /** The studio video this is for. */
   videoId?: string;
-  /** Rewrites a script that's too long down to the word limit. */
+  /** Condenses a script that's too long to the word limit. Run by itself when the form opens with one. */
   onShorten?: (script: string, maxWords: number) => Promise<string>;
   /** Vertical or wide to start with. */
   initialAspect?: CinematicAspect;
@@ -158,7 +158,7 @@ export function NewVideo({ config, headshots, onHeadshot, onCreated, initialScri
     if (!photo && headshots[0]) setPhoto(headshots[0].id);
   }, [photo, headshots]);
 
-  const words = countWords(script);
+  const words = shortening ? 0 : countWords(script);
   const max = config.limits.maxWords;
   const over = words > max;
   const secs = estimateSeconds(words);
@@ -195,17 +195,29 @@ export function NewVideo({ config, headshots, onHeadshot, onCreated, initialScri
     }
   };
 
-  const shorten = async () => {
+  // null: nothing condensed. Otherwise the longer script it was condensed from, so it can be put back.
+  const [condensedFrom, setCondensedFrom] = React.useState<string | null>(null);
+  const shorten = async (text = script) => {
     if (!onShorten) return;
     setShortening(true);
     try {
-      setScript(await onShorten(script, max));
+      const short = await onShorten(text, max);
+      setScript(short);
+      setCondensedFrom(text);
     } catch (e) {
-      toast.error("Couldn’t shorten it", { description: (e as Error).message });
+      toast.error("Couldn’t condense your script", { description: `${(e as Error).message} You can trim it yourself, or try again.` });
     } finally {
       setShortening(false);
     }
   };
+  // A script written for the camera is far too long for this: condense it as the option opens.
+  const auto = React.useRef(false);
+  React.useEffect(() => {
+    if (auto.current || !onShorten || countWords(initialScript) <= max) return;
+    auto.current = true;
+    void shorten(initialScript);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the form opens
+  }, []);
 
   const ready = !!photo && words >= 5 && !over && consent && (setting !== CUSTOM_SETTING_ID || custom.trim().length >= 8);
 
@@ -229,15 +241,22 @@ export function NewVideo({ config, headshots, onHeadshot, onCreated, initialScri
           </Field>
 
           <Field n={2} title="What you’ll say" hint={`Up to ${max} words, about ${Math.round(max / WORDS_PER_SECOND)} seconds.`}>
-            <Textarea rows={4} value={script} onChange={(e) => setScript(e.target.value)} placeholder="e.g. Most people think a Roth conversion is all or nothing. It isn’t. You can convert a slice each year and fill the lower brackets on purpose." className="font-serif text-[16px]" />
+            <Textarea rows={shortening ? 4 : Math.min(9, Math.max(4, Math.ceil(words / 11)))} value={shortening ? "" : script} disabled={shortening} onChange={(e) => setScript(e.target.value)} placeholder={shortening ? "Condensing your script to fit…" : "e.g. Most people think a Roth conversion is all or nothing. It isn’t. You can convert a slice each year and fill the lower brackets on purpose."} className="font-serif text-[16px]" />
             <div className="mt-1.5 flex items-center justify-between text-[12px]">
               <span className={cn("tnum", over ? "font-medium text-destructive" : "text-muted-foreground")}>{words} / {max} words{over ? ` · cut ${words - max}` : ""}</span>
               <span className="text-muted-foreground tnum">{words ? `about ${secs < 10 ? secs.toFixed(1) : Math.round(secs)} seconds spoken` : "about 2.5 words a second"}</span>
             </div>
-            {over && onShorten && (
+            {onShorten && shortening && <p className="mt-2 flex items-center gap-2 text-[12px] text-muted-foreground"><LoaderCircle className="size-3.5 animate-spin" /> Condensing your script to {max} words, about {Math.round(max / WORDS_PER_SECOND)} seconds. A few seconds.</p>}
+            {onShorten && !shortening && condensedFrom !== null && !over && (
+              <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-muted/60 px-3 py-2 text-[12px] text-muted-foreground">
+                <span className="min-w-0 flex-1"><Sparkles className="mr-1 inline size-3.5 text-primary" />Condensed from your {countWords(condensedFrom)}-word script to fit. Edit it however you like; your full script is unchanged.</span>
+                <button type="button" className="cursor-pointer font-medium text-primary underline-offset-2 hover:underline" onClick={() => { setScript(condensedFrom); setCondensedFrom(null); }}>Show my full script</button>
+              </p>
+            )}
+            {onShorten && !shortening && over && (
               <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-primary/40 bg-brass-soft/40 px-3 py-2 text-[12px]">
-                <span className="min-w-0 flex-1">Cinematic videos run up to {Math.round(max / WORDS_PER_SECOND)} seconds, so this script is too long as written.</span>
-                <Button size="sm" variant="outline" className="rounded-full" onClick={shorten} disabled={shortening}>{shortening ? <LoaderCircle className="animate-spin" /> : <Sparkles />} Shorten it for me</Button>
+                <span className="min-w-0 flex-1">Cinematic videos run up to {Math.round(max / WORDS_PER_SECOND)} seconds, so this is too long as written.</span>
+                <Button size="sm" variant="outline" className="rounded-full" onClick={() => shorten()}><Sparkles /> Condense it for me</Button>
               </div>
             )}
           </Field>

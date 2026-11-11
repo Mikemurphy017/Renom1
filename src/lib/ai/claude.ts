@@ -56,6 +56,24 @@ A subject that's already covered can come back, but only through an angle it has
 Each title should work as a hook on its own.${revise(undefined, req.instruction)}`;
 
     case "script":
+      // A cinematic video is under 30 seconds: the same script, condensed, not a new one.
+      if (req.current && req.maxWords) {
+        const max = Math.max(15, Math.min(400, Math.round(req.maxWords)));
+        return `Condense this video script to ${max} words or fewer, counting every word of the hook, body and close together. That limit is hard: it is spoken on camera in about ${Math.round(max / 2.5)} seconds, and anything longer cannot be filmed.
+Video: "${req.idea.title}"
+
+The script:
+${JSON.stringify(req.current, null, 2)}
+
+How to condense it:
+- Keep the advisor's own opening line, or the strongest part of it, as the hook: one sentence.
+- Keep the single most important point, in the advisor's own words and examples where they fit. Drop the rest; do not summarise everything.
+- The body is one or two short spoken sentences in a single paragraph.
+- The close is one short sentence: a calm invitation.
+- It must still make sense to someone who never saw the longer version.
+- Write for the ear: short sentences, no lists, no headings, no stage directions. Add no new facts, numbers or claims.
+Count the words before you answer. If it is over ${max}, cut again.${req.instruction ? `\n\nThe advisor added: "${req.instruction}"` : ""}`;
+      }
       return `Write a ${req.format === "short" ? "short-form script: 60 to 90 seconds spoken, about 150 to 210 words, for a vertical video" : "long-form script: 6 to 9 minutes spoken, about 900 to 1,300 words, for a horizontal video"}.
 Video: "${req.idea.title}"${req.idea.angle ? `\nAngle: ${req.idea.angle} (${ANGLES.find((a) => a.label === req.idea.angle)?.brief ?? ""}). The script is built around this angle.` : ""}
 Points to cover, in whatever order serves the story:
