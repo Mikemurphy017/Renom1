@@ -142,9 +142,22 @@ export function stillPrompt(o: { wardrobe: string; setting: SettingPreset }) {
   return `Cinematic film still, ultra-photorealistic. The exact same person from the reference photo (identical face, hairline, facial hair, eye color), wearing ${wardrobe}, ${o.setting.description}. ${o.setting.lighting}. Natural skin texture with visible pores and fine detail, no smoothing, no plastic look. Shot on ARRI Alexa with a 50mm anamorphic lens at T2, shallow depth of field, subtle film grain, slight anamorphic flare. Medium close-up from mid-chest up, looking into the lens with a calm, confident expression, mouth closed.`;
 }
 
-/** Step 2: the talking video, from the approved still. */
+/** The setting's grade, named ("teal-and-amber grade"), so the video keeps the still's look. */
+export function gradeOf(setting: SettingPreset) {
+  const m = /(?:^|,\s*)(?:a |an )?([^,]*?)\s*color grade/i.exec(setting.lighting);
+  const g = m?.[1]?.replace(/^.*\bwith (?:a |an )?/i, "").replace(/^(clean|rich|polished|cohesive)\s+/i, "").trim();
+  return g && !/cinematic$/i.test(g) ? `${g} grade` : "color grade";
+}
+
+/**
+ * Step 2: the talking video, from the approved still. Worded like the
+ * reference film the advisor approved (the man / the woman, he / she says,
+ * the grade named), which is what the video model responds to best.
+ */
 export function videoPrompt(o: { setting: SettingPreset; voice: string; script: string }) {
-  return `Cinematic, photorealistic film footage. The person in the ${o.setting.short} looks into the lens and speaks in a natural, ${clean(o.voice)} with realistic lip sync, natural blinking, subtle head movement, and restrained hand gestures, like a polished brand film. They say: "${quoteSafe(o.script)}" Very slow, subtle dolly-in camera push. Preserve the shallow depth of field, anamorphic look, color grade, and film grain. ${o.setting.backgroundMotion}. Quiet room tone, no music, no captions.`;
+  const voice = clean(o.voice);
+  const who = /\bfemale\b/i.test(voice) ? { noun: "woman", says: "She says" } : /\bmale\b/i.test(voice) ? { noun: "man", says: "He says" } : { noun: "person", says: "They say" };
+  return `Cinematic, photorealistic film footage. The ${who.noun} in the ${o.setting.short} looks into the lens and speaks in a natural, ${voice} with realistic lip sync, natural blinking, subtle head movement, and restrained hand gestures, like a polished brand film. ${who.says}: "${quoteSafe(o.script)}" Very slow, subtle dolly-in camera push. Preserve the shallow depth of field, anamorphic look, ${gradeOf(o.setting)}, and film grain. ${o.setting.backgroundMotion}. Quiet room tone, no music, no captions.`;
 }
 
 // ── Script length ──

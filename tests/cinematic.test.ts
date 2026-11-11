@@ -27,10 +27,19 @@ test("still prompt fills wardrobe, setting and lighting, and keeps the camera la
 
 test("video prompt quotes the script, names the setting and voice, and asks for no music or captions", () => {
   const p = videoPrompt({ setting: resolveSetting("corner-office")!, voice: "confident, warm American male voice", script: 'We help you   book "real" meetings.' });
-  assert.match(p, /The person in the corner office looks into the lens/);
+  assert.match(p, /The man in the corner office looks into the lens/);
   assert.match(p, /speaks in a natural, confident, warm American male voice with realistic lip sync/);
-  assert.match(p, /They say: "We help you book ”real” meetings\." Very slow, subtle dolly-in/);
+  assert.match(p, /He says: "We help you book ”real” meetings\." Very slow, subtle dolly-in/);
+  assert.match(p, /anamorphic look, teal-and-amber grade, and film grain/);
   assert.match(p, /City lights twinkle softly in the background bokeh\. Quiet room tone, no music, no captions\.$/);
+});
+
+test("the video prompt matches the approved reference film, word for word", () => {
+  const script = "Financial advisors, we will help you book meetings with pre-liquidity prospects. Think of high-net-worth executives with RSUs. Or business owners looking to exit. Click the link below to start adding high-net-worth prospects to your pipeline.";
+  const reference = `Cinematic, photorealistic film footage. The man in the corner office looks into the lens and speaks in a natural, confident, warm American male voice with realistic lip sync, natural blinking, subtle head movement, and restrained hand gestures, like a polished brand film. He says: "${script}" Very slow, subtle dolly-in camera push. Preserve the shallow depth of field, anamorphic look, teal-and-amber grade, and film grain. City lights twinkle softly in the background bokeh. Quiet room tone, no music, no captions.`;
+  assert.equal(videoPrompt({ setting: resolveSetting("corner-office")!, voice: "confident, warm American male voice", script }), reference);
+  assert.match(videoPrompt({ setting: resolveSetting("corner-office")!, voice: "confident, warm British female voice", script: "Hello there, friends." }), /The woman in the corner office .* She says: "Hello there, friends\."/);
+  assert.match(videoPrompt({ setting: customSetting("a vineyard terrace"), voice: "warm voice", script: "Hi." }), /The person in the scene .* They say: "Hi\." .* anamorphic look, color grade, and film grain/);
 });
 
 test("every preset has all four parts and a unique id", () => {
@@ -204,7 +213,7 @@ test("uploading → scene → approval → filming → ready, with our own copie
   assert.equal(still.body.aspect_ratio, "9:16");
   assert.equal(video.body.image_url, `${base}/pub/in.jpg`);
   assert.equal(video.body.duration, 8);
-  assert.match(String(video.body.prompt), /They say: "Most people think a Roth conversion/);
+  assert.match(String(video.body.prompt), /He says: "Most people think a Roth conversion/);
   assert.deepEqual(job.costs.map((c) => [c.step, c.usd, c.outcome]), [["still", 0.09, "charged"], ["video", 4, "charged"]]);
   // What the advisor's page gets has no prompts, request ids or costs.
   const v = pipeline.view(job) as unknown as Record<string, unknown>;
