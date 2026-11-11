@@ -6,7 +6,6 @@ import { ArrowRight, Check, Clapperboard, Image as ImageIcon, Layers, Lightbulb,
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ProBadge } from "@/components/shared/pro";
 import { useStartVideo } from "@/components/layout/use-start-video";
 import { usePro, useStore, voiceProfileOf } from "@/lib/store";
@@ -44,6 +43,7 @@ export function StartBox() {
   const [kind, setKind] = React.useState<PostKind>("image");
   const scripted = React.useMemo(() => postableVideos(videos), [videos]);
   const [videoId, setVideoId] = React.useState("");
+  const [showAll, setShowAll] = React.useState(false);
   const picked = scripted.find((v) => v.id === videoId) ?? scripted[0];
   // A video is already a video: from one, the choice is posts.
   const out: Make = from === "video" ? "posts" : make;
@@ -122,54 +122,62 @@ export function StartBox() {
           className="block w-full resize-none bg-transparent px-4 pt-3 pb-2 font-serif text-xl outline-none placeholder:text-muted-foreground/60 sm:text-2xl"
         />
       ) : picked ? (
-        <div className="space-y-2 px-3 pt-3 pb-2">
-          <Select value={picked.id} onValueChange={setVideoId}>
-            <SelectTrigger className="w-full" aria-label="Video">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {scripted.slice(0, 40).map((v) => (
-                <SelectItem key={v.id} value={v.id}>
-                  {v.title} <span className="text-muted-foreground">· {getStage(v.stage).label}</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="line-clamp-2 px-1 font-serif text-[15px] text-muted-foreground">{picked.script ? `“${picked.script.hook}”` : picked.outline.slice(0, 3).join(" · ")}</p>
+        <div className="px-2 pt-2 pb-2">
+          <ul className={cn("space-y-1", showAll && "max-h-[264px] overflow-y-auto pr-1")} role="radiogroup" aria-label="Video">
+            {(showAll ? scripted.slice(0, 40) : scripted.slice(0, 3)).map((v) => {
+              const on = v.id === picked.id;
+              return (
+                <li key={v.id}>
+                  <button type="button" role="radio" aria-checked={on} onClick={() => setVideoId(v.id)} className={cn("flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors", on ? "bg-brass-soft/60" : "hover:bg-muted/60")}>
+                    <span className={cn("mt-1 flex size-4 shrink-0 items-center justify-center rounded-full border", on ? "border-primary bg-primary text-primary-foreground" : "border-border")}>{on && <Check className="size-2.5" />}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-medium">{v.title}</span>
+                      {on && v.script?.hook && v.script.hook.trim() !== v.title.trim() && <span className="mt-0.5 block truncate font-serif text-[14px] text-muted-foreground">“{v.script.hook}”</span>}
+                    </span>
+                    <span className="mt-0.5 shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{getStage(v.stage).label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {scripted.length > 3 && (
+            <button type="button" onClick={() => setShowAll((x) => !x)} className="mt-1 ml-3 cursor-pointer text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+              {showAll ? "Show fewer" : `Show all ${scripted.length} videos`}
+            </button>
+          )}
         </div>
       ) : (
         <p className="px-4 pt-4 pb-3 text-[14px] text-muted-foreground">Once one of your videos has a script, you can turn it into posts from here.</p>
       )}
 
       <div className="mt-1 border-t border-border px-2 pt-3 pb-2">
-        <div className="mb-2 px-1 text-[12px] font-medium text-muted-foreground">Turn it into</div>
+        {from === "idea" && <><div className="mb-2 px-1 text-[12px] font-medium text-muted-foreground">Turn it into</div>
         <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Turn it into">
           {MAKES.map((m) => {
             const on = out === m.id;
-            const off = from === "video" && m.id !== "posts";
             return (
               <button
                 key={m.id}
                 type="button"
                 role="radio"
                 aria-checked={on}
-                disabled={off}
                 onClick={() => setMake(m.id)}
-                className={cn("flex items-start gap-2.5 rounded-xl border p-3 text-left transition", on ? "border-primary bg-brass-soft/50" : "border-border hover:bg-muted/50", off ? "cursor-not-allowed opacity-40" : "cursor-pointer")}
+                className={cn("flex items-start gap-2.5 rounded-xl border p-3 text-left transition", on ? "border-primary bg-brass-soft/50" : "border-border hover:bg-muted/50", "cursor-pointer")}
               >
                 <span className={cn("mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border", on ? "border-primary bg-primary text-primary-foreground" : "border-border")}>{on && <Check className="size-2.5" />}</span>
                 <span className="min-w-0">
                   <span className="flex items-center gap-1.5 text-[14px] font-medium">
                     <m.icon className="size-3.5 text-muted-foreground" /> {m.title} {m.id !== "video" && !isPro && <ProBadge />}
                   </span>
-                  <span className="mt-0.5 block text-[12px] text-muted-foreground">{off ? "It’s already a video." : m.body}</span>
+                  <span className="mt-0.5 block text-[12px] text-muted-foreground">{m.body}</span>
                 </span>
               </button>
             );
           })}
-        </div>
+        </div></>}
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className={cn("flex flex-wrap items-center gap-2", from === "idea" && "mt-3")}>
+          {from === "video" && <span className="px-1 text-[13px] text-muted-foreground">Turn it into posts {!isPro && <ProBadge />}</span>}
           {wantsVideo && (
             <ToggleGroup type="single" value={format} onValueChange={(v) => v && setFormat(v as VideoFormat)} className="rounded-full" aria-label="Video shape">
               <ToggleGroupItem value="short" className="rounded-full"><Smartphone /> Short</ToggleGroupItem>
