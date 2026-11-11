@@ -21,15 +21,6 @@ export function saveTake(videoId: string, take: Omit<Take, "url">) {
   listeners.forEach((l) => l());
 }
 
-/** Forget this session's recorded take (the video's saved one is used instead). */
-export function clearTake(videoId: string) {
-  const prev = takes.get(videoId);
-  if (!prev) return;
-  URL.revokeObjectURL(prev.url);
-  takes.delete(videoId);
-  listeners.forEach((l) => l());
-}
-
 export function getTake(videoId: string) {
   return takes.get(videoId);
 }

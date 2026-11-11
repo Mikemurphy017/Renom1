@@ -12,17 +12,15 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { PageContainer } from "@/components/shared/page";
-import { ProUpsell } from "@/components/shared/pro";
 import { useStore } from "@/lib/store";
 import { uploadImage } from "@/lib/media/upload";
 import { CUSTOM_SETTING_ID, DEFAULT_WARDROBE, SETTINGS, STATUS_LABEL, VOICES, WORDS_PER_SECOND, countWords, estimateSeconds, isWorking, type CinematicAspect, type CinematicStatus } from "@/lib/cinematic/core";
 import { cn, fmtDuration, relativeTime } from "@/lib/utils";
 
 /**
- * Cinematic videos: the advisor's photo, a script and a setting become a
- * photorealistic video of them speaking it. They approve the still (their
- * face, the setting) before the video is filmed.
+ * Cinematic videos, an admin tool (Admin → Cinematic; not on the advisors'
+ * site): a photo, a script and a setting become a photorealistic video of the
+ * person speaking it. The still (face, setting) is approved before filming.
  */
 
 export interface Job {
@@ -37,18 +35,11 @@ export interface Job {
   aiLabel: boolean;
   stillUrl?: string;
   videoUrl?: string;
-  uploadId?: string;
-  width?: number;
-  height?: number;
-  videoId?: string;
   durationSec?: number;
   elapsedSec?: number;
 }
 export interface Config {
   available: boolean;
-  /** This account may switch the feature on (the studio's admin). */
-  canConfigure?: boolean;
-  pro: boolean;
   limits: { maxSeconds: number; maxWords: number; perMonth: number };
   consentText: string;
 }
@@ -56,8 +47,8 @@ export interface Config {
 const mediaIdOf = (url?: string) => /\/api\/media\/(img[a-f0-9]{18})/.exec(url ?? "")?.[1];
 const STEPS: CinematicStatus[] = ["uploading", "scene", "approval", "filming", "ready"];
 
-/** The advisor's cinematic videos and the limits the form works to; follows anything in progress. */
-export function useCinematic() {
+/** The admin's cinematic videos and the limits the form works to; follows anything in progress. */
+function useCinematic(refresh: number) {
   const [config, setConfig] = React.useState<Config | null>(null);
   const [jobs, setJobs] = React.useState<Job[]>([]);
 
@@ -65,13 +56,13 @@ export function useCinematic() {
     const r = await fetch("/api/cinematic", { cache: "no-store" }).catch(() => null);
     const j = (await r?.json().catch(() => null)) as ({ ok?: boolean; jobs?: Job[] } & Config) | null;
     if (j?.ok) {
-      setConfig({ available: j.available, canConfigure: j.canConfigure, pro: j.pro, limits: j.limits, consentText: j.consentText });
+      setConfig({ available: j.available, limits: j.limits, consentText: j.consentText });
       setJobs(j.jobs ?? []);
     }
   }, []);
   React.useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refresh]);
 
   // Follow anything in progress. Looking at a job is also what moves it along.
   const working = jobs.filter((j) => isWorking(j.status)).map((j) => j.id).join(",");
@@ -103,88 +94,47 @@ export function useCinematic() {
   return { config, jobs, patch, remove };
 }
 
-/** Why cinematic videos can't be made right now; the studio's admin gets the way to fix it. */
-export function NotSwitchedOn({ canConfigure }: { canConfigure?: boolean }) {
-  return canConfigure ? (
-    <div className="rounded-xl border border-primary/40 bg-brass-soft/40 p-4 text-[13px]">
-      <div className="font-semibold">Cinematic videos are switched off</div>
-      <p className="mt-1 text-muted-foreground">They need the studio’s API key before any Pro account can make one, including yours. It takes a minute.</p>
-      <Button asChild size="sm" className="mt-3 rounded-full"><Link href="/admin/cinematic">Switch them on</Link></Button>
-    </div>
-  ) : (
-    <p className="rounded-xl border border-border bg-card p-4 text-[13px] text-muted-foreground">Cinematic videos aren’t switched on for this studio yet. Your administrator can turn them on.</p>
-  );
-}
-
-/** The advisor's own headshots, as the creator form takes them. */
-export function useHeadshots() {
+/** The admin's own headshots, as the creator form takes them. */
+function useHeadshots() {
   const { profile, updateProfile } = useStore();
   const headshots = React.useMemo(() => profile.headshots.filter((h) => h.url && mediaIdOf(h.url)).map((h) => ({ id: mediaIdOf(h.url)!, url: h.url! })), [profile.headshots]);
   const add = (h: { id: string; url: string }) => updateProfile({ headshots: [...profile.headshots, { id: h.id, label: "Headshot", pose: "center" as never, url: h.url }] });
   return { headshots, add };
 }
 
-export function CinematicPage() {
+/** The creator and the admin's own videos. `refresh` changes when the key is switched on or off. */
+export function CinematicStudio({ refresh = 0 }: { refresh?: number }) {
   const { hydrated } = useStore();
-  const { config, jobs, patch, remove } = useCinematic();
+  const { config, jobs, patch, remove } = useCinematic(refresh);
   const { headshots, add } = useHeadshots();
 
-  if (!hydrated || !config) return <PageContainer className="max-w-[1100px] pt-16"><LoaderCircle className="size-5 animate-spin text-muted-foreground" /></PageContainer>;
-  if (!config.pro)
-    return (
-      <PageContainer className="max-w-[1100px] pt-16">
-        <ProUpsell title="Cinematic videos" body="A photorealistic video of you, speaking your script in a corner office, a library or a rooftop at golden hour. Made from one headshot: no camera, no studio." />
-      </PageContainer>
-    );
-
+  if (!hydrated || !config) return <LoaderCircle className="size-5 animate-spin text-muted-foreground" />;
   return (
-    <PageContainer className="max-w-[1100px] space-y-8 pt-10">
+    <div className="space-y-6">
       <div>
-        <div className="eyebrow mb-2">Cinematic</div>
-        <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">A film-quality video of you, from one photo</h1>
-        <p className="mt-1 max-w-2xl text-[15px] text-muted-foreground">Pick a setting and write what you’ll say. You approve the scene first; then it’s filmed, with an AI voice, in a few minutes.</p>
+        <h2 className="font-serif text-2xl">Make a cinematic video</h2>
+        <p className="mt-1 max-w-2xl text-[14px] text-muted-foreground">Pick a setting and write what’s said. You approve the scene first; then it’s filmed, with an AI voice, in a few minutes.</p>
       </div>
-
-      {!config.available ? <NotSwitchedOn canConfigure={config.canConfigure} /> : <NewVideo config={config} headshots={headshots} onHeadshot={add} onCreated={patch} />}
-
+      {config.available ? <NewVideo config={config} headshots={headshots} onHeadshot={add} onCreated={patch} /> : <p className="rounded-xl border border-border bg-card p-4 text-[13px] text-muted-foreground">Switch cinematic videos on above to make one.</p>}
       {jobs.length > 0 && (
-        <section>
-          <h2 className="mb-4 font-serif text-2xl">Your cinematic videos</h2>
-          <div className="space-y-4">
-            {jobs.map((j) => <JobCard key={j.id} job={j} onChange={patch} onRemove={() => remove(j.id)} />)}
-          </div>
-        </section>
+        <div className="space-y-4">
+          {jobs.map((j) => <JobCard key={j.id} job={j} onChange={patch} onRemove={() => remove(j.id)} />)}
+        </div>
       )}
-    </PageContainer>
+    </div>
   );
 }
 
 // ── New video ──
 
-export interface NewVideoProps {
-  config: Config;
-  headshots: { id: string; url: string }[];
-  onHeadshot: (h: { id: string; url: string }) => void;
-  onCreated: (j: Job) => void;
-  /** Start from this script (the Record step passes the video's own). */
-  initialScript?: string;
-  /** The studio video this is for. */
-  videoId?: string;
-  /** Rewrites a script that's too long down to the word limit. */
-  onShorten?: (script: string, maxWords: number) => Promise<string>;
-  /** Vertical or wide to start with. */
-  initialAspect?: CinematicAspect;
-}
-
-export function NewVideo({ config, headshots, onHeadshot, onCreated, initialScript = "", videoId, onShorten, initialAspect = "9:16" }: NewVideoProps) {
+function NewVideo({ config, headshots, onHeadshot, onCreated }: { config: Config; headshots: { id: string; url: string }[]; onHeadshot: (h: { id: string; url: string }) => void; onCreated: (j: Job) => void }) {
   const [photo, setPhoto] = React.useState<string>("");
-  const [script, setScript] = React.useState(initialScript);
-  const [shortening, setShortening] = React.useState(false);
+  const [script, setScript] = React.useState("");
   const [setting, setSetting] = React.useState(SETTINGS[0].id);
   const [custom, setCustom] = React.useState("");
   const [wardrobe, setWardrobe] = React.useState("");
   const [voice, setVoice] = React.useState<string>(VOICES[0].id);
-  const [aspect, setAspect] = React.useState<CinematicAspect>(initialAspect);
+  const [aspect, setAspect] = React.useState<CinematicAspect>("9:16");
   const [aiLabel, setAiLabel] = React.useState(false);
   const [consent, setConsent] = React.useState(false);
   const [busy, setBusy] = React.useState<"" | "upload" | "create">("");
@@ -217,28 +167,16 @@ export function NewVideo({ config, headshots, onHeadshot, onCreated, initialScri
     try {
       // The chosen photo first: it's the reference for the face.
       const ids = [photo, ...headshots.map((h) => h.id).filter((id) => id !== photo)].slice(0, 3);
-      const r = await fetch("/api/cinematic", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ headshotIds: ids, script, settingId: setting, customSetting: custom, wardrobe, voiceId: voice, aspect, aiLabel, consent, videoId }) });
+      const r = await fetch("/api/cinematic", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ headshotIds: ids, script, settingId: setting, customSetting: custom, wardrobe, voiceId: voice, aspect, aiLabel, consent }) });
       const j = (await r.json().catch(() => null)) as { ok?: boolean; error?: string; job?: Job } | null;
       if (!r.ok || !j?.ok || !j.job) throw new Error(j?.error ?? "Couldn’t start the video.");
       onCreated(j.job);
-      if (!videoId) setScript("");
+      setScript("");
       toast.success("Creating your scene", { description: "About a minute. You’ll approve it before we film." });
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
       setBusy("");
-    }
-  };
-
-  const shorten = async () => {
-    if (!onShorten) return;
-    setShortening(true);
-    try {
-      setScript(await onShorten(script, max));
-    } catch (e) {
-      toast.error("Couldn’t shorten it", { description: (e as Error).message });
-    } finally {
-      setShortening(false);
     }
   };
 
@@ -269,12 +207,6 @@ export function NewVideo({ config, headshots, onHeadshot, onCreated, initialScri
               <span className={cn("tnum", over ? "font-medium text-destructive" : "text-muted-foreground")}>{words} / {max} words{over ? ` · cut ${words - max}` : ""}</span>
               <span className="text-muted-foreground tnum">{words ? `about ${secs < 10 ? secs.toFixed(1) : Math.round(secs)} seconds spoken` : "about 2.5 words a second"}</span>
             </div>
-            {over && onShorten && (
-              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-primary/40 bg-brass-soft/40 px-3 py-2 text-[12px]">
-                <span className="min-w-0 flex-1">Cinematic videos run up to {Math.round(max / WORDS_PER_SECOND)} seconds, so this script is too long as written.</span>
-                <Button size="sm" variant="outline" className="rounded-full" onClick={shorten} disabled={shortening}>{shortening ? <LoaderCircle className="animate-spin" /> : <Sparkles />} Shorten it for me</Button>
-              </div>
-            )}
           </Field>
 
           <Field n={3} title="Voice and wardrobe">
@@ -345,7 +277,7 @@ function Field({ n, title, hint, children }: { n: number; title: string; hint?: 
 
 // ── One video ──
 
-export function JobCard({ job, onChange, onRemove, onUse, using }: { job: Job; onChange: (j: Job) => void; onRemove: () => void; onUse?: (j: Job) => void; using?: boolean }) {
+function JobCard({ job, onChange, onRemove }: { job: Job; onChange: (j: Job) => void; onRemove: () => void }) {
   const [busy, setBusy] = React.useState("");
   const act = async (action: "approve" | "regenerate" | "retry") => {
     setBusy(action);
@@ -414,9 +346,8 @@ export function JobCard({ job, onChange, onRemove, onUse, using }: { job: Job; o
               <p className="text-[13px] text-muted-foreground">Filming your video. Usually five to ten minutes{job.elapsedSec ? ` (${fmtDuration(job.elapsedSec)} so far)` : ""}. You can leave this page; it carries on.</p>
             ) : job.status === "ready" ? (
               <div className="flex flex-wrap items-center gap-2">
-                {onUse && <Button className="rounded-full" onClick={() => onUse(job)} disabled={using}>{using ? <LoaderCircle className="animate-spin" /> : <Check />} Use this video</Button>}
-                <Button className="rounded-full" variant={onUse ? "outline" : "default"} asChild><a href={`${job.videoUrl}?download=cinematic-video`}><Download /> Download MP4</a></Button>
-                <span className="text-[12px] text-muted-foreground">{onUse ? "It goes on to Edit for captions, then Post." : "Send it through compliance review before posting."}</span>
+                <Button className="rounded-full" asChild><a href={`${job.videoUrl}?download=cinematic-video`}><Download /> Download MP4</a></Button>
+                <span className="text-[12px] text-muted-foreground">Send it through compliance review before posting.</span>
               </div>
             ) : (
               <div className="space-y-3">

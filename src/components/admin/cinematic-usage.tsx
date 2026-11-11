@@ -3,6 +3,7 @@
 import * as React from "react";
 import { LoaderCircle, TriangleAlert } from "lucide-react";
 import { cn, relativeTime } from "@/lib/utils";
+import { CinematicStudio } from "@/components/cinematic/cinematic-page";
 import { CinematicSetup } from "./cinematic-setup";
 
 /** What cinematic videos cost per advisor and per video, against the Pro plan's price. */
@@ -38,6 +39,7 @@ const usd = (n: number) => `$${n.toFixed(2)}`;
 export function CinematicUsage() {
   const [data, setData] = React.useState<Data | null>(null);
   const [open, setOpen] = React.useState<string | null>(null);
+  const [switched, setSwitched] = React.useState(0);
   const load = React.useCallback(() => {
     fetch("/api/admin/cinematic", { cache: "no-store" })
       .then((r) => r.json())
@@ -71,16 +73,23 @@ export function CinematicUsage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="font-serif text-[30px] leading-tight">Cinematic usage</h1>
+        <h1 className="font-serif text-[30px] leading-tight">Cinematic</h1>
         <p className="mt-1 text-[14px] text-muted-foreground">
-          This month’s generation cost per advisor against the Pro price of {usd(data.proMonthly)}. Costs are Higgsfield’s own estimates at the time each request was made; failed and moderated requests aren’t charged.
+          An admin-only tool: it isn’t on the advisors’ site. Videos are made here, through Higgsfield’s API.
         </p>
         <p className="mt-1 text-[12px] text-muted-foreground">
           Still: <code>{data.models.image}</code> · Video: <code>{data.models.video}</code>
         </p>
       </div>
 
-      <CinematicSetup onChange={load} />
+      <CinematicSetup onChange={() => { load(); setSwitched((n) => n + 1); }} />
+
+      <CinematicStudio refresh={switched} />
+
+      <div>
+        <h2 className="font-serif text-2xl">Usage and cost</h2>
+        <p className="mt-1 text-[14px] text-muted-foreground">This month’s generation cost per account against the Pro price of {usd(data.proMonthly)}. Costs are Higgsfield’s own estimates at the time each request was made; failed and moderated requests aren’t charged.</p>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
         {cards.map(([l, v]) => (

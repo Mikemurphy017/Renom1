@@ -294,11 +294,9 @@ The colors are injected as a small `<style>` in `src/app/layout.tsx` that overri
 
 ## Cinematic videos
 
-A photorealistic video of the advisor speaking their script in a chosen setting, made from one headshot (`/cinematic`, Pro). Two generations through the Higgsfield API: a cinematic still of them in the setting, which they approve, then that still animated into a talking video. Code is in `src/lib/cinematic/`.
+An admin-only tool, at Admin → Cinematic. It is not on the advisors' site: no tab, no page, no option in the studio, and the `/api/cinematic` routes refuse anyone who isn't an admin. An admin makes a photorealistic video of a person speaking a script in a chosen setting, from one headshot. Two generations through the Higgsfield API: a cinematic still in the setting, which the admin approves, then that still animated into a talking video. Code is in `src/lib/cinematic/`.
 
-**Setup.** Either set `HF_CREDENTIALS` to `key-id:key-secret` in the server's environment, or have an admin paste the key under Admin → Cinematic ("Switch on"). A key entered there is checked with Higgsfield first, stored encrypted (needs `SECRETS_KEY`) and never shown again; the environment's key wins when both exist. Without either, the page says cinematic videos aren't switched on, and the admin gets a link to the switch. Once on, every Pro account can make them.
-
-**From the Record step.** Recording a video offers two ways to make it: *Record yourself* (teleprompter or upload) or *Cinematic video* (no recording). The cinematic option starts from that video's script, offers to shorten it to the word limit, and "Use this video" makes the finished video the take, so it goes on to Edit and Post like a recording.
+**Setup.** Either set `HF_CREDENTIALS` to `key-id:key-secret` in the server's environment, or paste the key under Admin → Cinematic ("Switch on"). A key entered there is checked with Higgsfield first, stored encrypted (needs `SECRETS_KEY`) and never shown again; the environment's key wins when both exist.
 
 **Add a setting preset.** Add an entry to `SETTINGS` in `src/lib/cinematic/core.ts`:
 
@@ -322,7 +320,7 @@ A photorealistic video of the advisor speaking their script in a chosen setting,
 | `CINEMATIC_VIDEO_MODEL` | `bytedance/seedance-2.5/image-to-video` | `alibaba/wan-3.0/image-to-video`, `xai/grok-imagine-video/v1.5/reference-to-video` |
 | `CINEMATIC_VIDEO_RESOLUTION` | `1080p` | `720p` (well under half the cost on most models) |
 | `CINEMATIC_IMAGE_MODEL` | `xai/grok-imagine-image-2.0` | `ideogram/v4.0` |
-| `CINEMATIC_MONTHLY_LIMIT` | `20` | videos per advisor per month |
+| `CINEMATIC_MONTHLY_LIMIT` | `20` | videos per admin per month |
 
 The video model is a strategy in `src/lib/cinematic/models.ts`: each entry lists the exact inputs that model accepts (the API rejects fields a model doesn't list) and its length range, which sets the script's word limit. To add one, add an entry there from the model's API reference.
 
