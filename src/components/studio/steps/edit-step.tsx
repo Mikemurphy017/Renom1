@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Check, ArrowRight, Pause, Play, RotateCcw, Sparkles, TriangleAlert, Video as VideoIcon, Wand2, Scissors, Undo2 } from "lucide-react";
+import { ArrowRight, Pause, Play, RotateCcw, Sparkles, TriangleAlert, Video as VideoIcon, Wand2, Scissors, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -28,8 +28,6 @@ import type { StepProps } from "../studio-view";
 import { LookPanel, PreviewOverlays, captionAt, type LookPeek } from "./edit-look";
 import { DEFAULT_CTA, bookingCta, bookingOn, isBookingCta } from "@/lib/booking";
 import { getStyle, normalizeOverlays } from "@/lib/video/styles";
-import { StoryboardPanel, useStoryboard } from "./storyboard-panel";
-import type { ApprovedPlan } from "@/lib/video/storyboard";
 
 const scriptLines = (v: Video) => {
   // A video brought in finished has no script: its words come from the voice alone.
@@ -207,23 +205,9 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
   const sourceId = result ? analysis?.sourceId : undefined;
   const aspect = vertical ? "9:16" : "16:9";
   const cuts = React.useMemo(() => cutsFromSegments(segments), [segments]);
-  // Before anything renders, the advisor approves a storyboard of the edit; the render uses exactly that plan.
-  const storyboard = useStoryboard({ video, sourceId, analysisJobId: result?.jobId, aspect, cuts, look, script: scriptLines(video) });
-  const boardRef = React.useRef<HTMLElement>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
-  const [tab, setTab] = React.useState<"trim" | "look" | "storyboard">("trim");
+  const [tab, setTab] = React.useState<"trim" | "look">("trim");
   const [showTimeline, setShowTimeline] = React.useState(false);
-  const showBoard = () => {
-    setTab("storyboard");
-    requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  };
-  // Plan it as soon as the take has been read (once; after a change the advisor asks for a new plan).
-  const autoPlanned = React.useRef(false);
-  React.useEffect(() => {
-    if (autoPlanned.current || !sourceId || !result || storyboard.state !== "none" || storyboard.planning) return;
-    autoPlanned.current = true;
-    void storyboard.plan();
-  }, [sourceId, result, storyboard]);
   const changeLook = (next: OverlayOptions, p: LookPeek) => {
     setLook(next);
     setPeek(p);
@@ -253,15 +237,10 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
     );
   };
 
-  const doExport = async (approved: ApprovedPlan | undefined = storyboard.approved) => {
+  // The scenes are planned as part of the render; there's nothing to approve first.
+  const doExport = async () => {
     if (!sourceId) {
       toast("Still reading your take", { description: "Give it a moment, then finish the edit." });
-      return;
-    }
-    // Nothing renders until the storyboard for these cuts and this look is approved.
-    if (!approved) {
-      toast("Approve the storyboard first", { description: "Check each scene, then approve it to render." });
-      showBoard();
       return;
     }
     setRendering(true);
@@ -273,7 +252,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
         script: scriptLines(video),
         cuts,
         resolution: can4k && export4k && isPro ? "2160p" : "1080p",
-        plan: approved,
+        autoPlan: true,
       });
       const fourK = Math.min(out.width ?? 0, out.height ?? 0) >= 2160;
       toast.success("Your video is ready", { description: `${fmtDuration(out.durationSec)} · ${aspect}${fourK ? " 4K" : ""} MP4` });
@@ -294,17 +273,10 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
 
   const pxPerSec = 14 * zoom;
 
-  // The finish button follows the storyboard: plan it, review and approve it, then render.
-  const finish =
-    storyboard.state === "approved"
-      ? { label: "Render video", run: () => void doExport(), why: "" }
-      : storyboard.state === "unapproved"
-        ? { label: "Review storyboard", run: showBoard, why: "Approve the storyboard to render." }
-        : { label: storyboard.planning ? "Planning storyboard…" : "Plan storyboard", run: () => { showBoard(); void storyboard.plan(); }, why: storyboard.state === "stale" ? "Your edits changed the storyboard. Plan it again." : "Renom plans every scene before rendering." };
-  const finishOff = !!busy || rendering || !sourceId || storyboard.planning;
+  const finish = { label: "Render video", run: () => void doExport(), why: "" };
+  const finishOff = !!busy || rendering || !sourceId;
 
   const cutCount = segments.filter((s) => s.removed).length;
-  const tabDone = { trim: cutCount > 0, look: true, storyboard: storyboard.state === "approved" };
 
   return (
     <div className="space-y-5 pb-20 md:pb-0">
@@ -312,7 +284,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h1 className="font-serif text-[28px] leading-tight tracking-tight sm:text-[34px]">Edit</h1>
-          <p className="mt-1 text-[14px] text-muted-foreground">Trim it, pick the look, approve the storyboard. {BRAND.name} renders the rest.</p>
+          <p className="mt-1 text-[14px] text-muted-foreground">Trim it, pick the look, then render. {BRAND.name} does the rest.</p>
         </div>
         <div className="hidden items-center gap-3 md:flex">
           <span className="text-right text-[12px] leading-tight text-muted-foreground">
@@ -374,7 +346,7 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
             </div>
         </div>
 
-        {/* Trim · Look · Storyboard */}
+        {/* Trim · Look */}
         <div ref={panelRef} className="min-w-0 scroll-mt-36 rounded-2xl border border-border bg-card shadow-soft">
           <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
             <div className="border-b border-border px-3 pt-3">
@@ -382,10 +354,9 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
                 {([
                   ["trim", "1", "Trim"],
                   ["look", "2", "Look"],
-                  ["storyboard", "3", "Storyboard"],
                 ] as const).map(([id, n, label]) => (
                   <TabsTrigger key={id} value={id} className="flex-1 gap-1.5">
-                    <span className={cn("flex size-4 items-center justify-center rounded-full text-[10px] font-semibold", id === "storyboard" && tabDone.storyboard ? "bg-success text-white" : "bg-muted-foreground/15")}>{id === "storyboard" && tabDone.storyboard ? <Check className="size-2.5" /> : n}</span>
+                    <span className="flex size-4 items-center justify-center rounded-full bg-muted-foreground/15 text-[10px] font-semibold">{n}</span>
                     {label}
                   </TabsTrigger>
                 ))}
@@ -510,25 +481,10 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
                 </div>
               </div>
               <div className="flex justify-end">
-                <Button variant="outline" className="rounded-full" onClick={showBoard}>Next: the storyboard <ArrowRight /></Button>
+                <Button className="rounded-full px-5" onClick={finish.run} disabled={finishOff}>{finish.label} <ArrowRight /></Button>
               </div>
             </TabsContent>
 
-            <TabsContent value="storyboard" forceMount className="mt-0 p-4 data-[state=inactive]:hidden">
-              <StoryboardPanel
-                ref={boardRef}
-                video={video}
-                api={storyboard}
-                look={look}
-                cuts={cuts}
-                result={result}
-                takeUrl={take?.url}
-                vertical={vertical}
-                enhanceAudio={enhance}
-                rendering={rendering}
-                onRender={(approved) => void doExport(approved)}
-              />
-            </TabsContent>
           </Tabs>
         </div>
       </div>

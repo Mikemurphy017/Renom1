@@ -6,6 +6,7 @@ import { CaptionsSchema, CoversSchema, IdeasSchema, PostSchema, ScriptSchema, Tr
 import type { WriteRequest, WriteResult } from "./write-types";
 import { originalIdeas, repeatsOpening } from "./originality";
 import { ANGLES } from "./angles";
+import { COVER_MAX_WORDS, TITLE_MAX_WORDS, accentIn, shortHeadline, tidyTitle, titleFits, wordsOf } from "./shorten";
 import { PLATFORMS } from "../mock/platforms";
 
 /** Server-only. Uses ANTHROPIC_API_KEY (or any credential the SDK resolves). */
@@ -29,7 +30,8 @@ function pastList(existing: Extract<WriteRequest, { task: "ideas" }>["existing"]
   return lines.join("\n") || "- (none)";
 }
 
-const ideaCount = (req: Extract<WriteRequest, { task: "ideas" }>) => Math.min(16, Math.max(1, Math.round(req.count ?? 3)));
+/** Five ideas unless the caller asks for another number. */
+const ideaCount = (req: Extract<WriteRequest, { task: "ideas" }>) => Math.min(16, Math.max(1, Math.round(req.count ?? 5)));
 
 function userPrompt(req: WriteRequest): string {
   const revise = (current: unknown, instruction?: string) =>
@@ -53,7 +55,13 @@ Give each of the ${ideaCount(req)} ideas a different angle${req.topic ? "" : " a
 The advisor already has, or was already offered, these (title [subject · angle]):
 ${pastList(req.existing)}
 A subject that's already covered can come back, but only through an angle it hasn't had yet, as a genuinely different video: new question, new points. Never the same subject through the same angle again, and never a listed video reworded. Prefer angles this advisor has used least.
-Each title should work as a hook on its own.${revise(undefined, req.instruction)}`;
+Titles are short and punchy:
+- ${TITLE_MAX_WORDS} words at most, and usually five to eight. One phrase or one sentence: never two sentences, and no title that restates itself after a colon or dash.
+- One clear topic, hook or angle per title. Cut filler ("here's why", "what you need to know", "a guide to", "everything about") and anything said twice.
+- Specific beats vague: name the thing (the account, the age, the deadline, the mistake) so the viewer knows what the video is about from the title alone.
+- The explanation does not go in the title. It goes in "why" and the outline.
+Good: "The Roth conversion mistake at 63". "Sell your business before or after the election?". "Your RSUs are not a bonus".
+Too long: "Why so many business owners get their exit planning wrong, and the three questions you should be asking your advisor before you sell".${revise(undefined, req.instruction)}`;
 
     case "script":
       // A cinematic video is under 30 seconds: the same script, condensed, not a new one.
@@ -162,16 +170,17 @@ ${req.video.script ? `Hook: ${req.video.script.hook}\nBody:\n${req.video.script.
 
 Rules for thumbnail words:
 - Never repeat the title. Add what the title leaves out: the stake, the number, the enemy, the open loop.
-- Two to four words is the target, five at most. Punchy and spoken, like a reaction: "I WAS WRONG", "DON'T DO THIS", "$7K MISTAKE", "TOO LATE?". Concrete nouns, numbers and verbs beat adjectives. Readable at phone size in one glance.
+- Every headline is ${COVER_MAX_WORDS} words or fewer. That is a hard limit: count them. Punchy and spoken, like a reaction: "I WAS WRONG", "DON'T DO THIS", "$7K MISTAKE", "TOO LATE?", "SELLING AFTER ELECTION", "THE HARDER QUESTION". Drop filler words (a, the, your, this, of, to). Concrete nouns, numbers and verbs beat adjectives. Readable at phone size in one glance.
+- It must still be about this video: someone who reads only the headline should be able to guess the topic.
 - No corporate phrasing ("strategies", "considerations", "overview", "insights", "planning tips"): that reads like a training video.
 - Write six options per shape, each with a different tactic. In every shape include:
-  1. one that starts with a specific figure from the video ("$7,000 IRA mistake", "3 Roth moves", "73: the age that matters");
-  2. one plain question ending in "?";
-  3. one first-person line that reads like something the advisor would say ("I'd wait on this Roth move");
+  1. one that starts with a specific figure from the video ("$7,000 IRA mistake", "3 Roth moves", "Age 73 matters");
+  2. one plain question ending in "?" ("Sell before December?");
+  3. one first-person line that reads like something the advisor would say ("I'd wait");
   and the rest from: open loop, named mistake, contrarian claim, the stake.
 - Only use figures that are in the script or that you're certain are accurate; never invent statistics.
 - Also give three talking points (at most five words each) that summarize what the video covers, for a checklist-style cover.
-- Short-form covers read on a grid next to other covers: punchier, more personal ("I'd skip this IRA move").
+- Short-form covers read on a grid next to other covers: punchier, more personal ("I'd skip this").
 - No promises of returns, no "guaranteed", "safe", "best", "free money", no superlatives about results, no fear-mongering about markets. Curiosity, not hype.
 - The accent is the single word that carries the punch, copied exactly from the headline.${req.instruction ? `\n\nThe advisor asked: "${req.instruction}"` : ""}`;
   }
@@ -190,9 +199,13 @@ async function writeIdeas(req: Extract<WriteRequest, { task: "ideas" }>) {
   const kept: WriteResult<"ideas">["ideas"] = [];
   let avoid = [...req.existing];
   for (let round = 0; round < 3 && kept.length < want; round++) {
-    const ask = round === 0 ? req : { ...req, existing: avoid, instruction: [req.instruction, `Give ${want - kept.length} more. Each must be a new subject, or a listed subject through an angle it hasn't had yet.`].filter(Boolean).join(" ") };
+    const ask = round === 0 ? req : { ...req, existing: avoid, instruction: [req.instruction, `Give ${want - kept.length} more. Each must be a new subject, or a listed subject through an angle it hasn't had yet. Keep every title to ${TITLE_MAX_WORDS} words or fewer.`].filter(Boolean).join(" ") };
     const out = await writeOnce(ask);
-    const { kept: fresh, dropped } = originalIdeas(out.ideas, [...req.existing, ...kept], req.topic);
+    // Titles are one short line: anything still too long is asked for again rather than cut into something vague.
+    const tidy = out.ideas.map((i) => ({ ...i, title: tidyTitle(i.title) }));
+    const long = tidy.filter((i) => !titleFits(i.title));
+    if (long.length) console.info(`[write] ${long.length} idea title(s) too long, asking again: ${long.map((d) => d.title).join(" | ")}`);
+    const { kept: fresh, dropped } = originalIdeas(tidy.filter((i) => titleFits(i.title)), [...req.existing, ...kept], req.topic);
     kept.push(...fresh.slice(0, want - kept.length));
     if (dropped.length) console.info(`[write] dropped ${dropped.length} repeated idea(s): ${dropped.map((d) => d.title).join(" | ")}`);
     avoid = [...avoid, ...out.ideas];
@@ -209,8 +222,26 @@ async function writeScript(req: Extract<WriteRequest, { task: "script" }>) {
   return writeOnce({ ...req, instruction: [req.instruction, `The opening "${out.hook}" is too close to one of the other videos. Open differently, with a different story or example.`].filter(Boolean).join(" ") });
 }
 
+/** Cover words with every headline at three words or fewer: asked again once if any run over, then shortened. */
+async function writeCovers(req: Extract<WriteRequest, { task: "covers" }>) {
+  const over = (o: WriteResult<"covers">) => [...o.long, ...o.short].filter((l) => wordsOf(l.headline).length > COVER_MAX_WORDS && !shortHeadline(l.headline).ok);
+  let out = await writeOnce(req);
+  const bad = over(out);
+  if (bad.length) {
+    console.info(`[write] ${bad.length} cover headline(s) over ${COVER_MAX_WORDS} words; writing them again`);
+    const again = await writeOnce({ ...req, instruction: [req.instruction, `These headlines were too long: ${bad.map((l) => `"${l.headline}"`).join(", ")}. Every headline must be ${COVER_MAX_WORDS} words or fewer and still say what the video is about.`].filter(Boolean).join(" ") }).catch(() => null);
+    if (again && over(again).length <= bad.length) out = again;
+  }
+  const fix = (l: (typeof out.long)[number]) => {
+    const headline = shortHeadline(l.headline).text;
+    return { ...l, headline, accent: accentIn(headline, l.accent) };
+  };
+  return { ...out, long: out.long.map(fix), short: out.short.map(fix) };
+}
+
 export async function writeWithClaude(req: WriteRequest) {
   if (req.task === "ideas") return writeIdeas(req);
+  if (req.task === "covers") return writeCovers(req);
   if (req.task === "script" && !req.current) return writeScript(req);
   return writeOnce(req);
 }

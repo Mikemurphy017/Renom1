@@ -232,7 +232,6 @@ export function ClipMaker({ video, result, take }: { video: Video; result: JobRe
               );
             })}
           </ul>
-          {unfinished > 0 && !rendering && <p className="text-right text-[12px] text-muted-foreground">Finishing them all plans and approves each clip’s storyboard for you. To check one scene by scene first, open it.</p>}
           <div className="flex flex-wrap items-center justify-end gap-2">
             {rendering && <span className="text-[12px] text-muted-foreground">Finishing {rendering.done + 1} of {rendering.total}{rendering.current ? `: ${rendering.current}` : ""}… keep this tab open</span>}
             <Button asChild variant="ghost" className="rounded-full"><Link href="/plan"><CalendarDays /> See them on your plan</Link></Button>

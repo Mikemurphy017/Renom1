@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Bookmark, CalendarDays, Check, Hash, Lock, RefreshCw, Send, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bookmark, CalendarDays, Check, Hash, LoaderCircle, Lock, RefreshCw, Send, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +35,11 @@ import type { StepProps } from "../studio-view";
 const SUB = ["Cover", "Caption", "Post"] as const;
 
 type Version = { copies: PlatformCopy[]; taglines: string[]; note: string };
-type Versions = Partial<Record<WriterId | "current", Version>>;
+type Target = WriterId | "current";
+type Versions = Partial<Record<Target, Version>>;
+type Run = { status: string; error?: string; platforms: PlatformId[] };
+/** Captions for platforms that have none yet, added without touching the ones already there (or edited). */
+const fill = (have: PlatformCopy[], fresh: PlatformCopy[]) => [...have, ...fresh.filter((f) => !have.some((h) => h.platform === f.platform))];
 
 function VersionCard({ label, description, selected, onClick, preview, run, className }: { label: string; description: string; selected: boolean; onClick: () => void; preview?: string; run?: { status: string; error?: string }; className?: string }) {
   return (
@@ -47,7 +51,7 @@ function VersionCard({ label, description, selected, onClick, preview, run, clas
       <span className="text-[14px] font-medium">{label}</span>
       <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">{description}</span>
       <span className="mt-auto pt-3 text-[12px] leading-snug">
-        {run?.error ? <span className="text-destructive">Couldn’t write this one.</span> : run ? <span className="text-muted-foreground">{run.status}</span> : preview ? <span className="line-clamp-2 text-foreground/80">{preview.split("\n")[0]}</span> : null}
+        {run?.error && !preview ? <span className="text-destructive">Couldn’t write this one.</span> : run && !run.error ? <span className="text-muted-foreground">{run.status}</span> : preview ? <span className="line-clamp-2 text-foreground/80">{preview.split("\n")[0]}</span> : null}
       </span>
     </button>
   );
@@ -69,67 +73,103 @@ export function PostStep({ video }: StepProps) {
   const [versions, setVersions] = useDraft<Versions>(video.id, "desc.versions", () => (copies.length ? { current: { copies, taglines: [], note: "" } } : {}));
   const [writer, setWriter] = useDraft<WriterId | "current">(video.id, "desc.writer", copies.length ? "current" : "story");
   const [tagline, setTagline] = useDraft(video.id, "desc.tagline", "");
-  const [runs, setRuns] = React.useState<Partial<Record<WriterId, { status: string; error?: string }>>>({});
+  // One entry per version being written (or that failed), with the platforms that request covers.
+  const [runs, setRuns] = React.useState<Partial<Record<Target, Run>>>({});
+  // Captions are only written when the advisor asks: this is true once they have.
+  const [asked, setAsked] = useDraft(video.id, "desc.asked", copies.length > 0);
   const [tab, setTab] = React.useState<PlatformId | null>(null);
   const activeTab = tab && platforms.includes(tab) ? tab : platforms[0];
   const ctrl = React.useRef<AbortController | null>(null);
   const writerRef = React.useRef(writer);
   writerRef.current = writer;
   React.useEffect(() => () => ctrl.current?.abort(), []);
-  const busyIds = (Object.keys(runs) as WriterId[]).filter((id) => runs[id] && !runs[id]!.error);
+  const busyIds = (Object.keys(runs) as Target[]).filter((id) => runs[id] && !runs[id]!.error);
   const busy = busyIds.length > 0;
   const current = versions[writer];
 
-  const writeOne = async (id: WriterId, signal: AbortSignal, instruction?: string) => {
-    setRuns((r) => ({ ...r, [id]: { status: "Starting…" } }));
+  const copiesRef = React.useRef(copies);
+  copiesRef.current = copies;
+  const versionsRef = React.useRef(versions);
+  versionsRef.current = versions;
+
+  /**
+   * Writes one version's captions for `only` (default: every selected platform).
+   * `merge` adds captions for platforms that have none and leaves the rest,
+   * edits included, exactly as they are.
+   */
+  const writeOne = async (id: Target, signal: AbortSignal, o: { instruction?: string; only?: PlatformId[]; merge?: boolean } = {}) => {
+    const want = o.only ?? platforms;
+    if (!want.length) return;
+    setRuns((r) => ({ ...r, [id]: { status: "Starting…", platforms: want } }));
     try {
-      const base = writerRef.current === id ? copies : versions[id]?.copies;
+      const base = writerRef.current === id ? copiesRef.current : versionsRef.current[id]?.copies;
       const out = await streamWrite(
         {
           task: "captions",
           profile: voiceProfileOf(profile),
-          writer: id,
-          platforms,
+          writer: id === "current" ? "story" : id,
+          platforms: want,
           video: { title: video.title, format: video.format, script: video.script, outline: video.outline },
-          current: instruction && base ? base.map((c) => ({ platform: c.platform, title: c.title ?? null, description: c.description, hashtags: c.hashtags })) : undefined,
-          instruction,
+          current: o.instruction && base ? base.filter((c) => want.includes(c.platform)).map((c) => ({ platform: c.platform, title: c.title ?? null, description: c.description, hashtags: c.hashtags })) : undefined,
+          instruction: o.instruction,
         },
-        { signal, onStatus: (status) => setRuns((r) => ({ ...r, [id]: { status } })) }
+        { signal, onStatus: (status) => setRuns((r) => ({ ...r, [id]: { status, platforms: want } })) }
       );
-      const next: Version = {
-        copies: out.captions.map((c) => ({ platform: c.platform, title: c.title ?? undefined, description: c.description, hashtags: c.hashtags, cta: "{{BOOKING_LINK}}" })),
-        taglines: out.taglines.slice(0, 3),
-        note: out.note,
-      };
-      setVersions((v) => ({ ...v, [id]: next }));
+      const fresh: PlatformCopy[] = out.captions.filter((c) => want.includes(c.platform)).map((c) => ({ platform: c.platform, title: c.title ?? undefined, description: c.description, hashtags: c.hashtags, cta: "{{BOOKING_LINK}}" }));
+      const prev = (writerRef.current === id ? copiesRef.current : versionsRef.current[id]?.copies) ?? [];
+      // A full rewrite replaces the platforms it wrote; anything it didn't write stays.
+      const nextCopies = o.merge ? fill(prev, fresh) : [...prev.filter((c) => !fresh.some((f) => f.platform === c.platform)), ...fresh];
+      setVersions((v) => ({ ...v, [id]: { copies: nextCopies, taglines: o.merge && v[id]?.taglines.length ? v[id]!.taglines : out.taglines.slice(0, 3), note: o.merge && v[id]?.note ? v[id]!.note : out.note } }));
       // Open the first version that arrives, and refresh the one being edited.
-      if (writerRef.current === id || !copies.length) {
+      if (writerRef.current === id || !copiesRef.current.length) {
+        writerRef.current = id;
+        copiesRef.current = nextCopies;
         setWriter(id);
-        setCopies(next.copies);
+        setCopies(nextCopies);
       }
+      // A platform that was asked for and didn't come back is an error on that platform, not a silent gap.
+      const gaps = want.filter((p) => !fresh.some((f) => f.platform === p));
       setRuns((r) => {
         const n = { ...r };
-        delete n[id];
+        if (gaps.length) n[id] = { status: "", error: "No caption came back.", platforms: gaps };
+        else delete n[id];
         return n;
       });
     } catch (e) {
       if (isAbort(e)) return;
-      setRuns((r) => ({ ...r, [id]: { status: "", error: (e as Error).message } }));
+      setRuns((r) => ({ ...r, [id]: { status: "", error: (e as Error).message, platforms: want } }));
     }
   };
 
-  const writeAll = () => {
+  const start = () => {
     ctrl.current?.abort();
     const c = new AbortController();
     ctrl.current = c;
-    for (const w of WRITERS) void writeOne(w.id, c.signal);
+    return c.signal;
+  };
+  /** Every version, every selected platform: the explicit "Generate captions". */
+  const writeAll = () => {
+    if (!platforms.length) return;
+    setAsked(true);
+    const signal = start();
+    for (const w of WRITERS) void writeOne(w.id, signal);
+  };
+  /** Only the platforms that have no caption yet, in every version there is. Existing captions and edits stay. */
+  const writeMissing = (only?: PlatformId[]) => {
+    const signal = start();
+    const targets: Target[] = [...WRITERS.map((w) => w.id).filter((id) => versionsRef.current[id]), ...(versionsRef.current.current ? (["current"] as const) : [])];
+    if (!targets.length) return writeAll();
+    for (const id of targets) {
+      const have = (writerRef.current === id ? copiesRef.current : versionsRef.current[id]?.copies) ?? [];
+      const need = (only ?? platforms).filter((p) => !have.some((c) => c.platform === p));
+      if (need.length) void writeOne(id, signal, { only: need, merge: true });
+    }
   };
 
   const revise = (instruction: string) => {
-    const id: WriterId = writer === "current" ? "story" : writer;
     const c = new AbortController();
     ctrl.current = c;
-    void writeOne(id, c.signal, instruction);
+    void writeOne(writer, c.signal, { instruction });
   };
 
   const choose = (id: WriterId | "current") => {
@@ -141,17 +181,22 @@ export function PostStep({ video }: StepProps) {
     setCopies(v.copies);
   };
 
-  React.useEffect(() => {
-    if (sub === 1 && !copies.length && !busy && !WRITERS.some((w) => versions[w.id])) writeAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sub]);
-
   const updateCopy = (p: PlatformId, patch: Partial<PlatformCopy>) => {
     const next = copies.map((c) => (c.platform === p ? { ...c, ...patch } : c));
     setCopies(next);
     setVersions((vs) => (vs[writer] ? { ...vs, [writer]: { ...vs[writer]!, copies: next } } : vs));
   };
   const missing = platforms.filter((p) => !copies.some((c) => c.platform === p));
+  /** Where one platform's caption stands in the version on screen. */
+  const stateOf = (p: PlatformId): "ready" | "writing" | "failed" | "none" => {
+    if (copies.some((c) => c.platform === p)) return "ready";
+    const mine = runs[writer];
+    const any = (Object.values(runs) as Run[]).filter((r) => r.platforms.includes(p));
+    if (mine?.platforms.includes(p) ? !mine.error : any.some((r) => !r.error)) return "writing";
+    return any.some((r) => r.error) ? "failed" : "none";
+  };
+  const errorOf = (p: PlatformId) => (runs[writer]?.platforms.includes(p) && runs[writer]?.error) || (Object.values(runs) as Run[]).find((r) => r.error && r.platforms.includes(p))?.error;
+  const toWrite = missing.filter((p) => stateOf(p) !== "writing");
 
   // Copy saved before the writers ran shows as its own card next to theirs.
   const showCurrent = !!versions.current && !WRITERS.some((w) => versions[w.id]);
@@ -194,22 +239,50 @@ export function PostStep({ video }: StepProps) {
 
       {sub === 1 && (
         <>
-          <div className="flex flex-wrap justify-center gap-2">
-            {PLATFORMS.map((p) => {
-              const on = platforms.includes(p.id);
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => setPlatforms(on ? platforms.filter((x) => x !== p.id) : [...platforms, p.id])}
-                  className={cn("inline-flex cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 text-[13px] transition-colors", on ? "border-primary bg-brass-soft/70" : "border-border text-muted-foreground hover:text-foreground")}
-                  style={{ ["--pi-bg" as string]: on ? "var(--brass-soft)" : "var(--background)" }}
-                >
-                  <PlatformIcon id={p.id} className="size-3.5" /> {p.label}
-                </button>
-              );
-            })}
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-soft sm:p-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-[15px] font-semibold">{asked ? "Where it’s going" : "1. Choose where it’s going"}</h2>
+              <span className="text-[12px] text-muted-foreground">{asked ? "Add a platform anytime: only the new one is written." : "Pick every platform you want a caption for. Nothing is written until you say so."}</span>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Platforms">
+              {PLATFORMS.map((p) => {
+                const on = platforms.includes(p.id);
+                const st = on && asked ? stateOf(p.id) : null;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setPlatforms(on ? platforms.filter((x) => x !== p.id) : [...platforms, p.id])}
+                    aria-pressed={on}
+                    data-state={st ?? undefined}
+                    className={cn("inline-flex cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 text-[13px] transition-colors", !on ? "border-border text-muted-foreground hover:text-foreground" : st === "failed" ? "border-destructive/60 bg-destructive/5" : "border-primary bg-brass-soft/70")}
+                    style={{ ["--pi-bg" as string]: on ? "var(--brass-soft)" : "var(--background)" }}
+                  >
+                    <PlatformIcon id={p.id} className="size-3.5" /> {p.label}
+                    {st === "ready" && <Check className="size-3.5 text-success" aria-label="Caption ready" />}
+                    {st === "writing" && <LoaderCircle className="size-3.5 animate-spin text-muted-foreground" aria-label="Writing" />}
+                    {st === "failed" && <TriangleAlert className="size-3.5 text-destructive" aria-label="Failed" />}
+                    {st === "none" && <span className="text-[11px] text-muted-foreground">no caption yet</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {!asked ? (
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+                <span className="text-[13px] text-muted-foreground">{platforms.length ? `2. Captions for ${platforms.map((p) => getPlatform(p).label).join(", ")}, in four versions to choose from.` : "Pick at least one platform."}</span>
+                <Button className="rounded-full px-6" onClick={writeAll} disabled={!platforms.length || busy}><Sparkles /> Generate captions</Button>
+              </div>
+            ) : toWrite.length > 0 ? (
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+                <span className={cn("text-[13px]", toWrite.some((p) => stateOf(p) === "failed") ? "text-destructive" : "text-muted-foreground")}>
+                  {toWrite.some((p) => stateOf(p) === "failed") ? `Couldn’t write ${toWrite.filter((p) => stateOf(p) === "failed").map((p) => getPlatform(p).label).join(", ")}: ${errorOf(toWrite.find((p) => stateOf(p) === "failed")!) ?? "something went wrong"}` : `No caption yet for ${toWrite.map((p) => getPlatform(p).label).join(", ")}.`} Your other captions stay as they are.
+                </span>
+                <Button className="rounded-full px-5" onClick={() => writeMissing()}><Sparkles /> {toWrite.some((p) => stateOf(p) === "failed") ? "Try again" : `Generate ${toWrite.length === 1 ? `the ${getPlatform(toWrite[0]).label} caption` : `${toWrite.length} captions`}`}</Button>
+              </div>
+            ) : null}
           </div>
 
+          {asked && (
+          <>
           <div className={cn("grid grid-cols-2 gap-2", showCurrent ? "sm:grid-cols-3 lg:grid-cols-5" : "lg:grid-cols-4")}>
             {showCurrent && (
               <VersionCard className="col-span-2 sm:col-span-1" label="Current" description="The copy saved with this video." selected={writer === "current"} onClick={() => choose("current")} preview={versions.current?.copies[0]?.description} />
@@ -220,36 +293,71 @@ export function PostStep({ video }: StepProps) {
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3">
             {copies.length > 0 && <RequestLine items={[`${platforms.length} ${platforms.length === 1 ? "platform" : "platforms"}`, video.source === "upload" || video.source === "clip" ? "From what you said in the video" : "From your script", "Your voice profile", `Disclosure ${activeDisclosure(profile)?.version ?? "not set"} (auto)`]} source={busy ? null : "claude"} />}
-            <Button size="sm" variant="ghost" className="rounded-full" onClick={writeAll} disabled={busy}><RefreshCw className={cn(busy && "animate-spin")} /> Write four new versions</Button>
+            {copies.length > 0 && <Button size="sm" variant="ghost" className="rounded-full" onClick={() => window.confirm("Write four new versions for every platform? This replaces the captions you have, including your edits.") && writeAll()} disabled={busy}><RefreshCw className={cn(busy && "animate-spin")} /> Write four new versions</Button>}
           </div>
 
           {!copies.length ? (
             <div className="space-y-4 rounded-2xl border border-border bg-card p-8">
-              <Writing status={runs[writer as WriterId]?.status ?? Object.values(runs).find((r) => r && !r.error)?.status ?? "Writing…"} />
-              <Skeleton className="h-5 w-2/3" />
-              <Skeleton className="h-24 w-full" />
-              {Object.values(runs).some((r) => r?.error) && <p className="text-[13px] text-destructive">{Object.values(runs).find((r) => r?.error)?.error}</p>}
+              {busy ? (
+                <>
+                  <Writing status={runs[writer]?.status || Object.values(runs).find((r) => r && !r.error)?.status || "Writing…"} />
+                  <Skeleton className="h-5 w-2/3" />
+                  <Skeleton className="h-24 w-full" />
+                </>
+              ) : (
+                <div className="text-center">
+                  <p className="text-[14px] text-destructive">{Object.values(runs).find((r) => r?.error)?.error ?? "The captions weren’t written."}</p>
+                  <Button className="mt-4 rounded-full" onClick={writeAll} disabled={!platforms.length}><RefreshCw /> Try again</Button>
+                </div>
+              )}
             </div>
           ) : (
             <div className={cn("grid items-start gap-6", video.output && "lg:grid-cols-[minmax(0,1fr)_auto]")}>
-            <div className={cn("overflow-hidden rounded-2xl border border-border bg-card shadow-soft", runs[writer as WriterId] && !runs[writer as WriterId]!.error && "opacity-60")}>
+            <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-soft">
               <div className="flex items-center justify-between gap-3 px-5 pt-4 sm:px-6">
                 <span className="font-serif text-[18px]">{writer === "current" ? "Current" : getWriter(writer).label}</span>
                 {current?.note && <span className="hidden truncate text-[12px] text-muted-foreground sm:block">{current.note}</span>}
               </div>
               <div className="scrollbar-thin flex gap-1 overflow-x-auto border-b border-border px-3 pt-3">
-                {platforms.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setTab(p)}
-                    className={cn("-mb-px flex shrink-0 cursor-pointer items-center gap-1.5 border-b-2 px-3 pb-2.5 text-[13px]", p === activeTab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}
-                    style={{ ["--pi-bg" as string]: "var(--card)" }}
-                  >
-                    <PlatformIcon id={p} className="size-3.5" /> {getPlatform(p).label}
-                  </button>
-                ))}
+                {platforms.map((p) => {
+                  const st = stateOf(p);
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setTab(p)}
+                      className={cn("-mb-px flex shrink-0 cursor-pointer items-center gap-1.5 border-b-2 px-3 pb-2.5 text-[13px]", p === activeTab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}
+                      style={{ ["--pi-bg" as string]: "var(--card)" }}
+                    >
+                      <PlatformIcon id={p} className="size-3.5" /> {getPlatform(p).label}
+                      {st === "writing" && <LoaderCircle className="size-3 animate-spin" />}
+                      {st === "failed" && <TriangleAlert className="size-3 text-destructive" />}
+                      {st === "none" && <span className="size-1.5 rounded-full bg-primary" />}
+                    </button>
+                  );
+                })}
               </div>
-              {activeTab && <CaptionEditor platform={activeTab} bookingUrl={bookingUrlFor(video, profile)} copy={copies.find((c) => c.platform === activeTab)} update={(patch) => updateCopy(activeTab, patch)} />}
+              {activeTab && (() => {
+                const st = stateOf(activeTab);
+                const label = getPlatform(activeTab).label;
+                if (st === "ready") return <div className={cn(runs[writer] && !runs[writer]!.error && runs[writer]!.platforms.includes(activeTab) && "opacity-60")}><CaptionEditor platform={activeTab} bookingUrl={bookingUrlFor(video, profile)} copy={copies.find((c) => c.platform === activeTab)} update={(patch) => updateCopy(activeTab, patch)} /></div>;
+                return (
+                  <div className="space-y-3 p-8 text-center" data-caption-state={st}>
+                    {st === "writing" ? (
+                      <><Writing status={`Writing your ${label} caption…`} /><Skeleton className="mx-auto h-20 w-full max-w-md" /></>
+                    ) : st === "failed" ? (
+                      <>
+                        <p className="text-[14px] text-destructive"><TriangleAlert className="mr-1.5 inline size-4 align-[-3px]" />The {label} caption wasn’t written: {errorOf(activeTab) ?? "something went wrong"}</p>
+                        <Button className="rounded-full" onClick={() => writeMissing([activeTab])}><RefreshCw /> Try {label} again</Button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-[14px] text-muted-foreground">No {label} caption yet. Your other captions won’t change.</p>
+                        <Button className="rounded-full" onClick={() => writeMissing([activeTab])}><Sparkles /> Generate the {label} caption</Button>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
             {video.output && (
               <div className="flex flex-col items-center gap-2 lg:sticky lg:top-28">
@@ -287,19 +395,17 @@ export function PostStep({ video }: StepProps) {
               </ul>
             </div>
           )}
-
-          {missing.length > 0 && copies.length > 0 && !busy && (
-            <div className="flex items-center justify-center gap-2 text-[13px] text-muted-foreground">
-              No copy yet for {missing.map((m) => getPlatform(m).label).join(", ")}.
-              <Button size="sm" variant="outline" className="rounded-full" onClick={writeAll}><Sparkles /> Write all four again</Button>
-            </div>
+          </>
           )}
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <Button variant="ghost" className="rounded-full" onClick={() => setSub(0)}><ArrowLeft /> Cover</Button>
-            <Button className="rounded-full px-6" disabled={!copies.length || busy} onClick={() => setSub(2)}>Post <ArrowRight /></Button>
+            <div className="flex items-center gap-3">
+              {asked && copies.length > 0 && missing.length > 0 && !busy && <span className="hidden text-[12px] text-muted-foreground sm:inline">Generate or remove {missing.map((m) => getPlatform(m).label).join(", ")} to continue</span>}
+              <Button className="rounded-full px-6" disabled={!copies.length || busy || missing.length > 0 || !platforms.length} onClick={() => setSub(2)}>Post <ArrowRight /></Button>
+            </div>
           </div>
-          {copies.length > 0 && <AskBar busy={!!runs[writer as WriterId] && !runs[writer as WriterId]!.error} status={runs[writer as WriterId]?.status} note={null} onAsk={revise} suggestions={["Shorter LinkedIn post", "Add a question at the end", "More formal"]} />}
+          {copies.length > 0 && <AskBar busy={!!runs[writer] && !runs[writer]!.error} status={runs[writer]?.status} note={null} onAsk={revise} suggestions={["Shorter LinkedIn post", "Add a question at the end", "More formal"]} />}
         </>
       )}
 

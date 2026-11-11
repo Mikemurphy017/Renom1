@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, Check, ImagePlus, LoaderCircle, Plus, RefreshCw, Shuffle, Sparkles, Video as VideoIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Download, ImagePlus, LoaderCircle, Plus, RefreshCw, Shuffle, Sparkles, Video as VideoIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,10 +47,8 @@ interface Scene {
   createdAt: string;
 }
 
-const SHAPES: { id: VideoFormat; label: string; where: string }[] = [
-  { id: "long", label: "Long form", where: "16:9 · YouTube, LinkedIn" },
-  { id: "short", label: "Short form", where: "9:16 · Reels, TikTok, Shorts" },
-];
+/** One connected flow: the design first, then one pick per shape, then what can be downloaded. */
+const STAGES = ["Edit your cover", "1. Short-form", "2. Long-form", "Download"] as const;
 
 /** How many options a fresh set (and each "More options") adds. */
 const BATCH = 8;
@@ -255,12 +253,16 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
   const [aiPoints, setAiPoints] = useDraft<string[]>(video.id, "cover.points", []);
   const points = React.useMemo(() => (aiPoints.length ? aiPoints : video.outline?.length ? video.outline : (video.script?.body ?? [])).slice(0, 3), [aiPoints, video.outline, video.script]);
 
-  const [shape, setShape] = React.useState<VideoFormat>(video.format);
+  // Where the advisor is in the flow, which shapes they skipped, and the photo and colors they chose for every option.
+  const [stage, setStage] = useDraft<number>(video.id, "cover.stage", 0);
+  const [skip, setSkip] = useDraft<Record<VideoFormat, boolean>>(video.id, "cover.skip", { long: false, short: false });
+  const [design, setDesign] = useDraft<{ stillId?: string; palette?: string }>(video.id, "cover.design", {});
+  const shape: VideoFormat = stage === 1 ? "short" : stage === 2 ? "long" : video.format;
   const [lines, setLines] = useDraft<Lines | null>(video.id, "cover.lines", null);
   const [options, setOptions] = useDraft<Options>(video.id, "cover.options", () => freshOptions(lines ?? { long: fallbackLines(video.title), short: fallbackLines(video.title) }, !!brand, 1, noPhoto));
   const [picks, setPicks] = useDraft<Record<VideoFormat, number>>(video.id, "cover.picks", { long: 0, short: 0 });
   const [note, setNote] = React.useState<string | null>(null);
-  const [look, setLook] = React.useState<CoverLook | null>(null);
+  const [look] = React.useState<CoverLook | null>(null);
   const linesNow = React.useCallback((): Lines => lines ?? { long: fallbackLines(video.title), short: fallbackLines(video.title) }, [lines, video.title]);
 
   // On opening (and when the cover style changes): sets saved before there were palettes, or made
@@ -423,14 +425,26 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
   const editSelected = (patch: { stillId?: string; template?: string; palette?: string; text?: Partial<CoverText> }) =>
     setOptions((prev) => ({ ...prev, [shape]: prev[shape].map((o, k) => (k === sel ? { ...o, ...patch, text: { ...o.text, ...patch.text }, own: o.own || !!patch.text } : o)) }));
 
+  // ── the design: one photo and one set of colors on every option, in both shapes ──
+  const styled = (opts: Option[]) => opts.map((o) => ({ ...o, ...(design.stillId ? { stillId: design.stillId } : {}), ...(design.palette ? { palette: design.palette } : {}) }));
+  const applyDesign = (patch: { stillId?: string; palette?: string }) => {
+    setDesign((d) => ({ ...d, ...patch }));
+    if ("palette" in patch && !patch.palette) {
+      // Back to a mix: each option takes its layout's own colors again.
+      setOptions((prev) => ({ long: prev.long.map((o) => ({ ...o, palette: templateOf("long", o.template)?.palettes[0] })), short: prev.short.map((o) => ({ ...o, palette: templateOf("short", o.template)?.palettes[0] })) }));
+      return;
+    }
+    setOptions((prev) => ({ long: prev.long.map((o) => ({ ...o, ...patch })), short: prev.short.map((o) => ({ ...o, ...patch })) }));
+  };
+
   // ── more, shuffle, filter ──
   const seed = () => Math.floor(Math.random() * 1e9);
   const more = (l: CoverLook | null = look) =>
-    setOptions((prev) => ({ ...prev, [shape]: [...prev[shape], ...buildOptions(shape, linesNow(), { seed: seed(), count: l ? 4 : BATCH, look: l ?? undefined, brand: !!brand, after: prev[shape], noPhoto })] }));
+    setOptions((prev) => ({ ...prev, [shape]: [...prev[shape], ...styled(buildOptions(shape, linesNow(), { seed: seed(), count: l ? 4 : BATCH, look: l ?? undefined, brand: !!brand, after: prev[shape], noPhoto }))] }));
   const shuffle = () => {
     // Keep the one they picked (with their edits) first; everything else is new.
     const keep = options[shape][sel];
-    const fresh = buildOptions(shape, linesNow(), { seed: seed(), count: BATCH, look: look ?? undefined, brand: !!brand, after: keep ? [keep] : [], noPhoto });
+    const fresh = styled(buildOptions(shape, linesNow(), { seed: seed(), count: BATCH, look: look ?? undefined, brand: !!brand, after: keep ? [keep] : [], noPhoto }));
     setOptions((prev) => ({ ...prev, [shape]: keep ? [keep, ...fresh] : fresh }));
     setPicks({ ...picks, [shape]: 0 });
   };
@@ -444,12 +458,17 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
 
   // ── save ──
   const [saving, setSaving] = React.useState(false);
-  const save = async () => {
+  const save = async (skipped: Record<VideoFormat, boolean> = skip) => {
     if (!stills || (!stills.length && !noPhoto)) return onDone();
     setSaving(true);
     try {
       const covers: Partial<Record<VideoFormat, CoverImage>> = { ...video.covers };
       for (const s of ["long", "short"] as VideoFormat[]) {
+        // A shape they skipped isn't made, and an older cover in that shape is dropped.
+        if (skipped[s]) {
+          delete covers[s];
+          continue;
+        }
         const k = Math.min(picks[s], options[s].length - 1);
         const o = options[s][k];
         const t = templateOf(s, o.template) ?? TEMPLATES[s][0];
@@ -472,8 +491,9 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
         };
       }
       updateVideo(video.id, { covers });
-      toast.success("Covers saved", { description: intro?.on && video.output ? "Your video now starts on its cover, too." : "Long form and short form, both in your library." });
-      onDone();
+      const made = (["short", "long"] as VideoFormat[]).filter((s) => covers[s]);
+      if (made.length) toast.success(made.length === 2 ? "Both covers saved" : "Cover saved", { description: made.length === 2 ? "Short-form and long-form are both ready to download." : `Your ${made[0] === "short" ? "short-form" : "long-form"} cover is ready to download.` });
+      setStage(3);
     } catch (e) {
       toast.error("Couldn’t save the covers", { description: (e as Error).message });
     } finally {
@@ -518,47 +538,210 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
 
   const [W, H] = COVER_SIZE[shape];
   const vertical = shape === "short";
+  const ready = !!stills && (stills.length > 0 || noPhoto);
+  const pickOf = (s: VideoFormat) => Math.min(picks[s], options[s].length - 1);
+  const slug = video.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-|-$/g, "") || "video";
+  const fileOf = (s: VideoFormat) => `${slug}-cover-${s === "short" ? "9x16" : "16x9"}.jpg`;
 
-  return (
-    <div className="space-y-6">
-      <p className="text-center text-[14px] text-muted-foreground">
-        {!stills ? (
-          <>
-            <LoaderCircle className="mr-1.5 inline size-3.5 animate-spin align-[-2px]" />
-            {mode === "ai" && photoSet.length ? "Loading your photo set…" : "Finding your best frames…"}
-          </>
-        ) : (
-          <>
-            {noPhoto ? "Words, colors and graphics, no photo" : mode === "ai" ? (photoSet.length ? "Your AI photo set" : "Frames from your take (make your AI photo set for more)") : takeSrc ? "Real frames from your take" : "Your headshots"}, words by {busy ? "Claude (writing…)" : "Claude"}. Pick one of each shape.
-          </>
-        )}
-      </p>
+  const stepper = (
+    <ol className="mx-auto flex max-w-2xl flex-wrap items-center justify-center gap-x-1 gap-y-2 text-[13px]" aria-label="Cover steps">
+      {STAGES.map((label, i) => (
+        <li key={label} className="flex items-center gap-1">
+          {i > 0 && <span className="mx-1 hidden h-px w-5 bg-border sm:block" />}
+          <button
+            type="button"
+            onClick={() => i < stage && setStage(i)}
+            aria-current={i === stage ? "step" : undefined}
+            className={cn("flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors", i === stage ? "bg-navy text-navy-foreground dark:bg-primary dark:text-primary-foreground" : i < stage ? "cursor-pointer text-foreground hover:bg-muted" : "cursor-default text-muted-foreground")}
+          >
+            {i < stage ? <Check className="size-3.5 text-primary" /> : null}
+            {label}
+          </button>
+        </li>
+      ))}
+    </ol>
+  );
 
-      <CoverStyleSwitch value={mode} onChange={chooseMode} aiAvailable={aiAvailable} onManage={() => setShowSet(true)} />
-
-      <div className="flex justify-center">
-        <div className="inline-flex rounded-full border border-border bg-card p-1">
-          {SHAPES.map((s) => (
+  const photoStrip = !noPhoto && stills && selected && (
+    <div>
+      <div className="eyebrow mb-2">Photo</div>
+      <div className="flex flex-wrap gap-2">
+        {stills.map((s, k) => {
+          const on = (design.stillId ? design.stillId === s.id : (stillFor(selected, sel) ?? stills[0]).id === s.id);
+          return (
             <button
               key={s.id}
-              onClick={() => setShape(s.id)}
-              className={cn("flex cursor-pointer items-center gap-2 rounded-full px-4 py-1.5 text-[13px] transition-colors", shape === s.id ? "bg-navy text-navy-foreground dark:bg-primary dark:text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+              onClick={() => applyDesign({ stillId: s.id })}
+              title={s.source === "frame" ? `Frame at ${s.time?.toFixed(1)}s` : s.source === "ai" ? "AI scene" : "Headshot"}
+              aria-pressed={on}
+              className={cn("relative h-16 cursor-pointer overflow-hidden rounded-md border-2 transition", on ? "border-primary" : "border-transparent opacity-80 hover:opacity-100")}
+              style={{ aspectRatio: `${s.canvas.width}/${s.canvas.height}` }}
             >
-              <span className={cn("inline-block rounded-[3px] border-[1.5px] border-current", s.id === "long" ? "h-2.5 w-4" : "h-4 w-2.5")} />
-              <span className="font-medium">{s.label}</span>
-              <span className="hidden opacity-70 sm:inline">{s.where}</span>
+              <StillImg still={s} />
+              {s.source !== "frame" && <span className={cn("absolute inset-x-0 bottom-0 text-center text-[9px] text-white", s.source === "ai" ? "bg-primary/85" : "bg-black/55")}>{s.source === "ai" ? (s.id.startsWith("p-") ? "AI photo" : "AI scene") : "Photo"}</span>}
+              <span className="sr-only">Use photo {k + 1}</span>
             </button>
-          ))}
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[12px] text-muted-foreground">
+        {mode === "ai" ? <>Your AI photo set comes first, then frames from your take. <button type="button" onClick={() => setShowSet(true)} className="cursor-pointer underline underline-offset-2">Manage the set</button></> : <>Frames are picked for sharpness and light. <Link href="/settings#voice" className="underline underline-offset-2">Add headshots</Link> for more choice.</>}
+      </p>
+      {mode === "ai" && <AiScene
+        video={video}
+        shape={shape}
+        from={(() => {
+          const cur = stillFor(selected, sel) ?? stills[0];
+          return cur.source !== "ai" ? cur : (stills.find((x) => x.source === "headshot") ?? stills.find((x) => x.source === "frame") ?? cur);
+        })()}
+        onScene={(still, scene) => {
+          setStills((prev) => [...(prev ?? []), still]);
+          setScenes((prev) => [...prev, scene].slice(-12));
+          // The new scene becomes the photo on every cover, in both shapes.
+          applyDesign({ stillId: still.id });
+        }}
+      />}
+    </div>
+  );
+
+  const colorRow = selected && (
+    <div>
+      <div className="eyebrow mb-2">Colors</div>
+      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Colors">
+        <button type="button" onClick={() => applyDesign({ palette: undefined })} aria-pressed={!design.palette} className={cn("cursor-pointer rounded-full border px-3 py-1 text-[12px]", !design.palette ? "border-primary bg-brass-soft text-foreground" : "border-border text-muted-foreground hover:text-foreground")}>A mix</button>
+        {[...(brand ? ["brand"] : []), ...PALETTES.map((p) => p.id)].map((id) => {
+          const on = design.palette === id;
+          return (
+            <button key={id} onClick={() => applyDesign({ palette: id })} aria-pressed={on} className={cn("cursor-pointer rounded-full p-0.5 ring-offset-1 transition", on ? "ring-2 ring-primary" : "opacity-80 hover:opacity-100")} title={paletteName(id)}>
+              <Swatch id={id} brand={brand} large />
+              <span className="sr-only">{paletteName(id)}</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[12px] text-muted-foreground">{design.palette ? `Every option uses ${paletteName(design.palette).toLowerCase()}.` : "Each option comes in its own colors. Pick one to use it on all of them."}</p>
+    </div>
+  );
+
+  const loading = (
+    <p className="text-center text-[14px] text-muted-foreground">
+      <LoaderCircle className="mr-1.5 inline size-3.5 animate-spin align-[-2px]" />
+      {mode === "ai" && photoSet.length ? "Loading your photo set…" : "Finding your best frames…"}
+    </p>
+  );
+
+  // ── Edit your cover: the photo and colors, shown on both shapes ──
+  if (stage === 0) {
+    return (
+      <div className="space-y-6">
+        {stepper}
+        <div className="text-center">
+          <h2 className="font-serif text-2xl">Edit your cover</h2>
+          <p className="mx-auto mt-1 max-w-xl text-[14px] text-muted-foreground">Choose the photo and the colors. Both previews update as you go, and your choices carry into the next two steps, where you pick the short-form and the long-form cover.</p>
+        </div>
+        <CoverStyleSwitch value={mode} onChange={chooseMode} aiAvailable={aiAvailable} onManage={() => setShowSet(true)} />
+        {!stills ? loading : (
+          <div className="grid gap-6 rounded-2xl border border-border bg-card p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+            <div className="flex items-end justify-center gap-4">
+              {(["short", "long"] as VideoFormat[]).map((s) => {
+                const k = pickOf(s);
+                const src = previews[`${s}:${k}`];
+                return (
+                  <figure key={s} className={cn("min-w-0", s === "short" ? "w-[34%]" : "w-[62%]")}>
+                    <div className={cn("relative overflow-hidden rounded-xl bg-muted shadow-soft", s === "short" ? "aspect-[9/16]" : "aspect-video")}>
+                      {src ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={src} alt={`${s === "short" ? "Short-form" : "Long-form"} preview`} className="absolute inset-0 h-full w-full object-cover" />
+                      ) : <Skeleton className="absolute inset-0 rounded-none" />}
+                    </div>
+                    <figcaption className="mt-2 text-center text-[12px]"><span className="font-medium">{s === "short" ? "Short-form" : "Long-form"}</span> <span className="text-muted-foreground">{s === "short" ? "9:16" : "16:9"}</span></figcaption>
+                  </figure>
+                );
+              })}
+            </div>
+            <div className="space-y-5">
+              {photoStrip}
+              {colorRow}
+            </div>
+          </div>
+        )}
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" className="rounded-full" onClick={onDone}>Skip covers <ArrowRight /></Button>
+          <Button className="rounded-full px-6" disabled={!ready} onClick={() => setStage(1)}>Next: choose your short-form cover <ArrowRight /></Button>
         </div>
       </div>
+    );
+  }
 
+  // ── Covers ready: what was chosen and what can be downloaded ──
+  if (stage === 3) {
+    const have = (["short", "long"] as VideoFormat[]).filter((s) => video.covers?.[s]);
+    return (
+      <div className="space-y-6">
+        {stepper}
+        <div className="text-center">
+          <h2 className="font-serif text-2xl">{have.length === 2 ? "Both covers are ready" : have.length === 1 ? "Your cover is ready" : "No covers chosen"}</h2>
+          <p className="mx-auto mt-1 max-w-xl text-[14px] text-muted-foreground">{have.length ? "Download them here, or later from the Post step. They’re saved with this video." : "You skipped both shapes. You can go back and choose one anytime."}</p>
+        </div>
+        <div className="mx-auto grid max-w-3xl gap-4 sm:grid-cols-2">
+          {(["short", "long"] as VideoFormat[]).map((s, n) => {
+            const c = video.covers?.[s];
+            const name = s === "short" ? "Short-form" : "Long-form";
+            return (
+              <div key={s} className="flex flex-col items-center rounded-2xl border border-border bg-card p-4 text-center">
+                <div className="text-[13px] font-medium">{name} <span className="font-normal text-muted-foreground">{s === "short" ? "9:16 · Reels, TikTok, Shorts" : "16:9 · YouTube, LinkedIn"}</span></div>
+                <div className={cn("relative mt-3 overflow-hidden rounded-xl bg-muted", s === "short" ? "aspect-[9/16] w-36" : "aspect-video w-full max-w-[300px]")}>
+                  {c ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={c.url} alt={c.headline} className="absolute inset-0 h-full w-full object-cover" />
+                  ) : <div className="absolute inset-0 flex items-center justify-center text-[12px] text-muted-foreground">Skipped</div>}
+                </div>
+                <div className="mt-auto pt-4">
+                  {c ? (
+                    <Button asChild variant="outline" className="rounded-full"><a href={c.url} download={fileOf(s)}><Download /> Download {s === "short" ? "9:16" : "16:9"} cover</a></Button>
+                  ) : (
+                    <Button variant="ghost" className="rounded-full" onClick={() => { setSkip((x) => ({ ...x, [s]: false })); setStage(n + 1); }}>Choose a {name.toLowerCase()} cover</Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {intro && video.output && <CoverIntroSwitch intro={intro} />}
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" className="rounded-full" onClick={() => setStage(0)}><ArrowLeft /> Change the covers</Button>
+          <Button className="rounded-full px-6" onClick={onDone}>Next: captions <ArrowRight /></Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── 1. Choose your short-form cover · 2. Choose your long-form cover ──
+  const name = vertical ? "short-form" : "long-form";
+  const last = stage === 2;
+  const next = (skipThis: boolean) => {
+    const nextSkip = { ...skip, [shape]: skipThis };
+    setSkip(nextSkip);
+    if (last) void save(nextSkip);
+    else setStage(2);
+  };
+  return (
+    <div className="space-y-6">
+      {stepper}
+      <div className="text-center">
+        <h2 className="font-serif text-2xl">{stage}. Choose your {name} cover</h2>
+        <p className="mx-auto mt-1 max-w-xl text-[14px] text-muted-foreground">
+          {vertical ? "9:16, for Reels, TikTok and Shorts." : "16:9, for YouTube and LinkedIn."} {last ? (skip.short ? "This is the one you’ll be able to download." : "Choosing this one too makes both covers available to download.") : "The long-form cover is next: choosing both makes both available to download."} Don’t need this shape? Skip it.
+        </p>
+      </div>
+      {!stills ? loading : null}
 
       <div className={cn("grid gap-3 sm:gap-4", vertical ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 lg:grid-cols-3")}>
         {visible.map(({ o, k }) => {
           const src = previews[`${shape}:${k}`];
           const t = templateOf(shape, o.template);
           return (
-            <button key={k} onClick={() => setPicks({ ...picks, [shape]: k })} className={cn("cursor-pointer rounded-2xl p-1 text-left transition-all sm:p-1.5", k === sel ? "bg-brass-soft ring-2 ring-primary" : "hover:bg-card")}>
+            <button key={k} onClick={() => setPicks({ ...picks, [shape]: k })} aria-pressed={k === sel} className={cn("cursor-pointer rounded-2xl p-1 text-left transition-all sm:p-1.5", k === sel ? "bg-brass-soft ring-2 ring-primary" : "hover:bg-card")}>
               <div className={cn("relative overflow-hidden rounded-xl bg-muted", vertical ? "aspect-[9/16]" : "aspect-video")}>
                 {src ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -586,109 +769,54 @@ export function CoverStudio({ video, intro, onDone }: { video: Video; intro?: Re
         <Button variant="outline" size="sm" className="rounded-full" onClick={shuffle}>
           <Shuffle /> Shuffle
         </Button>
+        <Button variant="ghost" size="sm" className="rounded-full" disabled={busy} onClick={() => writeLines("Give me fresh options for each shape with different tactics.")}>
+          <RefreshCw className={cn(busy && "animate-spin")} /> New words
+        </Button>
         <span className="tnum text-[12px] text-muted-foreground">{W}×{H}</span>
       </div>
 
-      {selected && stills && (stills.length > 0 || noPhoto) && (
-        <div className={cn("grid gap-5 rounded-2xl border border-border bg-card p-5", !noPhoto && "md:grid-cols-[1fr_1.1fr]")}>
-          {!noPhoto && <div>
-            <div className="eyebrow mb-2">Photo</div>
-            <div className="flex flex-wrap gap-2">
-              {stills.map((s, k) => {
-                const on = (stillFor(selected, sel) ?? stills[0]).id === s.id;
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => editSelected({ stillId: s.id })}
-                    title={s.source === "frame" ? `Frame at ${s.time?.toFixed(1)}s` : s.source === "ai" ? "AI scene" : "Headshot"}
-                    className={cn("relative h-16 cursor-pointer overflow-hidden rounded-md border-2 transition", on ? "border-primary" : "border-transparent opacity-80 hover:opacity-100")}
-                    style={{ aspectRatio: `${s.canvas.width}/${s.canvas.height}` }}
-                  >
-                    <StillImg still={s} />
-                    {s.source !== "frame" && <span className={cn("absolute inset-x-0 bottom-0 text-center text-[9px] text-white", s.source === "ai" ? "bg-primary/85" : "bg-black/55")}>{s.source === "ai" ? (s.id.startsWith("p-") ? "AI photo" : "AI scene") : "Photo"}</span>}
-                    <span className="sr-only">Use still {k + 1}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mt-2 text-[12px] text-muted-foreground">
-              {mode === "ai" ? <>Your AI photo set comes first, then frames from your take. <button type="button" onClick={() => setShowSet(true)} className="cursor-pointer underline underline-offset-2">Manage the set</button></> : <>Frames are picked for sharpness and light. <Link href="/settings#voice" className="underline underline-offset-2">Add headshots</Link> for more choice.</>}
-            </p>
-            {mode === "ai" && <AiScene
-              video={video}
-              shape={shape}
-              from={(() => {
-                const cur = stillFor(selected, sel) ?? stills[0];
-                return cur.source !== "ai" ? cur : (stills.find((x) => x.source === "headshot") ?? stills.find((x) => x.source === "frame") ?? cur);
-              })()}
-              onScene={(still, scene) => {
-                setStills((prev) => [...(prev ?? []), still]);
-                setScenes((prev) => [...prev, scene].slice(-12));
-                // Show it straight away in the two layouts made for it, with the words they have now.
-                const text = selected.text;
-                setOptions((prev) => ({ ...prev, [shape]: [{ template: "c-react", palette: "electric", text, stillId: still.id }, { template: "c-shock", palette: "hot", text, stillId: still.id }, ...prev[shape]] }));
-                setPicks((prev) => ({ ...prev, [shape]: 0 }));
-                if (look) setLook(null);
-              }}
-            />}
-          </div>}
-          <div className="space-y-3">
-            <div className="eyebrow">Words</div>
-            <Input value={selected.text.headline} onChange={(e) => editSelected({ text: { headline: e.target.value } })} className="font-semibold" aria-label="Headline" />
-            {selected.text.headline.trim().split(/\s+/).length > 8 && <p className="-mt-1 text-[12px] text-muted-foreground">Long headlines print small. Two to six words read best on a phone.</p>}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 text-[12px] text-muted-foreground">Highlight</span>
-              {selected.text.headline.split(/\s+/).filter(Boolean).map((w, i) => (
-                <button
-                  key={i}
-                  onClick={() => editSelected({ text: { accent: w } })}
-                  className={cn("cursor-pointer rounded-full border px-2.5 py-0.5 text-[12px]", selected.text.accent.split(/\s+/).map(bare).includes(bare(w)) ? "border-primary bg-brass-soft text-foreground" : "border-border text-muted-foreground hover:text-foreground")}
-                >
-                  {w}
-                </button>
-              ))}
-            </div>
-            <Input value={selected.text.kicker} onChange={(e) => editSelected({ text: { kicker: e.target.value } })} placeholder="Label above the headline (optional)" className="text-[13px]" aria-label="Label" />
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
-              <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
-                Layout
-                <select
-                  value={selected.template}
-                  onChange={(e) => editSelected({ template: e.target.value })}
-                  className="h-8 cursor-pointer rounded-md border border-border bg-background px-2 text-[13px] text-foreground"
-                >
-                  {TEMPLATES[shape].filter((t) => (isPickable(t) && !!t.noPhoto === noPhoto) || t.id === selected.template).map((t) => (
-                    <option key={t.id} value={t.id}>{t.label}{isPickable(t) ? "" : " (older style)"}</option>
-                  ))}
-                </select>
-              </label>
-              <div className="flex items-center gap-1.5" role="group" aria-label="Colors">
-                <span className="mr-0.5 text-[12px] text-muted-foreground">Colors</span>
-                {[...(brand ? ["brand"] : []), ...PALETTES.map((p) => p.id)].map((id) => {
-                  const on = (selected.palette ?? templateOf(shape, selected.template)?.palettes[0]) === id;
-                  return (
-                    <button key={id} onClick={() => editSelected({ palette: id })} className={cn("cursor-pointer rounded-full p-0.5 ring-offset-1 transition", on ? "ring-2 ring-primary" : "opacity-80 hover:opacity-100")} title={paletteName(id)}>
-                      <Swatch id={id} brand={brand} large />
-                      <span className="sr-only">{paletteName(id)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+      {selected && ready && (
+        <div className="space-y-3 rounded-2xl border border-border bg-card p-5">
+          <div className="eyebrow">Words on this cover</div>
+          <Input value={selected.text.headline} onChange={(e) => editSelected({ text: { headline: e.target.value } })} className="font-semibold" aria-label="Headline" />
+          {selected.text.headline.trim().split(/\s+/).length > 3 && <p className="-mt-1 text-[12px] text-muted-foreground">Three words or fewer read best on a phone.</p>}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-[12px] text-muted-foreground">Highlight</span>
+            {selected.text.headline.split(/\s+/).filter(Boolean).map((w, i) => (
+              <button
+                key={i}
+                onClick={() => editSelected({ text: { accent: w } })}
+                className={cn("cursor-pointer rounded-full border px-2.5 py-0.5 text-[12px]", selected.text.accent.split(/\s+/).map(bare).includes(bare(w)) ? "border-primary bg-brass-soft text-foreground" : "border-border text-muted-foreground hover:text-foreground")}
+              >
+                {w}
+              </button>
+            ))}
+          </div>
+          <Input value={selected.text.kicker} onChange={(e) => editSelected({ text: { kicker: e.target.value } })} placeholder="Label above the headline (optional)" className="text-[13px]" aria-label="Label" />
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
+            <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+              Layout
+              <select
+                value={selected.template}
+                onChange={(e) => editSelected({ template: e.target.value })}
+                className="h-8 cursor-pointer rounded-md border border-border bg-background px-2 text-[13px] text-foreground"
+              >
+                {TEMPLATES[shape].filter((t) => (isPickable(t) && !!t.noPhoto === noPhoto) || t.id === selected.template).map((t) => (
+                  <option key={t.id} value={t.id}>{t.label}{isPickable(t) ? "" : " (older style)"}</option>
+                ))}
+              </select>
+            </label>
+            <button type="button" onClick={() => setStage(0)} className="cursor-pointer text-[12px] text-muted-foreground underline underline-offset-2 hover:text-foreground">Change the photo or colors</button>
           </div>
         </div>
       )}
 
-      {intro && video.output && <CoverIntroSwitch intro={intro} />}
-
-      <div className="flex items-center justify-between">
-        <Button variant="ghost" className="rounded-full" disabled={busy} onClick={() => writeLines("Give me fresh options for each shape with different tactics.")}>
-          <RefreshCw className={cn(busy && "animate-spin")} /> New words
-        </Button>
-        <div className="flex items-center gap-3">
-          {video.covers?.long && video.covers?.short && <span className="hidden text-[12px] text-muted-foreground sm:inline">Saved covers will be replaced</span>}
-          <Button className="rounded-full px-6" disabled={saving || !stills} onClick={save}>
-            {saving ? <LoaderCircle className="animate-spin" /> : null} {saving ? "Saving covers…" : "Use these covers"} {!saving && <ArrowRight />}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button variant="ghost" className="rounded-full" onClick={() => setStage(stage - 1)}><ArrowLeft /> {stage === 1 ? "Edit your cover" : "Short-form cover"}</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="ghost" className="rounded-full" disabled={saving} onClick={() => next(true)}>Skip {name}</Button>
+          <Button className="rounded-full px-6" disabled={saving || !ready} onClick={() => next(false)}>
+            {saving ? <LoaderCircle className="animate-spin" /> : null} {saving ? "Saving covers…" : last ? `Use this ${name} cover` : "Use this cover · next: long-form"} {!saving && <ArrowRight />}
           </Button>
         </div>
       </div>

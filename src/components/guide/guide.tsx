@@ -121,7 +121,7 @@ const TIPS: Partial<Record<StageId, { title: string; body: string }>> = {
   idea: { title: "Start with one sentence", body: "Type what you want to talk about, or tap a subject for fresh angles. Already have a video? Upload it from Home and skip straight to editing." },
   script: { title: "Four writers, four versions", body: "Each version takes a different approach. Pick the one that sounds most like you, then ask for changes in plain words." },
   record: { title: "Look at the line, not the words", body: "Use “Close to camera” to put the script right under your webcam, and run the 5-second sound check before your first take." },
-  edit: { title: "The AI did the first pass", body: "Pauses and retakes are already cut. Trim anything else in the transcript, pick a look, then approve the storyboard and render." },
+  edit: { title: "The AI did the first pass", body: "Pauses and retakes are already cut. Trim anything else in the transcript, pick a look, then render." },
   review: { title: "Watch it once", body: "This is the finished video. If something’s off, go back to Edit; nothing is posted until you say so." },
   post: { title: "Captions for every platform", body: "Pick a version for each network. Your disclosure and booking link are added automatically." },
 };

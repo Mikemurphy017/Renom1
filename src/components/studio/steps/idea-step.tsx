@@ -84,6 +84,7 @@ export function IdeaStep({ video, complete }: StepProps) {
         mode,
         format: video.format,
         topic: idea.subject,
+        count: 3,
         existing: existing(ideas),
         instruction: `Three more angles on ${idea.subject}: the same subject as "${idea.title}", each through a different angle that ${idea.subject} hasn't had yet in the list.`,
       });
@@ -175,7 +176,7 @@ export function IdeaStep({ video, complete }: StepProps) {
           />
           {busy && <Writing status={status} />}
           {busy
-            ? Array.from({ length: 3 }).map((_, i) => (
+            ? Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="space-y-3 rounded-2xl border border-border bg-card p-6">
                   <Skeleton className="h-3 w-24" />
                   <Skeleton className="h-6 w-4/5" />
@@ -237,7 +238,7 @@ export function IdeaStep({ video, complete }: StepProps) {
                           aria-label="Replace this idea"
                           onClick={async () => {
                             try {
-                              const out = await write({ task: "ideas", profile: voiceProfileOf(profile), mode, format: video.format, topic: topic || undefined, existing: existing(ideas), instruction: `Give a different idea to replace: "${idea.title}"` });
+                              const out = await write({ task: "ideas", profile: voiceProfileOf(profile), mode, format: video.format, topic: topic || undefined, count: 1, existing: existing(ideas), instruction: `Give a different idea to replace: "${idea.title}"` });
                               remember(out.ideas.slice(0, 1));
                               const fresh = withIds(out.ideas)[0];
                               if (fresh) setIdeas((xs) => xs.map((x) => (x.id === idea.id ? fresh : x)));

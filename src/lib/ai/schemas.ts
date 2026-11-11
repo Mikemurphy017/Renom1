@@ -7,12 +7,12 @@ export const PLATFORM_VALUES = ["youtube", "youtube_shorts", "instagram", "tikto
 export const IdeasSchema = z.object({
   ideas: z.array(
     z.object({
-      title: z.string().describe("The video title, written as a hook"),
+      title: z.string().describe("The video title: one short, punchy line of ten words at most, usually five to eight. One idea, no second sentence, no explanation"),
       subject: z.string().describe('The subject in one to four words, e.g. "Roth conversions", "RSUs", "Business exit planning"'),
       angle: z.enum(ANGLE_LABELS).describe("The way into the subject, from the angle list"),
       category: z.enum(CATEGORY_VALUES),
       outline: z.array(z.string()).describe("Three or four beats, one line each"),
-      why: z.string().describe("One sentence on why this will land with the ideal client"),
+      why: z.string().describe("One sentence on why this will land with the ideal client. The explanation lives here, not in the title"),
     })
   ),
 });
@@ -38,7 +38,7 @@ export const CaptionsSchema = z.object({
 });
 
 const CoverLine = z.object({
-  headline: z.string().describe("2–5 words, at most 26 characters, the text burned onto the image"),
+  headline: z.string().describe("One to three words, never more, at most 26 characters: the text burned onto the image"),
   accent: z.string().describe("The one word from the headline to color for emphasis, copied exactly"),
   kicker: z.string().describe("1–3 word label above the headline, e.g. a topic or a number (\"TAX PLANNING\", \"3 MISTAKES\")"),
   angle: z.string().describe("Two or three words naming the tactic, e.g. \"open loop\", \"specific number\", \"enemy\""),

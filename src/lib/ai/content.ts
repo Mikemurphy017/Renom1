@@ -37,8 +37,8 @@ export function generateThumbnails(title: string, count: number, platform: strin
   const [before, after] = clean.split(/:\s*/);
   const words = clean.replace(/:/g, "").split(/\s+/).filter(Boolean);
   const headlines = [
-    trim(before.split(/\s+/).slice(0, 4)),
-    after ? trim(after.split(/\s+/).slice(0, 4)) : trim(words.slice(-4)),
+    trim(before.split(/\s+/).slice(0, 3)),
+    after ? trim(after.split(/\s+/).slice(0, 3)) : trim(words.slice(-3)),
     trim(words.slice(0, 3)) + "?",
     trim(words.filter((w) => w.length > 3).slice(0, 3)),
   ];
