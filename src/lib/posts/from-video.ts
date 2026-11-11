@@ -8,5 +8,3 @@ export function postSourceOf(v: Video | undefined) {
   return { title: v.title, script, outline: script ? undefined : v.outline.slice(0, 8) };
 }
 
-/** Videos worth turning into posts: anything with a script or an outline, newest first. */
-export const postableVideos = (videos: Video[]) => videos.filter((v) => v.script || v.outline.length).sort((a, b) => b.lastEdited.localeCompare(a.lastEdited));

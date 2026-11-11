@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, Clapperboard, Image as ImageIcon, Layers, Lightbulb, Monitor, PenLine, Smartphone, Sparkles, Type, Video as VideoIcon } from "lucide-react";
+import { ArrowRight, Check, Clapperboard, Image as ImageIcon, Layers, Monitor, PenLine, Smartphone, Sparkles, Type, Video as VideoIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -10,17 +10,14 @@ import { ProBadge } from "@/components/shared/pro";
 import { useStartVideo } from "@/components/layout/use-start-video";
 import { usePro, useStore, voiceProfileOf } from "@/lib/store";
 import { streamWrite } from "@/lib/ai/writer";
-import { getStage } from "@/lib/stages";
-import { postableVideos } from "@/lib/posts/from-video";
 import type { PostKind, PostPlatform, VideoFormat } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * The one place to start: a new idea, or one of the advisor's videos, and
- * what to turn it into: a video, posts, or both.
+ * The one place to start: an idea, and what to turn it into: a video,
+ * posts, or both.
  */
 
-type From = "idea" | "video";
 type Make = "video" | "posts" | "both";
 
 const MAKES: { id: Make; icon: typeof VideoIcon; title: string; body: string }[] = [
@@ -34,19 +31,13 @@ const platformsFor = (kind: PostKind): PostPlatform[] => (kind === "image" ? ["l
 export function StartBox() {
   const router = useRouter();
   const start = useStartVideo();
-  const { videos, posts, profile, addPost, updatePost } = useStore();
+  const { posts, profile, addPost, updatePost } = useStore();
   const { isPro } = usePro();
-  const [from, setFrom] = React.useState<From>("idea");
   const [topic, setTopic] = React.useState("");
   const [make, setMake] = React.useState<Make>("video");
   const [format, setFormat] = React.useState<VideoFormat>("short");
   const [kind, setKind] = React.useState<PostKind>("image");
-  const scripted = React.useMemo(() => postableVideos(videos), [videos]);
-  const [videoId, setVideoId] = React.useState("");
-  const [showAll, setShowAll] = React.useState(false);
-  const picked = scripted.find((v) => v.id === videoId) ?? scripted[0];
-  // A video is already a video: from one, the choice is posts.
-  const out: Make = from === "video" ? "posts" : make;
+  const out = make;
   const wantsPosts = out !== "video";
   const wantsVideo = out !== "posts";
 
@@ -67,12 +58,6 @@ export function StartBox() {
 
   const go = (suggest = false) => {
     const about = topic.trim();
-    if (from === "video") {
-      if (!picked) return;
-      if (!isPro) return router.push("/billing");
-      const p = addPost({ kind, topic: picked.title, platforms: platformsFor(kind), fromVideoId: picked.id });
-      return router.push(`/posts/${p.id}?write=1`);
-    }
     if (out === "posts") {
       if (!about) return toast.error("Say what the posts are about first.");
       if (!isPro) return router.push("/billing");
@@ -93,21 +78,7 @@ export function StartBox() {
 
   return (
     <div className="rounded-2xl border border-border bg-card p-2 shadow-[0_1px_2px_rgba(11,31,58,.04),0_12px_32px_-12px_rgba(11,31,58,.12)]">
-      <div className="flex items-center gap-1 px-2 pt-2" role="tablist" aria-label="Start from">
-        {(
-          [
-            ["idea", Lightbulb, "A new idea"],
-            ["video", VideoIcon, "One of your videos"],
-          ] as const
-        ).map(([id, Icon, text]) => (
-          <button key={id} type="button" role="tab" aria-selected={from === id} onClick={() => setFrom(id)} className={cn("flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-[13px] transition-colors", from === id ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>
-            <Icon className="size-3.5" /> {text}
-          </button>
-        ))}
-      </div>
-
-      {from === "idea" ? (
-        <textarea
+      <textarea
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
           onKeyDown={(e) => {
@@ -119,39 +90,11 @@ export function StartBox() {
           rows={2}
           aria-label="Your idea"
           placeholder="What do you want to talk about this week?"
-          className="block w-full resize-none bg-transparent px-4 pt-3 pb-2 font-serif text-xl outline-none placeholder:text-muted-foreground/60 sm:text-2xl"
+          className="block w-full resize-none bg-transparent px-4 pt-4 pb-2 font-serif text-xl outline-none placeholder:text-muted-foreground/60 sm:text-2xl"
         />
-      ) : picked ? (
-        <div className="px-2 pt-2 pb-2">
-          <ul className={cn("space-y-1", showAll && "max-h-[264px] overflow-y-auto pr-1")} role="radiogroup" aria-label="Video">
-            {(showAll ? scripted.slice(0, 40) : scripted.slice(0, 3)).map((v) => {
-              const on = v.id === picked.id;
-              return (
-                <li key={v.id}>
-                  <button type="button" role="radio" aria-checked={on} onClick={() => setVideoId(v.id)} className={cn("flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors", on ? "bg-brass-soft/60" : "hover:bg-muted/60")}>
-                    <span className={cn("mt-1 flex size-4 shrink-0 items-center justify-center rounded-full border", on ? "border-primary bg-primary text-primary-foreground" : "border-border")}>{on && <Check className="size-2.5" />}</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[15px] font-medium">{v.title}</span>
-                      {on && v.script?.hook && v.script.hook.trim() !== v.title.trim() && <span className="mt-0.5 block truncate font-serif text-[14px] text-muted-foreground">“{v.script.hook}”</span>}
-                    </span>
-                    <span className="mt-0.5 shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{getStage(v.stage).label}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          {scripted.length > 3 && (
-            <button type="button" onClick={() => setShowAll((x) => !x)} className="mt-1 ml-3 cursor-pointer text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
-              {showAll ? "Show fewer" : `Show all ${scripted.length} videos`}
-            </button>
-          )}
-        </div>
-      ) : (
-        <p className="px-4 pt-4 pb-3 text-[14px] text-muted-foreground">Once one of your videos has a script, you can turn it into posts from here.</p>
-      )}
-
+      
       <div className="mt-1 border-t border-border px-2 pt-3 pb-2">
-        {from === "idea" && <><div className="mb-2 px-1 text-[12px] font-medium text-muted-foreground">Turn it into</div>
+        <div className="mb-2 px-1 text-[12px] font-medium text-muted-foreground">Turn it into</div>
         <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Turn it into">
           {MAKES.map((m) => {
             const on = out === m.id;
@@ -174,10 +117,9 @@ export function StartBox() {
               </button>
             );
           })}
-        </div></>}
+        </div>
 
-        <div className={cn("flex flex-wrap items-center gap-2", from === "idea" && "mt-3")}>
-          {from === "video" && <span className="px-1 text-[13px] text-muted-foreground">Turn it into posts {!isPro && <ProBadge />}</span>}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {wantsVideo && (
             <ToggleGroup type="single" value={format} onValueChange={(v) => v && setFormat(v as VideoFormat)} className="rounded-full" aria-label="Video shape">
               <ToggleGroupItem value="short" className="rounded-full"><Smartphone /> Short</ToggleGroupItem>
@@ -191,12 +133,12 @@ export function StartBox() {
             </ToggleGroup>
           )}
           <div className="ml-auto flex items-center gap-2">
-            {from === "idea" && out === "video" && (
+            {out === "video" && (
               <Button variant="ghost" className="rounded-full text-muted-foreground" onClick={() => go(true)}>
                 <Sparkles /> Suggest ideas
               </Button>
             )}
-            <Button className="rounded-full px-5" onClick={() => go()} disabled={from === "video" && !picked}>
+            <Button className="rounded-full px-5" onClick={() => go()}>
               {label} <ArrowRight />
             </Button>
           </div>
