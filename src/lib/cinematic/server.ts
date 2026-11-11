@@ -290,7 +290,7 @@ const settle = (job: CinematicJob, requestId: string, outcome: "charged" | "refu
   if (c) c.outcome = outcome;
 };
 
-async function download(url: string, file: string) {
+export async function download(url: string, file: string) {
   const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(180_000) });
   if (!res.ok) throw new Error(`download ${res.status}`);
   await fs.writeFile(file, new Uint8Array(await res.arrayBuffer()));

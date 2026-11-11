@@ -37,4 +37,6 @@ const VIDEO_MODELS: VideoModel[] = [
 ];
 
 export const imageModel = (): ImageModel => IMAGE_MODELS.find((m) => m.id === process.env.CINEMATIC_IMAGE_MODEL?.trim()) ?? IMAGE_MODELS[0];
+/** Every video model Renom can call, for the admin's test runs. */
+export const videoModels = () => VIDEO_MODELS;
 export const videoModel = (): VideoModel => VIDEO_MODELS.find((m) => m.id === process.env.CINEMATIC_VIDEO_MODEL?.trim()) ?? VIDEO_MODELS[0];

@@ -4,6 +4,7 @@ import * as React from "react";
 import { LoaderCircle, TriangleAlert } from "lucide-react";
 import { cn, relativeTime } from "@/lib/utils";
 import { CinematicSetup } from "./cinematic-setup";
+import { CinematicTest } from "./cinematic-test";
 
 /** What cinematic videos cost per advisor and per video, against the Pro plan's price. */
 
@@ -81,6 +82,8 @@ export function CinematicUsage() {
       </div>
 
       <CinematicSetup onChange={load} />
+
+      <CinematicTest />
 
       <div className="grid gap-4 sm:grid-cols-3">
         {cards.map(([l, v]) => (
