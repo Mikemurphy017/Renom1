@@ -45,6 +45,7 @@ export const PLANS: Plan[] = [
     features: [
       "Everything in Starter",
       "Motion graphics and b-roll",
+      "Cinematic AI videos of you, from one headshot",
       "Text and image posts with AI photos",
       "Compliance approval workflow",
       "4K exports",

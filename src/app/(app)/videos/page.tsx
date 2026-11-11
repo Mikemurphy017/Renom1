@@ -15,7 +15,8 @@ import { PageContainer, EmptyState } from "@/components/shared/page";
 import { VideoThumb } from "@/components/shared/video-thumb";
 import { StepDots } from "@/components/shared/step-dots";
 import { useShell } from "@/components/layout/shell-context";
-import { useStore } from "@/lib/store";
+import { useStore, usePro } from "@/lib/store";
+import { ProBadge } from "@/components/shared/pro";
 import { getStage } from "@/lib/stages";
 import { videoTotals } from "@/lib/selectors";
 import type { Video } from "@/lib/types";
@@ -56,6 +57,7 @@ function statusLine(v: Video) {
 export default function VideosPage() {
   const { videos, requireApproval } = useStore();
   const { openNewVideo } = useShell();
+  const { isPro } = usePro();
   const [filter, setFilter] = React.useState<Filter>("all");
   const [q, setQ] = React.useState("");
   // Deep link from "Save as draft": /videos?filter=drafts
@@ -103,7 +105,7 @@ export default function VideosPage() {
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="font-serif text-[40px] leading-tight tracking-tight">Videos</h1>
           <UploadFinishedButton className="h-9 rounded-full" />
-          <Button variant="outline" className="h-9 rounded-full" asChild><Link href="/cinematic"><Film /> Cinematic video</Link></Button>
+          <Button variant="outline" className="h-9 rounded-full" asChild><Link href="/cinematic"><Film /> Cinematic video {!isPro && <ProBadge />}</Link></Button>
         </div>
         {videos.length > 0 && <div className="flex w-full items-center gap-2 sm:w-auto">
           <div className="relative flex-1 sm:w-60 sm:flex-none">
