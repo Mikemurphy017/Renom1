@@ -5,6 +5,7 @@ import { ProUpsell } from "@/components/shared/pro";
 import * as React from "react";
 import Link from "next/link";
 import { ArrowLeft, CalendarClock, Check, CircleCheck, Copy, Download, ExternalLink, ImagePlus, LayoutTemplate, LoaderCircle, Plug, Send, Sparkles, TriangleAlert, Type, Image as ImageIcon, Wand2 } from "lucide-react";
+import { celebrate } from "@/lib/celebrate";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -425,7 +426,7 @@ function PublishStep({ post, update, n }: { post: PostDraft; update: (patch: Par
         scheduleAt: at ? at.toISOString() : undefined,
       });
       setPosts((cur) => [...r.posts, ...(cur ?? [])]);
-      if (r.posts.length) toast.success(at ? `Scheduled for ${fmtDateTime(at.toISOString())}` : "Posting now", { description: r.posts.map((p) => p.channelName).join(", ") });
+      if (r.posts.length) celebrate({ kind: at ? "scheduled" : "now", what: "post", where: r.posts.map((p) => p.channelName).join(", "), when: at ? fmtDateTime(at.toISOString()) : undefined });
       for (const e of r.errors) toast.error(`${getPlatform(e.platform).label}: ${e.error}`);
     } catch (e) {
       toast.error((e as Error).message);
@@ -519,7 +520,7 @@ function PublishStep({ post, update, n }: { post: PostDraft; update: (patch: Par
           )}
 
           {post.status !== "published" && (
-            <button type="button" className="cursor-pointer text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline" onClick={() => update({ status: "published", publishedAt: new Date().toISOString() })}>
+            <button type="button" className="cursor-pointer text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline" onClick={() => { update({ status: "published", publishedAt: new Date().toISOString() }); celebrate({ kind: "manual", what: "post" }); }}>
               I posted it myself: mark as posted
             </button>
           )}

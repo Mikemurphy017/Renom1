@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { CalendarClock, CircleCheck, Clock, LoaderCircle, MessageSquareWarning, Send, Undo2, UsersRound } from "lucide-react";
+import { celebrate } from "@/lib/celebrate";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -157,7 +158,7 @@ function RequestForm({ video, platforms, copies, tagline, previous, onDone, onCa
         timing: when === "at" ? { kind: "at", at: new Date(`${date}T${time}`).toISOString() } : { kind: "asap" },
         note: note.trim() || undefined,
       });
-      toast.success("Sent to the team", { description: "You’ll see it here once it’s scheduled." });
+      celebrate({ kind: "team", what: "video" });
       onDone(r);
     } catch (e) {
       toast.error((e as Error).message);

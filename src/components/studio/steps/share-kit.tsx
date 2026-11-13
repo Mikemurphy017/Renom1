@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Check, CircleCheck, Copy, Download, Film, ImageDown } from "lucide-react";
+import { celebrate } from "@/lib/celebrate";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PlatformIcon } from "@/components/shared/platform-icon";
@@ -70,7 +71,7 @@ export function ShareKit({ video, platforms, copies, tagline }: { video: Video; 
       ],
     });
     setPosted(true);
-    toast.success("Marked as posted", { description: "The captions and disclosure are in your archive." });
+    celebrate({ kind: "manual", what: "video" });
   };
 
   return (

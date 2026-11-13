@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { CalendarClock, CircleCheck, ExternalLink, LoaderCircle, Plug, Send, TriangleAlert } from "lucide-react";
+import { celebrate } from "@/lib/celebrate";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -112,7 +113,7 @@ export function DirectPost({ video, platforms, copies }: { video: Video; platfor
         scheduleAt: at ? at.toISOString() : undefined,
       });
       setPosts((cur) => [...r.posts, ...(cur ?? [])]);
-      if (r.posts.length) toast.success(at ? `Scheduled for ${fmtDateTime(at.toISOString())}` : "Posting now", { description: r.posts.map((p) => p.channelName).join(", ") });
+      if (r.posts.length) celebrate({ kind: at ? "scheduled" : "now", what: "video", where: r.posts.map((p) => p.channelName).join(", "), when: at ? fmtDateTime(at.toISOString()) : undefined });
       for (const e of r.errors) toast.error(`${getPlatform(e.platform).label}: ${e.error}`);
     } catch (e) {
       toast.error((e as Error).message);

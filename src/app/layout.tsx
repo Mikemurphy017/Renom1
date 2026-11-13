@@ -5,6 +5,7 @@ import { StoreProvider } from "@/lib/store";
 import { BRAND, brandCss } from "@/lib/brand";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { Celebration } from "@/components/shared/celebration";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <TooltipProvider delayDuration={200}>
               {children}
               <Toaster />
+              <Celebration />
             </TooltipProvider>
           </StoreProvider>
         </ThemeProvider>
