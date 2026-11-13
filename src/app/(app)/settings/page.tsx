@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PageContainer } from "@/components/shared/page";
 import { HeadshotPicker } from "@/components/settings/headshot-picker";
 import { MediaLibrary } from "@/components/settings/media-library";
+import { AiVoiceSection } from "@/components/settings/ai-voice";
 import { AccountSection } from "@/components/settings/account-section";
 import { PublishingSection } from "@/components/settings/publishing-section";
 import { CalendarLink } from "@/components/settings/calendar-link";
@@ -27,6 +28,7 @@ import { BRAND } from "@/lib/brand";
 
 const SECTIONS = [
   ["voice", "Your voice"],
+  ["ai-voice", "AI voice"],
   ["covers", "Covers"],
   ["library", "B-roll & music"],
   ["disclosures", "Disclosures"],
@@ -161,6 +163,10 @@ export default function SettingsPage() {
             <Field label="Headshots" hint="Used on your thumbnails when a frame from the video won’t do">
               <HeadshotPicker />
             </Field>
+          </Section>
+
+          <Section id="ai-voice" title="Your AI voice" desc="Record a minute or two of you talking, once. Renom makes a copy of your voice that can read your scripts. You can remake or delete it anytime.">
+            <AiVoiceSection />
           </Section>
 
           <Section id="covers" title="Covers" desc="What goes on your thumbnails. The AI photo set turns your headshots into a range of photos of you; or keep it to real photos, or words only.">

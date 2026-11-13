@@ -17,8 +17,9 @@ import type { AdvisorProfile } from "@/lib/types";
 import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { uploadImage } from "@/lib/media/upload";
+import { AiVoiceSection } from "@/components/settings/ai-voice";
 
-const STEPS = ["welcome", "name", "practice", "audience", "voice", "beliefs", "photo", "compliance", "connect", "done"] as const;
+const STEPS = ["welcome", "name", "practice", "audience", "voice", "beliefs", "photo", "speaking", "compliance", "connect", "done"] as const;
 type Step = (typeof STEPS)[number];
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -110,6 +111,7 @@ export default function WelcomePage() {
     voice: true,
     beliefs: true,
     photo: !photoBusy,
+    speaking: true,
     compliance: !!disclosure.trim() && (!requireApproval || !!reviewer.trim()),
     connect: true,
     done: true,
@@ -251,6 +253,14 @@ export default function WelcomePage() {
               </>
             )}
 
+            {step === "speaking" && (
+              <>
+                <h1 className="font-serif text-[40px] leading-tight tracking-tight">Clone your voice.</h1>
+                <p className="-mt-4 text-[15px] text-muted-foreground">Read the passage below for a minute or two, once. {BRAND.name} makes an AI copy of your voice that can read your scripts. You can do this later in Settings.</p>
+                <AiVoiceSection />
+              </>
+            )}
+
             {step === "compliance" && (
               <>
                 <h1 className="font-serif text-[40px] leading-tight tracking-tight">Keep compliance happy.</h1>
@@ -306,7 +316,7 @@ export default function WelcomePage() {
             <Button variant="ghost" className="rounded-full" onClick={() => go(i - 1)}><ArrowLeft /> Back</Button>
           ) : <span />}
           <div className="flex items-center gap-2">
-            {(step === "voice" || step === "beliefs" || step === "photo") && <Button variant="ghost" className="rounded-full text-muted-foreground" onClick={() => go(i + 1)}>Skip for now</Button>}
+            {(step === "voice" || step === "beliefs" || step === "photo" || step === "speaking") && <Button variant="ghost" className="rounded-full text-muted-foreground" onClick={() => go(i + 1)}>Skip for now</Button>}
             {step === "done" ? (
               <Button size="lg" className="rounded-full px-7" onClick={finish}>Make my first video <ArrowRight /></Button>
             ) : (
