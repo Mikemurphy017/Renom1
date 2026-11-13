@@ -117,6 +117,14 @@ test("the voice is converted to MP3 and cloned, then becomes ready", async () =>
   assert.equal(done.ready, false, "not ready without the twin");
 });
 
+test("an iPhone voice memo (.m4a) is converted and cloned too", async () => {
+  const ffmpeg = (await import("ffmpeg-static")).default as unknown as string;
+  execFileSync(ffmpeg, ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=200:duration=45", "-c:a", "aac", path.join(dir, "memo.m4a")]);
+  const v = await twin.setVoice(user, { bytes: new Uint8Array(readFileSync(path.join(dir, "memo.m4a"))), name: "memo.m4a" }, undefined, "yes");
+  assert.equal(v.voice?.seconds, 45);
+  assert.match(mock.calls.filter((c) => c.url === "/v3/assets").at(-1)!.body, /audio\/mpeg/);
+});
+
 test("a too-short voice recording is turned down before anything is sent", async () => {
   const ffmpeg = (await import("ffmpeg-static")).default as unknown as string;
   execFileSync(ffmpeg, ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=220:duration=8", path.join(dir, "short.webm")]);

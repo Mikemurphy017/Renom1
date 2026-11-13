@@ -61,6 +61,10 @@ const PASSAGE = [
   "The honest answer is that it depends, and that’s exactly why it’s worth sitting down together. Taxes, timing and the way you actually want to live all matter more than any single fund.",
   "I like to start simple. Where are you today, where do you want to be, and what keeps you up at night? From there, we build something you can follow.",
 ];
+const AUDIO_EXT = /\.(mp3|m4a|wav|aac|ogg|oga|opus|webm|flac|mp4|caf|aiff?)$/i;
+const AUDIO_ACCEPT = "audio/*,.mp3,.m4a,.wav,.aac,.ogg,.opus,.webm,.flac,.mp4,.caf,.aif,.aiff";
+// Some browsers report voice memos (.m4a) as video/mp4 or with no type at all: trust the extension too.
+const isAudioFile = (f: File) => f.type.startsWith("audio/") || AUDIO_EXT.test(f.name) || (f.type === "video/mp4" && /\.m4a$/i.test(f.name));
 const mediaIdOf = (url?: string) => /\/api\/media\/(img[a-f0-9]{18})/.exec(url ?? "")?.[1];
 
 function pickMime() {
@@ -165,7 +169,7 @@ export function AiTwinSection() {
   };
   const pickAudio = async (f?: File | null) => {
     if (!f) return;
-    if (!f.type.startsWith("audio/")) return toast.error("That isn’t an audio file.");
+    if (!isAudioFile(f)) return toast.error("That isn’t an audio file.", { description: "Use an MP3, M4A, WAV, AAC, OGG, WebM or FLAC recording." });
     const url = URL.createObjectURL(f);
     const seconds = await new Promise<number>((res) => {
       const a = new Audio();
@@ -259,6 +263,7 @@ export function AiTwinSection() {
 
   const needsConsentTick = !twin.voice && !twin.video && !twin.photos.length;
   const consentOk = !needsConsentTick || consent;
+  const tickFirst = !consentOk && <span className="text-[12px] text-destructive">Tick the box above to agree first.</span>;
 
   return (
     <div className="space-y-3">
@@ -266,6 +271,16 @@ export function AiTwinSection() {
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-success/40 bg-success-soft/40 px-4 py-3 text-[13px]"><Check className="size-4 text-success" /> <span className="font-medium">Your AI twin is ready.</span> <span className="text-muted-foreground">Choose “AI video” when you record, or let your plan make them.</span></div>
       ) : (
         <p className="text-[13px] text-muted-foreground">Three things, once: your voice, a video of you talking, and a few photos. Then any script becomes a video of you, in your voice.</p>
+      )}
+
+      {needsConsentTick && (
+        <label className={cn("flex cursor-pointer items-start gap-2.5 rounded-xl border p-4 text-[13px]", consent ? "border-success/40 bg-success-soft/30" : "border-primary/50 bg-brass-soft/40")}>
+          <Checkbox checked={consent} onCheckedChange={(v) => setConsent(v === true)} className="mt-0.5" aria-label="I agree" />
+          <span>
+            <span className="block font-medium">Before you start</span>
+            <span className="mt-0.5 block text-muted-foreground">{state.consentText} I can delete it at any time.</span>
+          </span>
+        </label>
       )}
 
       <Step n={1} title="Your voice" hint="Read the passage for about a minute, in a quiet room, the way you’d talk to a client." status={<Status part={twin.voice?.status} label={twin.voice?.status === "ready" ? "Cloned" : undefined} />}>
@@ -280,13 +295,14 @@ export function AiTwinSection() {
             <Button size="sm" variant={twin.voice?.status === "ready" ? "outline" : "default"} onClick={startRec} disabled={!!busy}><Mic /> {twin.voice ? "Record again" : "Record my voice"}</Button>
           )}
           <Button size="sm" variant="outline" onClick={() => audioInput.current?.click()} disabled={recording || !!busy}><Upload /> Upload audio</Button>
-          <input ref={audioInput} type="file" accept="audio/*" className="hidden" onChange={(e) => { void pickAudio(e.target.files?.[0]); e.target.value = ""; }} />
+          <input ref={audioInput} type="file" accept={AUDIO_ACCEPT} className="hidden" onChange={(e) => { void pickAudio(e.target.files?.[0]); e.target.value = ""; }} />
         </div>
         {clip && (
           <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border px-2.5 py-1.5 text-[12px]">
             <audio src={clip.url} controls className="h-8 min-w-0 flex-1" />
             <span className={cn("tnum", clip.seconds < 30 ? "text-destructive" : "text-muted-foreground")}>{fmtDuration(clip.seconds)}{clip.seconds < 30 ? " · at least 0:30" : ""}</span>
             <Button size="sm" onClick={sendVoice} disabled={!!busy || clip.seconds < 30 || !consentOk}>{busy === "voice" ? <LoaderCircle className="animate-spin" /> : <Check />} Use this recording</Button>
+            {clip.seconds >= 30 && tickFirst}
           </div>
         )}
       </Step>
@@ -297,6 +313,7 @@ export function AiTwinSection() {
           <Button size="sm" variant={twin.video ? "outline" : "default"} onClick={() => videoInput.current?.click()} disabled={!!busy || !consentOk}>{busy === "video" ? <LoaderCircle className="animate-spin" /> : <VideoIcon />} {twin.video ? "Use a different video" : "Upload my video"}</Button>
           <input ref={videoInput} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" className="hidden" onChange={(e) => { void sendVideo(e.target.files?.[0]); e.target.value = ""; }} />
           {uploadPct && <span className="text-[12px] text-muted-foreground">{uploadPct}</span>}
+          {!twin.video && tickFirst}
         </div>
         {twin.video && (
           <div className={cn("mt-3 rounded-lg border px-3 py-2.5 text-[13px]", twin.video.consent === "accepted" ? "border-success/30 bg-success-soft/30" : twin.video.consent === "rejected" ? "border-destructive/30 bg-destructive/5" : "border-primary/40 bg-brass-soft/40")}>
@@ -337,17 +354,12 @@ export function AiTwinSection() {
         {picked && (
           <Button size="sm" className="mt-3" onClick={sendPhotos} disabled={!!busy || !selection.length || !consentOk}>{busy === "photos" ? <LoaderCircle className="animate-spin" /> : <Check />} Use these {selection.length} {selection.length === 1 ? "photo" : "photos"}</Button>
         )}
+        {picked && selection.length > 0 && <div className="mt-1.5">{tickFirst}</div>}
         {!twin.video && twin.photos.length > 0 && <p className="mt-2 text-[12px] text-muted-foreground">Photos are added once your video is uploaded.</p>}
       </Step>
 
       {twin.video?.status === "ready" && twin.video.consent === "accepted" && <TwinLooks twin={twin} onTwin={set} />}
 
-      {needsConsentTick && (
-        <label className="flex items-start gap-2.5 text-[13px]">
-          <Checkbox checked={consent} onCheckedChange={(v) => setConsent(v === true)} className="mt-0.5" />
-          <span className="text-muted-foreground">{state.consentText} I can delete it at any time.</span>
-        </label>
-      )}
       {(twin.voice || twin.video) && (
         <button type="button" onClick={removeAll} disabled={!!busy} className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] text-muted-foreground hover:text-destructive"><Trash2 className="size-3.5" /> Delete my AI twin</button>
       )}
