@@ -81,7 +81,7 @@ export function ThisWeekCard() {
                   <div className="truncate text-[14px] font-medium">{item.title}</div>
                   <div className={cn("text-[12px]", status.key === "overdue" ? "text-destructive" : "text-muted-foreground")}>{status.label}</div>
                 </div>
-                <Button size="sm" variant={status.key === "overdue" ? "default" : "outline"} className="shrink-0 rounded-full" onClick={() => open(item)}>{item.videoId || item.postId ? "Continue" : "Start"}</Button>
+                <Button size="sm" variant={status.key === "overdue" ? "default" : "outline"} className="shrink-0 rounded-full" onClick={() => open(item)}>{/film it|Film today/.test(status.label) ? "Film it" : status.key === "ready" || /ready to post/.test(status.label) ? "Review" : item.videoId || item.postId ? "Continue" : "Start"}</Button>
               </li>
             );
           })}

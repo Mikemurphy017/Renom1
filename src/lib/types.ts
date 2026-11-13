@@ -203,6 +203,8 @@ export interface PostDraft {
   imageIdea?: string;
   /** The headline for this post's graphic (suggested by Claude, edited by the advisor). */
   graphicHeadline?: string;
+  /** When the plan has it going out (local date and time): the default when scheduling. */
+  plannedFor?: string;
   status: "draft" | "scheduled" | "published";
   scheduledFor?: string;
   publishedAt?: string;
@@ -242,6 +244,8 @@ export interface AdvisorProfile {
   ideaLog?: { title: string; subject?: string; angle?: string }[];
   /** How much the advisor means to publish, and when they record and post (see lib/plan). */
   goals?: PostingGoals;
+  /** How the content plan makes AI videos, and when the advisor consented to them. */
+  planAi?: { settingId: string; voiceId: string; aiLabel: boolean; maxWords: number; consentAt: string };
   /** The advisor's time zone (IANA, from their browser), so reminders arrive on their record day. */
   timezone?: string;
 }
@@ -309,5 +313,12 @@ export interface PlanItem {
   /** Set once it's started: the video or post made from it. */
   videoId?: string;
   postId?: string;
+  /** Videos: filmed by the advisor, or made as an AI video. Unset: not decided yet. */
+  make?: "film" | "ai";
+  /** The AI video being made for it. */
+  aiJobId?: string;
+  /** Renom getting it ready (writing, the picture, the AI video), or what went wrong. */
+  prep?: "working" | "done" | "error";
+  prepError?: string;
   createdAt: string;
 }

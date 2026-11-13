@@ -76,6 +76,11 @@ export interface CinematicJob {
     aiLabel: boolean;
     /** The studio video this was made for, when it was started from the Record step. */
     videoId?: string;
+    /**
+     * Made by the content plan: the scene isn't stopped for approval; the
+     * advisor approves the finished video, with its post, instead.
+     */
+    autoApprove?: boolean;
   };
   consent: { at: string; text: string };
   still?: Step & { mediaId?: string };
@@ -171,6 +176,7 @@ export interface CreateInput {
   aiLabel?: unknown;
   consent?: unknown;
   videoId?: unknown;
+  autoApprove?: unknown;
 }
 
 export async function createJob(user: User, b: CreateInput): Promise<CinematicJob> {
@@ -205,6 +211,7 @@ export async function createJob(user: User, b: CreateInput): Promise<CinematicJo
       aspect: b.aspect === "16:9" ? "16:9" : "9:16",
       aiLabel: b.aiLabel === true,
       videoId: typeof b.videoId === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(b.videoId) ? b.videoId : undefined,
+      autoApprove: b.autoApprove === true ? true : undefined,
     },
     consent: { at: now(), text: CONSENT_TEXT },
     costs: [],
@@ -377,6 +384,11 @@ async function step(job: CinematicJob) {
       job.still.mediaId = mediaId;
       settle(job, job.still.requestId, "charged");
       go(job, "still_ready");
+      // From the content plan: film straight away; the advisor approves the finished video.
+      if (job.inputs.autoApprove) {
+        go(job, "approve");
+        job.video = undefined;
+      }
       await save(job);
     } finally {
       await fs.rm(dir, { recursive: true, force: true }).catch(() => {});

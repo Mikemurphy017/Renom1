@@ -340,3 +340,10 @@ test("a video started from the Record step remembers which video it's for and it
   assert.deepEqual([v.width, v.height], [360, 640]);
   assert.equal(pipeline.view((await pipeline.getJob((await start("ok", { videoId: "../../etc" })).id))!).videoId, undefined);
 });
+
+test("a video made by the content plan films without stopping for scene approval", async () => {
+  const { id } = await start("ok", { videoId: "vplan123abc", autoApprove: true });
+  const done = await settle(id, (st) => st === "ready" || st === "approval" || st === "failed");
+  assert.equal(done.status, "ready");
+  assert.equal(pipeline.view(done).videoId, "vplan123abc");
+});

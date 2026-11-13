@@ -9,7 +9,7 @@ import { cn, relativeTime } from "@/lib/utils";
 
 interface Notice {
   id: string;
-  kind: "record_day";
+  kind: "record_day" | "film_day";
   title: string;
   body: string;
   href: string;

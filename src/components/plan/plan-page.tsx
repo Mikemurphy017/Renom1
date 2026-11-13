@@ -21,10 +21,14 @@ import { Meter, PaceBadge, paceMessage } from "./this-week";
 import { useAccountability, useOpenPlanItem } from "./use-plan";
 import { ScriptAheadDialog } from "./script-ahead";
 import { ClipLongDialog } from "./clip-long";
+import { PrepareDialog, type PrepareChoice } from "./prepare-dialog";
+import { autopilotProgress, runAutopilot, subscribeAutopilot, type AutopilotOptions } from "@/lib/autopilot";
 
 const STATUS_STYLE: Record<ItemStatus["key"], string> = {
   posted: "border-success/30 bg-success-soft text-success",
   scheduled: "border-success/30 bg-success-soft/60 text-success",
+  ready: "border-primary bg-primary/12 font-medium text-foreground",
+  making: "border-primary/40 border-dashed bg-brass-soft/40 text-foreground",
   in_progress: "border-primary/40 bg-brass-soft/70 text-foreground",
   planned: "border-border bg-card text-foreground",
   overdue: "border-destructive/40 bg-destructive/8 text-destructive",
@@ -33,7 +37,10 @@ const STATUS_STYLE: Record<ItemStatus["key"], string> = {
 type Shipped = { id: string; kind: "video" | "post"; title: string; date: string; href: string; scheduled: boolean };
 
 export function PlanPage() {
-  const { videos, posts, plan, profile, updateProfile, addPlanItems, updatePlanItem, deletePlanItem } = useStore();
+  const { videos, posts, plan, profile, updateProfile, addPlanItems, updatePlanItem, deletePlanItem, addVideo, updateVideo, addPost, updatePost } = useStore();
+  const prog = React.useSyncExternalStore(subscribeAutopilot, autopilotProgress, autopilotProgress);
+  // "month": plan the open slots and get them ready; otherwise these planned items.
+  const [preparing, setPreparing] = React.useState<null | "month" | PlanItem[]>(null);
   const params = useSearchParams();
   const [month, setMonth] = React.useState(() => startOfMonth(new Date()));
   const acc = useAccountability(month);
@@ -78,31 +85,66 @@ export function PlanPage() {
   const monthItems = plan.filter((p) => parseYmd(p.date).getMonth() === first.getMonth() && parseYmd(p.date).getFullYear() === first.getFullYear()).sort((a, b) => a.date.localeCompare(b.date));
   const slots = openSlots(month, goals, plan, videos, posts);
 
-  const planMonth = async () => {
-    if (!slots.length) return toast("This month is fully planned", { description: "Every slot your goal calls for has something in it. Add more by clicking a day." });
+  // The latest plan and studio, for work that finishes after this render.
+  const live = React.useRef({ videos, posts, plan, profile });
+  live.current = { videos, posts, plan, profile };
+  const api = () => ({ ...live.current, addVideo, updateVideo, addPost, updatePost, updatePlanItem });
+
+  /** Planned but not started: what "Get it ready" picks up. */
+  const unprepared = monthItems.filter((p) => !p.prep && !p.videoId && !p.postId && p.date >= today);
+
+  const optionsFrom = (c: PrepareChoice): AutopilotOptions => {
+    if (c.make === "ai" && c.ai) updateProfile({ planAi: { settingId: c.ai.settingId, voiceId: c.ai.voiceId, aiLabel: c.ai.aiLabel, maxWords: c.ai.maxWords, consentAt: new Date().toISOString() } });
+    return { make: c.make, ai: c.ai };
+  };
+
+  /** Topics for the open slots, then everything written, pictured and queued. */
+  const planAndPrepare = async (c: PrepareChoice) => {
+    setPreparing(null);
     const take = slots.slice(0, 16);
-    const existing = [
-      ...videos.slice(0, 120).map((v) => ({ title: v.title, subject: v.subject, angle: v.angle })),
-      ...plan.map((p) => ({ title: p.title, subject: p.subject, angle: p.angle })),
-      ...(profile.ideaLog ?? []).slice(-150),
-    ];
-    try {
-      const out = await write({ task: "ideas", profile: voiceProfileOf(profile), mode: "evergreen", format: "short", count: take.length, existing, instruction: `This is the advisor's content plan for ${first.toLocaleDateString("en-US", { month: "long", year: "numeric" })}. Where the season matters (tax deadlines, open enrollment, year-end), let a few ideas use it.` });
-      const ideas = out.ideas;
-      const made = addPlanItems(
-        take.slice(0, ideas.length).map((s, i) => {
-          const idea = ideas[i];
-          return { date: s.date, kind: s.kind, title: idea.title.replace(/^[“"]|[”"]$/g, ""), subject: idea.subject, angle: idea.angle, category: idea.category as Category, outline: idea.outline, ...(s.kind === "video" ? { format: "short" as VideoFormat } : { postKind: "text" as const }) };
-        })
-      );
-      const titles = new Set((profile.ideaLog ?? []).map((x) => x.title));
-      updateProfile({ ideaLog: [...(profile.ideaLog ?? []), ...ideas.filter((i) => !titles.has(i.title)).map(({ title, subject, angle }) => ({ title, subject, angle }))].slice(-300) });
-      const left = slots.length - made.length;
-      toast.success(`Planned ${made.length} ${made.length === 1 ? "slot" : "slots"}`, { description: left > 0 ? `${left} still open. Run Plan my month again to fill them.` : "Every slot this month has a topic. Open any one to start it." });
-    } catch (e) {
-      if ((e as Error).name === "AbortError") return;
-      toast.error("Couldn’t plan the month", { description: (e as Error).message });
+    let made: PlanItem[] = [];
+    if (take.length) {
+      const existing = [
+        ...videos.slice(0, 120).map((v) => ({ title: v.title, subject: v.subject, angle: v.angle })),
+        ...plan.map((p) => ({ title: p.title, subject: p.subject, angle: p.angle })),
+        ...(profile.ideaLog ?? []).slice(-150),
+      ];
+      try {
+        const out = await write({ task: "ideas", profile: voiceProfileOf(profile), mode: "evergreen", format: "short", count: take.length, existing, instruction: `This is the advisor's content plan for ${first.toLocaleDateString("en-US", { month: "long", year: "numeric" })}. Where the season matters (tax deadlines, open enrollment, year-end), let a few ideas use it.` });
+        const ideas = out.ideas;
+        made = addPlanItems(
+          take.slice(0, ideas.length).map((sl, i) => {
+            const idea = ideas[i];
+            return { date: sl.date, kind: sl.kind, title: idea.title.replace(/^[“"]|[”"]$/g, ""), subject: idea.subject, angle: idea.angle, category: idea.category as Category, outline: idea.outline, ...(sl.kind === "video" ? { format: "short" as VideoFormat, make: c.make } : { postKind: c.postKind }) };
+          })
+        );
+        const titles = new Set((profile.ideaLog ?? []).map((x) => x.title));
+        updateProfile({ ideaLog: [...(profile.ideaLog ?? []), ...ideas.filter((i) => !titles.has(i.title)).map(({ title, subject, angle }) => ({ title, subject, angle }))].slice(-300) });
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return;
+        toast.error("Couldn’t plan the month", { description: (e as Error).message });
+        return;
+      }
     }
+    const items = [...made, ...unprepared.map((p) => ({ ...p, ...(p.kind === "video" ? { make: p.make ?? c.make } : { postKind: p.postKind ?? c.postKind }) }))];
+    for (const p of unprepared) updatePlanItem(p.id, p.kind === "video" ? { make: p.make ?? c.make } : { postKind: p.postKind ?? c.postKind });
+    if (!items.length) return toast("This month is fully planned and ready", { description: "Every slot your goal calls for has something in it." });
+    toast.success(`Getting ${items.length} ${items.length === 1 ? "item" : "items"} ready`, { description: "Writing, pictures and videos. Keep using the app; they land on the calendar as they finish." });
+    await prepare(items, optionsFrom(c));
+  };
+
+  const prepare = async (items: PlanItem[], opts: AutopilotOptions) => {
+    await runAutopilot(items, api(), opts);
+    const p = autopilotProgress();
+    if (p.failed) toast.error(`${p.failed} ${p.failed === 1 ? "item needs" : "items need"} attention`, { description: "They’re marked on the calendar. Open one to see why and try again." });
+    else toast.success("Your plan is ready", { description: opts.make === "ai" ? "Posts are ready to review. AI videos land for approval as they finish." : "Posts are ready to review, videos are scripted for the day you film." });
+  };
+
+  /** Try one item again with the choices it was made with. */
+  const retry = (it: PlanItem) => {
+    const ai = profile.planAi;
+    if (it.kind === "video" && it.make === "ai" && !ai) return setPreparing([it]);
+    void prepare([{ ...it, prep: undefined }], { make: it.make ?? "film", ai: ai ? { settingId: ai.settingId, voiceId: ai.voiceId, aiLabel: ai.aiLabel, maxWords: ai.maxWords, consent: true } : undefined });
   };
 
   const monthLabel = first.toLocaleDateString("en-US", { month: "long", year: "numeric" });
@@ -127,9 +169,19 @@ export function PlanPage() {
           <Button variant="outline" className="rounded-full" onClick={() => setGoalsOpen(true)}><Settings2 /> Goals</Button>
           <Button variant="outline" className="rounded-full" onClick={() => setClipping(true)}><Scissors /> Clip a long video</Button>
           <Button variant="outline" className="rounded-full" onClick={() => setScripting(true)}><PenTool /> Write ahead</Button>
-          <Button className="rounded-full" onClick={planMonth} disabled={busy}>{busy ? <><LoaderCircle className="animate-spin" /> {status ?? "Planning…"}</> : <><Sparkles /> Plan my month{slots.length ? ` (${Math.min(16, slots.length)})` : ""}</>}</Button>
+          <Button className="rounded-full" onClick={() => setPreparing("month")} disabled={busy || prog.running}>{busy ? <><LoaderCircle className="animate-spin" /> {status ?? "Planning…"}</> : <><Sparkles /> Plan my month{slots.length + unprepared.length ? ` (${Math.min(16, slots.length) + unprepared.length})` : ""}</>}</Button>
         </div>
       </div>
+
+      {prog.running && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-brass-soft/50 px-4 py-3 text-[13px]" role="status">
+          <LoaderCircle className="size-4 animate-spin text-primary" />
+          <span className="min-w-0 flex-1">
+            Getting your plan ready: <span className="font-medium tnum">{prog.done} of {prog.total}</span> done{prog.current ? <> · now <span className="italic">“{prog.current}”</span></> : null}. It keeps going while you use the app.
+          </span>
+          <div className="h-1.5 w-32 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${prog.total ? (prog.done / prog.total) * 100 : 0}%` }} /></div>
+        </div>
+      )}
 
       {!acc.hasGoals && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-brass-soft/50 px-4 py-3 text-[13px]">
@@ -207,7 +259,7 @@ export function PlanPage() {
           })}
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border px-4 py-2.5 text-[11px] text-muted-foreground">
-          {[["planned", "Planned"], ["in_progress", "In progress"], ["scheduled", "Scheduled / posted"], ["overdue", "Missed or late"]].map(([k, l]) => (
+          {[["planned", "Planned"], ["making", "Being made"], ["ready", "Ready: review, post or film"], ["in_progress", "In progress"], ["scheduled", "Scheduled / posted"], ["overdue", "Late or needs attention"]].map(([k, l]) => (
             <span key={k} className="inline-flex items-center gap-1.5"><span className={cn("size-2.5 rounded-sm border", STATUS_STYLE[k as ItemStatus["key"]])} />{l}</span>
           ))}
           <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm border border-dashed border-border" />Open slot your goal calls for</span>
@@ -240,11 +292,32 @@ export function PlanPage() {
       <GoalsDialog open={goalsOpen} onOpenChange={setGoalsOpen} goals={goals} onSave={(g) => { updateProfile({ goals: g }); toast.success("Goal saved", { description: `${g.videosPerWeek} ${g.videosPerWeek === 1 ? "video" : "videos"} and ${g.postsPerWeek} ${g.postsPerWeek === 1 ? "post" : "posts"} a week.` }); }} />
       <ScriptAheadDialog open={scripting} onOpenChange={setScripting} month={month} />
       <ClipLongDialog open={clipping} onOpenChange={setClipping} />
+      <PrepareDialog
+        open={!!preparing}
+        onOpenChange={(v) => !v && setPreparing(null)}
+        videos={preparing === "month" ? slots.slice(0, 16).filter((x) => x.kind === "video").length + unprepared.filter((x) => x.kind === "video").length : (preparing ?? []).filter((x) => x.kind === "video").length}
+        posts={preparing === "month" ? slots.slice(0, 16).filter((x) => x.kind === "post").length + unprepared.filter((x) => x.kind === "post").length : (preparing ?? []).filter((x) => x.kind === "post").length}
+        title={preparing === "month" ? `Plan ${first.toLocaleDateString("en-US", { month: "long" })} for me` : "Get it ready"}
+        description={preparing === "month" ? "We pick a topic for every slot your goal calls for, write every post with its picture, and script every video. You just review, post, and film or approve." : "We write it and get it ready for you to review."}
+        busy={busy || prog.running}
+        onGo={(c) => {
+          if (preparing === "month") void planAndPrepare(c);
+          else if (preparing) {
+            const items = preparing.map((p) => ({ ...p, prep: undefined, ...(p.kind === "video" ? { make: c.make } : {}) }));
+            for (const p of items) if (p.kind === "video") updatePlanItem(p.id, { make: c.make });
+            setPreparing(null);
+            void prepare(items, optionsFrom(c));
+          }
+        }}
+      />
       <AddDialog date={adding} onClose={() => setAdding(null)} onAdd={(it) => { addPlanItems([it]); setAdding(null); }} />
       <ItemDialog item={editing ? (plan.find((p) => p.id === editing.id) ?? null) : null} onClose={() => setEditing(null)} status={editing ? itemStatus(plan.find((p) => p.id === editing.id) ?? editing, videos, posts) : null}
         onSave={(patch) => editing && updatePlanItem(editing.id, patch)}
         onDelete={() => { if (editing) { deletePlanItem(editing.id); setEditing(null); toast("Removed from the plan"); } }}
-        onOpen={() => { if (editing) { const it = plan.find((p) => p.id === editing.id) ?? editing; setEditing(null); open(it); } }} />
+        onOpen={() => { if (editing) { const it = plan.find((p) => p.id === editing.id) ?? editing; setEditing(null); open(it); } }}
+        onRetry={() => { if (editing) { const it = plan.find((p) => p.id === editing.id) ?? editing; setEditing(null); retry(it); } }}
+        onMakeAi={() => { if (editing) { const it = plan.find((p) => p.id === editing.id) ?? editing; setEditing(null); setPreparing([it]); } }}
+        working={prog.running} />
     </PageContainer>
   );
 }
@@ -377,7 +450,7 @@ function AddDialog({ date, onClose, onAdd }: { date: string | null; onClose: () 
   );
 }
 
-function ItemDialog({ item, status, onClose, onSave, onDelete, onOpen }: { item: PlanItem | null; status: ItemStatus | null; onClose: () => void; onSave: (p: Partial<PlanItem>) => void; onDelete: () => void; onOpen: () => void }) {
+function ItemDialog({ item, status, onClose, onSave, onDelete, onOpen, onRetry, onMakeAi, working }: { item: PlanItem | null; status: ItemStatus | null; onClose: () => void; onSave: (p: Partial<PlanItem>) => void; onDelete: () => void; onOpen: () => void; onRetry: () => void; onMakeAi: () => void; working: boolean }) {
   const [title, setTitle] = React.useState("");
   const [day, setDay] = React.useState("");
   React.useEffect(() => {
@@ -412,6 +485,18 @@ function ItemDialog({ item, status, onClose, onSave, onDelete, onOpen }: { item:
               {item.outline.map((o) => <li key={o} className="flex gap-2"><span className="text-primary">•</span>{o}</li>)}
             </ul>
           )}
+          {item.prep === "error" && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[13px]">
+              <span className="min-w-0 flex-1 text-destructive">{item.prepError ?? "Something went wrong getting this ready."}</span>
+              <Button size="sm" variant="outline" className="rounded-full" onClick={onRetry} disabled={working}>Try again</Button>
+            </div>
+          )}
+          {item.kind === "video" && !item.aiJobId && status.key !== "posted" && status.key !== "scheduled" && item.prep !== "working" && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/50 px-3 py-2 text-[13px]">
+              <span className="text-muted-foreground">{item.make === "film" ? "You’re filming this one." : item.make === "ai" ? "This one is an AI video." : "Film it yourself, or have it made as an AI video."}</span>
+              {item.make !== "ai" && <Button size="sm" variant="outline" className="rounded-full" onClick={onMakeAi} disabled={working}><Clapperboard /> Make it an AI video</Button>}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2 text-[13px]">
             <span className="text-muted-foreground">Goes out</span>
             <Input type="date" value={day} onChange={(e) => setDay(e.target.value)} className="w-44" />
@@ -421,7 +506,7 @@ function ItemDialog({ item, status, onClose, onSave, onDelete, onOpen }: { item:
             <div className="flex gap-2">
               {dirty && <Button variant="outline" onClick={() => { onSave({ title: title.trim() || item.title, date: day || item.date }); toast.success("Saved"); }}>Save</Button>}
               <Button onClick={() => { if (dirty) onSave({ title: title.trim() || item.title, date: day || item.date }); onOpen(); }}>
-                {started ? "Continue" : item.kind === "video" ? (item.outline?.length ? "Write the script" : "Start this video") : "Write this post"}
+                {status.label === "Film today" || status.label === "Script ready · film it" || status.label === "Late · film it" ? "Open the studio and film" : status.key === "ready" || status.label === "Late · ready to post" ? "Review and post" : started ? "Continue" : item.kind === "video" ? (item.outline?.length ? "Write the script" : "Start this video") : "Write this post"}
               </Button>
             </div>
           </div>

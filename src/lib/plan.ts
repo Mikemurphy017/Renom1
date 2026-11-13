@@ -103,19 +103,32 @@ export function monthSummary(videos: Video[], posts: PostDraft[], goals: Posting
 
 // ── Plan items ──
 
-export type ItemStatus = { key: "posted" | "scheduled" | "in_progress" | "planned" | "overdue"; label: string };
+export type ItemStatus = { key: "posted" | "scheduled" | "ready" | "making" | "in_progress" | "planned" | "overdue"; label: string };
 
 export function itemStatus(item: PlanItem, videos: Video[], posts: PostDraft[], today = new Date()): ItemStatus {
-  const overdue = parseYmd(item.date) < startOfDay(today);
+  const day = ymd(today);
+  const overdue = item.date < day;
+  if (item.prep === "working") return { key: "making", label: "Getting it ready…" };
   if (item.kind === "video") {
     const v = item.videoId ? videos.find((x) => x.id === item.videoId) : undefined;
     if (v?.status === "published") return { key: "posted", label: "Posted" };
     if (v?.status === "scheduled") return { key: "scheduled", label: "Scheduled" };
+    if (item.prep === "error") return { key: "overdue", label: "Needs attention" };
+    if (item.make === "ai" && v) {
+      if (v.output) return overdue ? { key: "overdue", label: "Late · ready to post" } : { key: "ready", label: "Ready to review" };
+      if (item.aiJobId) return { key: "making", label: "AI video in progress" };
+    }
+    if (item.make === "film" && v?.script && v.stage === "record") {
+      if (overdue) return { key: "overdue", label: "Late · film it" };
+      return item.date === day ? { key: "ready", label: "Film today" } : { key: "ready", label: "Script ready · film it" };
+    }
     if (v) return { key: overdue ? "overdue" : "in_progress", label: overdue ? `Late · ${getStage(v.stage).label}` : getStage(v.stage).label };
   } else {
     const p = item.postId ? posts.find((x) => x.id === item.postId) : undefined;
     if (p?.status === "published") return { key: "posted", label: "Posted" };
     if (p?.status === "scheduled") return { key: "scheduled", label: "Scheduled" };
+    if (item.prep === "error") return { key: "overdue", label: "Needs attention" };
+    if (p && p.copy.length && (p.kind === "text" || p.image)) return overdue ? { key: "overdue", label: "Late · ready to post" } : { key: "ready", label: "Ready to review" };
     if (p) return { key: overdue ? "overdue" : "in_progress", label: overdue ? "Late · Draft" : "Draft" };
   }
   return overdue ? { key: "overdue", label: "Missed" } : { key: "planned", label: "Planned" };
@@ -148,6 +161,6 @@ export function nextUp(plan: PlanItem[], videos: Video[], posts: PostDraft[], to
   const weekEnd = addDays(startOfWeek(today), 7);
   return plan
     .map((p) => ({ item: p, status: itemStatus(p, videos, posts, today) }))
-    .filter((x) => (x.status.key === "overdue" || x.status.key === "planned" || x.status.key === "in_progress") && parseYmd(x.item.date) < weekEnd)
+    .filter((x) => ["overdue", "planned", "in_progress", "ready"].includes(x.status.key) && parseYmd(x.item.date) < weekEnd)
     .sort((a, b) => a.item.date.localeCompare(b.item.date));
 }

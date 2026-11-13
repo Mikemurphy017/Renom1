@@ -374,8 +374,10 @@ function PublishStep({ post, update, n }: { post: PostDraft; update: (patch: Par
   const { status } = useSocialStatus();
   const { posts: sent, setPosts } = useSocialPosts(post.id);
   const [preview, setPreview] = React.useState<PostPlatform>(post.copy[0].platform);
-  const [when, setWhen] = React.useState<"now" | "at">("now");
-  const later = localParts(new Date(Date.now() + 3600_000));
+  // Planned by the content plan: schedule for that time by default (if it's still ahead).
+  const planned = post.plannedFor && Date.parse(post.plannedFor) > Date.now() + 10 * 60_000 ? new Date(post.plannedFor) : null;
+  const [when, setWhen] = React.useState<"now" | "at">(planned ? "at" : "now");
+  const later = localParts(planned ?? new Date(Date.now() + 3600_000));
   const [date, setDate] = React.useState(later.date);
   const [time, setTime] = React.useState(later.time);
   const [off, setOff] = React.useState<string[]>([]);

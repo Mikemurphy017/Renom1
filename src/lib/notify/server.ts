@@ -14,7 +14,7 @@ import type { AdvisorProfile, PlanItem, PostDraft, Video } from "@/lib/types";
 
 export interface Notice {
   id: string;
-  kind: "record_day";
+  kind: "record_day" | "film_day";
   title: string;
   body: string;
   href: string;
@@ -26,6 +26,8 @@ interface Inbox {
   items: Notice[];
   /** Local date (YYYY-MM-DD) of the last record-day reminder, so it goes once. */
   lastRecordDay?: string;
+  /** Local date of the last "film today" notice (videos the plan scripted for today). */
+  lastFilmDay?: string;
 }
 
 const key = (userId: string) => `notify/${userId.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 40)}.json`;
@@ -124,6 +126,7 @@ export async function runRecordDayReminders(now = new Date()) {
       const s = (saved?.state ?? null) as StudioState | null;
       if (!s?.profile?.goals) continue; // no goal set: nothing to hold them to
       const local = localNow(s.profile.timezone, now);
+      if (local.hour >= 8) await sendFilmDayNotice(u.id, s, local.date).catch(() => {});
       if (local.weekday !== goalsOf(s.profile.goals).recordDay || local.hour < 8) continue;
       if ((await read(u.id)).lastRecordDay === local.date) continue;
       await sendRecordDayReminder(u, s, local.at, local.date);
@@ -134,6 +137,21 @@ export async function runRecordDayReminders(now = new Date()) {
   }
   if (sent) console.info(`[notify] record-day reminders sent: ${sent}`);
   return sent;
+}
+
+/**
+ * On the day a planned video is due, a notice pointing at the studio: the plan
+ * scripted it for the advisor to film. Once a day, only when something's due.
+ */
+async function sendFilmDayNotice(userId: string, s: StudioState, localDate: string) {
+  const due = (s.plan ?? []).filter((p) => p.kind === "video" && p.make === "film" && p.date === localDate && p.videoId && s.videos?.find((v) => v.id === p.videoId && v.stage === "record" && v.status !== "published" && v.status !== "scheduled"));
+  if (!due.length) return;
+  const inbox = await read(userId);
+  if (inbox.lastFilmDay === localDate) return;
+  inbox.lastFilmDay = localDate;
+  const one = due.length === 1;
+  inbox.items = [{ id: `n${randomBytes(6).toString("hex")}`, kind: "film_day", title: one ? "Film today: your script is ready" : `Film today: ${due.length} scripts are ready`, body: one ? `“${due[0].title}” is scripted and on the teleprompter. It takes a few minutes.` : `${due.map((d) => `“${d.title}”`).join(", ")} are scripted and waiting on the teleprompter.`, href: `/studio/${due[0].videoId}/record`, createdAt: new Date().toISOString(), read: false }, ...inbox.items];
+  await write(userId, inbox);
 }
 
 /** For the admin's "send me one now" test. */

@@ -1,5 +1,6 @@
 "use client";
 
+import { AutopilotSync } from "@/components/plan/autopilot-sync";
 import { TrialBanner } from "@/components/guide/guide";
 import * as React from "react";
 import Link from "next/link";
@@ -100,6 +101,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {!inStudio && <TabBar />}
       <CommandPalette open={palette} onOpenChange={setPalette} onNewVideo={() => setNewVideo(true)} />
       <NewVideoDialog open={newVideo} onOpenChange={setNewVideo} />
+      {hydrated && <AutopilotSync />}
     </ShellContext.Provider>
   );
 }
