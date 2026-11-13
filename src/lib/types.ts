@@ -245,7 +245,7 @@ export interface AdvisorProfile {
   /** How much the advisor means to publish, and when they record and post (see lib/plan). */
   goals?: PostingGoals;
   /** How the content plan makes AI videos (the AI twin's script limit). */
-  planAi?: { maxWords: number };
+  planAi?: { maxWords: number; rotateLooks?: boolean };
   /** The advisor's time zone (IANA, from their browser), so reminders arrive on their record day. */
   timezone?: string;
 }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth/server";
 import { isPro, proOnly } from "@/lib/billing/tier";
 import { TwinError, twinConfigured } from "@/lib/twin/heygen";
-import { MAX_SCRIPT_WORDS, TwinUserError, isReady, listJobs, monthlyLimit, readTwin, startAiVideo, viewJob } from "@/lib/twin/server";
+import { MAX_SCRIPT_WORDS, TwinUserError, isReady, listJobs, monthlyLimit, readTwin, startAiVideo, viewJob, viewTwin } from "@/lib/twin/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -15,10 +15,10 @@ export async function GET(request: Request) {
   const user = await currentUser(request);
   if (!user) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
   const [jobs, twin, pro] = await Promise.all([listJobs(user.id), readTwin(user.id), isPro(user)]);
-  return NextResponse.json({ ok: true, available: twinConfigured(), pro, twinReady: isReady(twin), limits: { maxWords: MAX_SCRIPT_WORDS, perMonth: monthlyLimit() }, jobs: jobs.map(viewJob) }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ ok: true, available: twinConfigured(), pro, twinReady: isReady(twin), limits: { maxWords: MAX_SCRIPT_WORDS, perMonth: monthlyLimit() }, looks: isReady(twin) ? viewTwin(twin).looks.length : 0, jobs: jobs.map(viewJob) }, { headers: { "Cache-Control": "no-store" } });
 }
 
-/** Start one: { script, videoId?, aspect?, lookId?, title? }. */
+/** Start one: { script, videoId?, aspect?, lookId?, title?, rotate? } (rotate: the plan mixes up the looks). */
 export async function POST(request: Request) {
   const user = await currentUser(request);
   if (!user) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });

@@ -208,6 +208,28 @@ test("new looks: a described outfit and setting, and a set of five, made from th
   assert.notEqual(after.defaultLook, office.id);
 });
 
+test("the plan mixes up the looks: least recently used first, matching the shape, never the same twice in a run", async () => {
+  const L = (id: string, aspect?: "9:16" | "16:9") => ({ id, label: id, kind: "scene" as const, aspect, engines: [] });
+  const looks = [L("a"), L("b", "9:16"), L("wide", "16:9"), L("c")];
+  const jobs = [
+    { lookId: "a", createdAt: "2026-11-02", status: "ready" as const },
+    { lookId: "b", createdAt: "2026-11-01", status: "ready" as const },
+    { lookId: "c", createdAt: "2026-11-03", status: "failed" as const },
+  ];
+  assert.equal(twin.rotateLook(looks, jobs, "9:16").id, "c", "a look whose only video failed counts as unused");
+  assert.equal(twin.rotateLook(looks, [...jobs, { lookId: "c", createdAt: "2026-11-04", status: "ready" }], "9:16").id, "b");
+  assert.equal(twin.rotateLook(looks, jobs, "16:9").id, "wide", "a wide video prefers a wide look");
+  assert.equal(twin.rotateLook([L("x"), L("y")], [], "9:16", "y").id, "y", "the default goes first among unused looks");
+
+  const before = mock.calls.filter((c) => c.url === "/v3/videos").length;
+  const script = "Three things to check before you file your taxes this year.";
+  await Promise.all([1, 2, 3].map(() => twin.startAiVideo(user, { script, aspect: "9:16", rotate: true })));
+  const used = mock.calls.filter((c) => c.url === "/v3/videos").slice(before).map((c) => JSON.parse(c.body).avatar_id);
+  assert.equal(new Set(used).size, 3, `three different looks: ${used}`);
+  const plain = await twin.startAiVideo(user, { script, aspect: "9:16" });
+  assert.equal(plain.lookId, (await twin.refresh(user)).defaultLook, "without rotate, the default look");
+});
+
 test("new looks stop at the monthly allowance", async () => {
   process.env.AI_LOOKS_MONTHLY_LIMIT = "8";
   await assert.rejects(() => twin.addLookPack(user, { pack: "casual", styling: "women" }), /2 more looks this month/);

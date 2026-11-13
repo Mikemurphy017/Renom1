@@ -460,7 +460,31 @@ export async function listJobs(userId: string) {
   return (await Promise.all((await readIndex(userId)).slice(0, 60).map(getJob))).filter((j): j is AiVideoJob => !!j);
 }
 
-export async function startAiVideo(user: User, b: { script?: unknown; videoId?: unknown; aspect?: unknown; lookId?: unknown; title?: unknown }) {
+/**
+ * For a run of videos (the plan): the look this advisor has gone longest
+ * without using, preferring looks made for this shape. Never-used looks first,
+ * then the default, then the order they're listed in.
+ */
+export function rotateLook(looks: Look[], jobs: Pick<AiVideoJob, "lookId" | "createdAt" | "status">[], aspect: "9:16" | "16:9", defaultLook?: string) {
+  const fits = looks.filter((l) => !l.aspect || l.aspect === aspect);
+  const pool = fits.length ? fits : looks;
+  const last = (id: string) => jobs.filter((j) => j.lookId === id && j.status !== "failed").reduce((m, j) => (j.createdAt > m ? j.createdAt : m), "");
+  const rank = (l: Look) => (l.id === defaultLook ? 0 : 1);
+  return [...pool].sort((a, b) => last(a.id).localeCompare(last(b.id)) || rank(a) - rank(b) || pool.indexOf(a) - pool.indexOf(b))[0];
+}
+
+// One start at a time per advisor, so a run of plan videos doesn't pick the same look twice.
+const starting = new Map<string, Promise<unknown>>();
+
+export function startAiVideo(user: User, b: { script?: unknown; videoId?: unknown; aspect?: unknown; lookId?: unknown; title?: unknown; rotate?: unknown }): Promise<AiVideoJob> {
+  const prev = starting.get(user.id) ?? Promise.resolve();
+  const next = prev.catch(() => {}).then(() => startOne(user, b));
+  starting.set(user.id, next);
+  void next.finally(() => starting.get(user.id) === next && starting.delete(user.id)).catch(() => {});
+  return next;
+}
+
+async function startOne(user: User, b: { script?: unknown; videoId?: unknown; aspect?: unknown; lookId?: unknown; title?: unknown; rotate?: unknown }) {
   const script = typeof b.script === "string" ? b.script.replace(/\s+/g, " ").trim() : "";
   const words = script ? script.split(" ").length : 0;
   if (words < 5) throw new TwinUserError("Write at least a sentence for your AI twin to say.");
@@ -468,9 +492,10 @@ export async function startAiVideo(user: User, b: { script?: unknown; videoId?: 
   const t = await readTwin(user.id);
   if (!isReady(t)) throw new TwinUserError("Finish setting up your AI twin first (Settings → Your AI twin).", 409);
   const looks = looksOf(t);
-  const look = looks.find((l) => l.id === b.lookId) ?? looks.find((l) => l.id === t.defaultLook) ?? looks[0];
-  if (!look) throw new TwinUserError("Your AI twin has no look ready yet.", 409);
   const mine = await listJobs(user.id);
+  const aspect: "9:16" | "16:9" = b.aspect === "16:9" ? "16:9" : "9:16";
+  const look = looks.find((l) => l.id === b.lookId) ?? (b.rotate === true && looks.length > 1 ? rotateLook(looks, mine, aspect, t.defaultLook) : undefined) ?? looks.find((l) => l.id === t.defaultLook) ?? looks[0];
+  if (!look) throw new TwinUserError("Your AI twin has no look ready yet.", 409);
   const month = now().slice(0, 7);
   if (mine.filter((j) => j.createdAt.startsWith(month) && j.status !== "failed").length >= monthlyLimit()) throw new TwinUserError(`You’ve made ${monthlyLimit()} AI videos this month. More open up on the 1st.`, 429);
   const job: AiVideoJob = {
@@ -480,7 +505,7 @@ export async function startAiVideo(user: User, b: { script?: unknown; videoId?: 
     updatedAt: now(),
     videoId: typeof b.videoId === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(b.videoId) ? b.videoId : undefined,
     script,
-    aspect: b.aspect === "16:9" ? "16:9" : "9:16",
+    aspect,
     lookId: look.id,
     status: "working",
     attempts: 0,

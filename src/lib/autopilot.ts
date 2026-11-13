@@ -24,7 +24,7 @@ export interface AutopilotOptions {
   /** How this batch of videos is made. */
   make: "film" | "ai";
   /** For AI videos: the longest script the AI twin takes. */
-  ai?: { maxWords: number };
+  ai?: { maxWords: number; rotateLooks?: boolean };
 }
 
 export interface AutopilotApi {
@@ -179,7 +179,7 @@ async function prepareVideo(item: PlanItem, api: AutopilotApi, opts: AutopilotOp
   const r = await fetch("/api/aivideo", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ script: words, videoId: v.id, aspect: v.format === "long" ? "16:9" : "9:16", title: item.title }),
+    body: JSON.stringify({ script: words, videoId: v.id, aspect: v.format === "long" ? "16:9" : "9:16", title: item.title, rotate: opts.ai?.rotateLooks !== false }),
   });
   const j = await r.json().catch(() => null);
   if (!r.ok || !j?.ok || !j.job) throw new Error(j?.error ?? "The AI video couldn’t be started.");

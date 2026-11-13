@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ProBadge } from "@/components/shared/pro";
 import type { AutopilotOptions } from "@/lib/autopilot";
 import type { PostKind } from "@/lib/types";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 /**
@@ -21,6 +22,7 @@ interface AiConfig {
   pro: boolean;
   twinReady: boolean;
   limits: { maxWords: number };
+  looks: number;
 }
 
 export interface PrepareChoice extends AutopilotOptions {
@@ -36,6 +38,7 @@ export function PrepareDialog({
   description,
   busy,
   onGo,
+  rotateLooks,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -45,22 +48,24 @@ export function PrepareDialog({
   description: string;
   busy?: boolean;
   onGo: (c: PrepareChoice) => void;
+  rotateLooks?: boolean;
 }) {
   const [make, setMake] = React.useState<"film" | "ai">("film");
   const [postKind, setPostKind] = React.useState<PostKind>("image");
   const [cfg, setCfg] = React.useState<AiConfig | null>(null);
+  const [mix, setMix] = React.useState(rotateLooks !== false);
 
   React.useEffect(() => {
     if (!open) return;
     fetch("/api/aivideo", { cache: "no-store" })
       .then((r) => r.json())
-      .then((j) => j?.ok && setCfg({ available: j.available, pro: j.pro, twinReady: j.twinReady, limits: j.limits }))
+      .then((j) => j?.ok && setCfg({ available: j.available, pro: j.pro, twinReady: j.twinReady, limits: j.limits, looks: j.looks ?? 0 }))
       .catch(() => {});
   }, [open]);
 
   const aiOk = !!cfg?.pro && !!cfg.available && cfg.twinReady;
   const ready = make === "film" || aiOk;
-  const go = () => onGo({ make, postKind, ai: make === "ai" && cfg ? { maxWords: cfg.limits.maxWords } : undefined });
+  const go = () => onGo({ make, postKind, ai: make === "ai" && cfg ? { maxWords: cfg.limits.maxWords, rotateLooks: mix } : undefined });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -101,6 +106,17 @@ export function PrepareDialog({
 
               {make === "ai" && aiOk && (
                 <p className="mt-3 flex items-start gap-2 rounded-xl border border-border p-3 text-[12px] text-muted-foreground"><ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-primary" /> Made with your AI twin, in your voice. Each one costs a little to make; nothing posts until you approve it.</p>
+              )}
+              {make === "ai" && aiOk && (
+                <label className="mt-2 flex cursor-pointer items-start justify-between gap-3 rounded-xl border border-border p-3">
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-medium">Mix up my looks</span>
+                    <span className="mt-0.5 block text-[12px] text-muted-foreground">
+                      {cfg && cfg.looks > 1 ? `Each video uses a different one of your ${cfg.looks} looks, so your feed doesn’t look the same every day.` : <>You have one look so far. <Link href="/settings#ai-twin-looks" className="text-primary underline underline-offset-2">Make more looks</Link> and each video uses a different one.</>}
+                    </span>
+                  </span>
+                  <Switch checked={mix} onCheckedChange={setMix} aria-label="Mix up my looks" />
+                </label>
               )}
             </div>
           )}

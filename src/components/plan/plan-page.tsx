@@ -94,7 +94,7 @@ export function PlanPage() {
   const unprepared = monthItems.filter((p) => !p.prep && !p.videoId && !p.postId && p.date >= today);
 
   const optionsFrom = (c: PrepareChoice): AutopilotOptions => {
-    if (c.make === "ai" && c.ai) updateProfile({ planAi: { maxWords: c.ai.maxWords } });
+    if (c.make === "ai" && c.ai) updateProfile({ planAi: { maxWords: c.ai.maxWords, rotateLooks: c.ai.rotateLooks } });
     return { make: c.make, ai: c.ai };
   };
 
@@ -144,7 +144,7 @@ export function PlanPage() {
   const retry = (it: PlanItem) => {
     const ai = profile.planAi;
     if (it.kind === "video" && it.make === "ai" && !ai) return setPreparing([it]);
-    void prepare([{ ...it, prep: undefined }], { make: it.make ?? "film", ai: ai ? { maxWords: ai.maxWords } : undefined });
+    void prepare([{ ...it, prep: undefined }], { make: it.make ?? "film", ai: ai ? { maxWords: ai.maxWords, rotateLooks: ai.rotateLooks } : undefined });
   };
 
   const monthLabel = first.toLocaleDateString("en-US", { month: "long", year: "numeric" });
@@ -300,6 +300,7 @@ export function PlanPage() {
         title={preparing === "month" ? `Plan ${first.toLocaleDateString("en-US", { month: "long" })} for me` : "Get it ready"}
         description={preparing === "month" ? "We pick a topic for every slot your goal calls for, write every post with its picture, and script every video. You just review, post, and film or approve." : "We write it and get it ready for you to review."}
         busy={busy || prog.running}
+        rotateLooks={profile.planAi?.rotateLooks}
         onGo={(c) => {
           if (preparing === "month") void planAndPrepare(c);
           else if (preparing) {
