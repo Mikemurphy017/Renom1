@@ -1,4 +1,5 @@
 import type { CaptionPosition, ProcessRequest, StyleExtras } from "./types";
+import { isCineLook } from "./cine-look";
 import { LEGACY_STYLE, STYLE_IDS, normalizeOverlays } from "./styles";
 import { GRAPHIC_KINDS } from "./graphic-kinds";
 import type { ApprovedPlan } from "./storyboard";
@@ -43,6 +44,7 @@ export function validateProcessRequest(body: unknown): ProcessRequest | string {
         errors.push("style extras are invalid");
       if ((x.graphics !== undefined && !isBool(x.graphics)) || (x.graphicsAmount !== undefined && x.graphicsAmount !== "light" && x.graphicsAmount !== "rich") || (x.graphicKinds !== undefined && (!Array.isArray(x.graphicKinds) || !x.graphicKinds.every((k) => (GRAPHIC_KINDS as readonly string[]).includes(k)))))
         errors.push("graphics options are invalid");
+      if (x.cinematic !== undefined && !isCineLook(x.cinematic)) errors.push("cinematic look is invalid");
       if (!Array.isArray(x.brollMedia) || x.brollMedia.length > 50 || !x.brollMedia.every((id) => typeof id === "string" && /^img[a-f0-9]{18}$/.test(id))) errors.push("b-roll media are invalid");
     }
   }
@@ -74,7 +76,7 @@ export function validateProcessRequest(body: unknown): ProcessRequest | string {
       lowerThird: { ...o!.lowerThird },
       keyPhrases: o!.keyPhrases,
       endCard: { ...o!.endCard },
-      extras: o!.extras ? { ...o!.extras, brollMedia: [...o!.extras.brollMedia] } : (undefined as unknown as StyleExtras),
+      extras: o!.extras ? { ...o!.extras, brollMedia: [...o!.extras.brollMedia], cinematic: o!.extras.cinematic ? { ...o!.extras.cinematic } : undefined } : (undefined as unknown as StyleExtras),
     }),
     script: b.script,
     cuts: b.cuts?.map((c) => ({ start: c.start, end: c.end })),

@@ -1,4 +1,5 @@
 import { existsSync, promises as fs } from "node:fs";
+import { PUSH_IN, cineOn, finishFilters, focusMaskExpr } from "../cine-look";
 import path from "node:path";
 import { runFfmpeg } from "./ffmpeg";
 import { buildAss, normWord, type Beat } from "./ass";
@@ -235,6 +236,20 @@ export async function renderVideo(r: RenderInput): Promise<{ durationSec: number
   }
   const mixIn = next++;
   args.push("-i", mixFile);
+  // The cinematic look: a soft-focus mask (made once, as a still) for the edges of the frame.
+  const cine = cineOn(ex.cinematic) ? ex.cinematic : null;
+  let maskIn = -1;
+  if (cine?.softFocus) {
+    const mask = path.join(r.workDir, "focus-mask.png");
+    try {
+      await runFfmpeg(["-y", "-f", "lavfi", "-i", `color=black:s=${W}x${H}`, "-vf", `format=gray,geq=lum='${focusMaskExpr(H > W)}'`, "-frames:v", "1", mask]);
+      // Decoded once and repeated in memory (looping the file would decode the PNG every frame).
+      args.push("-i", mask);
+      maskIn = next++;
+    } catch (e) {
+      console.warn("[video] soft-focus mask failed; rendering without it:", (e as Error).message);
+    }
+  }
 
   const f: string[] = [];
   // Frame the take first: every filter after this works on W×H at the output
@@ -246,11 +261,31 @@ export async function renderVideo(r: RenderInput): Promise<{ durationSec: number
   f.push(keep.length > 1 ? `${keep.map((_, i) => `[v${i}]`).join("")}concat=n=${keep.length}:v=1:a=0[vb]` : `[v0]null[vb]`);
   let v = "vb";
 
-  // Punch-in on each moment that isn't covered by b-roll (ease in over 120 ms, hold).
+  // Soft focus: a blurred copy shows through the mask at the edges; the face stays sharp.
+  // maskedmerge blends plane by plane, so the grey mask is copied into all three
+  // planes once, then repeated in memory: far cheaper than an alpha overlay.
+  if (maskIn >= 0) {
+    const blur = Math.max(3, Math.round(Math.min(W, H) / 220));
+    f.push(
+      `[${maskIn}:v]format=gray,scale=${W}:${H},split=3[my][mu][mv]`,
+      `[mu]scale=${W >> 1}:${H >> 1}[mu2]`,
+      `[mv]scale=${W >> 1}:${H >> 1}[mv2]`,
+      // Both streams on the same clock, frame for frame: rounding a still's
+      // timestamps into another timebase would shift the picture against the sound.
+      `[my][mu2][mv2]mergeplanes=0x001020:yuv420p,loop=loop=-1:size=1,settb=1/${fps},setpts=N[mk]`,
+      `[${v}]format=yuv420p,settb=1/${fps},setpts=N,split[fs][fb]`,
+      `[fb]scale=${W >> 1}:${H >> 1},boxblur=${blur}:2,scale=${W}:${H}[fbl]`,
+      `[fs][fbl][mk]maskedmerge[vf]`
+    );
+    v = "vf";
+  }
+
+  // With the cinematic push-in, the frame also tightens slowly across the whole video.
   const zooms = ex.motion ? beats.filter((b) => !clips.has(b)).map((b) => ({ a: b.at, b: Math.min(outDur, b.at + Math.max(1.6, b.dur + 0.4)) })) : [];
-  if (zooms.length) {
+  const push = cine?.pushIn ? `+${PUSH_IN}*min(1,it/${Math.max(1, outDur).toFixed(2)})` : "";
+  if (zooms.length || push) {
     const z = zooms.map((p) => `between(it,${p.a.toFixed(2)},${p.b.toFixed(2)})*min(1,(it-${p.a.toFixed(2)})/0.12)`).join("+");
-    f.push(`[${v}]zoompan=z='1+0.12*min(1,${z})':x='iw/2-(iw/zoom/2)':y='ih*0.4-(ih/zoom*0.4)':d=1:s=${W}x${H}:fps=${fps}[vz]`);
+    f.push(`[${v}]zoompan=z='1${zooms.length ? `+0.12*min(1,${z})` : ""}${push}':x='iw/2-(iw/zoom/2)':y='ih*0.4-(ih/zoom*0.4)':d=1:s=${W}x${H}:fps=${fps}[vz]`);
     v = "vz";
   }
 
@@ -262,6 +297,12 @@ export async function renderVideo(r: RenderInput): Promise<{ durationSec: number
     f.push(`[${v}][br${i}]overlay=eof_action=pass:enable='between(t,${beat.at.toFixed(2)},${(beat.at + beat.dur).toFixed(2)})'[vo${i}]`);
     v = `vo${i}`;
   });
+  // Grade, vignette and grain over the whole picture, b-roll included; captions and graphics stay clean on top.
+  const finish = cine ? finishFilters(cine) : [];
+  if (finish.length) {
+    f.push(`[${v}]${finish.join(",")}[vg]`);
+    v = "vg";
+  }
   f.push(`[${v}]ass=${assFile}:fontsdir=${FONT_DIR},format=yuv420p[vout]`);
 
   args.push(

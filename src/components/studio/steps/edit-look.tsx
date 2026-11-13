@@ -3,7 +3,7 @@
 import { ProBadge } from "@/components/shared/pro";
 import * as React from "react";
 import Link from "next/link";
-import { ChartColumnBig, CalendarDays, Check, Film, Music2, Pause, Play, Sparkles, Volume2, Wand2, ZoomIn } from "lucide-react";
+import { Aperture, ChartColumnBig, CalendarDays, Check, Clapperboard, Film, Music2, Pause, Play, Sparkles, Volume2, Wand2, ZoomIn } from "lucide-react";
 import { GRAPHIC_KINDS, GRAPHIC_LABELS, type GraphicKind } from "@/lib/video/graphic-kinds";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
@@ -14,6 +14,7 @@ import { usePro, useStore } from "@/lib/store";
 import { STYLES, MUSIC_CHOICES, extrasFor, getStyle, type StyleDef, type StyleId } from "@/lib/video/styles";
 import type { CaptionPosition, OverlayOptions, StyleExtras, TranscriptWord } from "@/lib/video/types";
 import { cn } from "@/lib/utils";
+import { CINE_DEFAULT, CINE_GRADES, cineOn, type CineLook } from "@/lib/video/cine-look";
 import { CAPTION_CASES, CAPTION_HIGHLIGHTS, SAFE_BOTTOM, Y_MAX, Y_MIN, applyCase, captionCase, captionHighlight, captionY, inkFor, type CaptionCase, type CaptionHighlight } from "@/lib/video/caption-look";
 
 /** Which overlay the advisor just touched, shown in the preview for a moment. */
@@ -133,6 +134,8 @@ export function LookPanel({
         </div>
       </div>
 
+      <CinematicLook value={ex.cinematic} onChange={(cinematic) => setExtras({ cinematic })} />
+
       <div className="mt-4 space-y-3 border-t border-border pt-4">
         <div className="eyebrow">What the style adds</div>
         <Row icon={ZoomIn} label="Punch-in zooms" hint="Tighten the frame on the big moments" checked={ex.motion} onChange={(v) => setExtras({ motion: v })} />
@@ -249,6 +252,37 @@ function GraphicsPicker({ value, onChange }: { value: StyleExtras; onChange: (pa
         ))}
       </div>
       <p className="text-[11px] leading-snug text-muted-foreground">Planned from what you say when you finish the edit; every figure on screen is one you said.</p>
+    </div>
+  );
+}
+
+/** The cinematic look on the advisor's own footage: one switch, then the grade and the four touches. */
+function CinematicLook({ value, onChange }: { value?: CineLook; onChange: (c: CineLook) => void }) {
+  const on = cineOn(value);
+  const c = value ?? { ...CINE_DEFAULT, enabled: false };
+  const set = (patch: Partial<CineLook>) => onChange({ ...c, ...patch });
+  return (
+    <div className="mt-4 space-y-3 border-t border-border pt-4">
+      <div className="eyebrow">Cinematic look</div>
+      <Row icon={Clapperboard} label="Make it cinematic" hint="A film grade, grain, vignette, slow push-in and soft edges on your own footage. Your face and voice stay exactly as recorded." checked={on} onChange={(v) => set({ enabled: v })} />
+      {on && (
+        <div className="space-y-3 pl-5.5">
+          <div>
+            <div className="mb-1.5 text-[12px] text-muted-foreground">Color grade</div>
+            <ToggleGroup type="single" value={c.grade} onValueChange={(v) => v && set({ grade: v as CineLook["grade"] })} className="flex w-full flex-wrap" aria-label="Color grade">
+              {CINE_GRADES.map((g) => (
+                <ToggleGroupItem key={g.id} value={g.id} className="flex-1 text-[12px]" title={g.hint}>{g.label}</ToggleGroupItem>
+              ))}
+              <ToggleGroupItem value="none" className="flex-1 text-[12px]" title="Keep your colors">None</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+          <Row icon={Aperture} label="Soft-focus edges" hint="The edges of the frame soften; your face stays sharp" checked={c.softFocus} onChange={(v) => set({ softFocus: v })} />
+          <Row label="Slow push-in" hint="The camera eases closer across the whole video" checked={c.pushIn} onChange={(v) => set({ pushIn: v })} />
+          <Row label="Vignette" hint="Darker corners that draw the eye to you" checked={c.vignette} onChange={(v) => set({ vignette: v })} />
+          <Row label="Film grain" hint="Fine, moving grain like film stock" checked={c.grain} onChange={(v) => set({ grain: v })} />
+          <p className="text-[11px] text-muted-foreground">The preview is close; the finished video has the full effect.</p>
+        </div>
+      )}
     </div>
   );
 }

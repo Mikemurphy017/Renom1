@@ -17,6 +17,7 @@ import { generateScript } from "@/lib/ai/content";
 import { usePro, useStore, voiceProfileOf } from "@/lib/store";
 import { scriptFromTranscript } from "@/lib/video/from-transcript";
 import { BRAND } from "@/lib/brand";
+import { CinePreviewLayers, cineVideoStyle } from "./cine-preview";
 import type { Video } from "@/lib/types";
 import { cn, fmtDuration } from "@/lib/utils";
 import { analyzeTake, renderFinal, restoreAnalysis, usePipeline, type PipelineState } from "@/lib/video/client";
@@ -308,11 +309,13 @@ function EditStudio({ video, complete, analysis }: StepProps & { analysis?: Pipe
                     src={take.url}
                     playsInline
                     className="absolute inset-0 h-full w-full object-cover"
+                    style={cineVideoStyle(look.extras.cinematic, total ? t / total : 0)}
                     onPlay={() => setPlaying(true)}
                     onPause={() => setPlaying(false)}
                     onEnded={() => setPlaying(false)}
                   />
                 )}
+                {take && <CinePreviewLayers look={look.extras.cinematic} vertical={vertical} />}
                 <PreviewOverlays
                   look={look}
                   caption={caption}

@@ -217,7 +217,7 @@ export function extrasFor(style: StyleId, prev?: Partial<StyleExtras>): StyleExt
   // Graphics come with every style but the plainest; the bold ones get more of them.
   const graphics = style !== "minimal";
   const graphicsAmount = s.category === "Bold" ? "rich" : "light";
-  return { motion: d.motion, keywordCards: d.keywordCards, broll: d.broll, sfx: d.sfx, music: d.music, musicVolume: 0.5, brollMedia: prev?.brollMedia ?? [], graphics, graphicsAmount, graphicKinds: prev?.graphicKinds };
+  return { motion: d.motion, keywordCards: d.keywordCards, broll: d.broll, sfx: d.sfx, music: d.music, musicVolume: 0.5, brollMedia: prev?.brollMedia ?? [], graphics, graphicsAmount, graphicKinds: prev?.graphicKinds, cinematic: prev?.cinematic };
 }
 
 /** Bring any saved look (including ones from before styles) up to date. */

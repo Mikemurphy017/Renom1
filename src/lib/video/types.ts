@@ -2,6 +2,7 @@
  * Shared types for video processing (captions, AI edit, overlays).
  * Safe to import from both the browser and the server: no provider details here.
  */
+import type { CineLook } from "./cine-look";
 
 export type ProcessorId = "local" | "mock" | "mirage";
 
@@ -59,6 +60,8 @@ export interface StyleExtras {
   graphicsAmount?: "light" | "rich";
   /** Which kinds may be used (unset: all). */
   graphicKinds?: GraphicKind[];
+  /** Colour grade, grain, vignette, push-in and soft focus on the advisor's own footage (unset: off). */
+  cinematic?: CineLook;
 }
 
 /** What the AI edit is allowed to remove, plus audio cleanup. */
