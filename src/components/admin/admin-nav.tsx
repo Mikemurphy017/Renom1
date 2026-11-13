@@ -3,7 +3,7 @@
 import Link from "next/link";
 import * as React from "react";
 import { usePathname } from "next/navigation";
-import { BriefcaseBusiness, ChartLine, CreditCard, Film, Layers, Send, UsersRound } from "lucide-react";
+import { BriefcaseBusiness, ChartLine, CreditCard, Layers, Send, UsersRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -13,7 +13,6 @@ const TABS = [
   { href: "/admin/posting", label: "Posting queue", icon: Send },
   { href: "/admin/buffer", label: "Buffer", icon: Layers },
   { href: "/admin/analytics", label: "Analytics", icon: ChartLine },
-  { href: "/admin/cinematic", label: "Cinematic", icon: Film },
 ];
 
 export function AdminNav() {

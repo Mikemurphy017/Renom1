@@ -3,7 +3,6 @@
 import { streamWrite } from "@/lib/ai/writer";
 import { WRITERS } from "@/lib/ai/writers";
 import { estimateRuntime } from "@/lib/ai/content";
-import { countWords } from "@/lib/cinematic/core";
 import { uploadImage } from "@/lib/media/upload";
 import { canvasBlob, drawGraphic, headlineFrom } from "@/lib/posts/graphic";
 import { seedDraft } from "@/lib/drafts";
@@ -16,7 +15,7 @@ import { voiceProfileOf } from "@/lib/store";
  *  - a post is written, given one picture, and left on the calendar ready to
  *    review and post;
  *  - a video is scripted, then either left ready to film on its day, or made
- *    as an AI video and queued, with its captions, for the advisor's approval.
+ *    by the advisor's AI twin and queued, with its captions, for approval.
  * It runs in the browser (the writer streams to it) and keeps going while the
  * advisor moves around the app; progress is shared with any page that asks.
  */
@@ -24,8 +23,8 @@ import { voiceProfileOf } from "@/lib/store";
 export interface AutopilotOptions {
   /** How this batch of videos is made. */
   make: "film" | "ai";
-  /** For AI videos: the setting, voice and the advisor's consent (required). */
-  ai?: { settingId: string; voiceId: string; consent: boolean; aiLabel: boolean; maxWords: number };
+  /** For AI videos: the longest script the AI twin takes. */
+  ai?: { maxWords: number };
 }
 
 export interface AutopilotApi {
@@ -63,6 +62,7 @@ export function subscribeAutopilot(fn: () => void) {
 
 const POST_PLATFORMS = (kind: PostDraft["kind"]): PostPlatform[] => (kind === "image" ? ["linkedin", "facebook", "instagram"] : ["linkedin", "facebook"]);
 export const VIDEO_PLATFORMS: PlatformId[] = ["youtube_shorts", "instagram", "linkedin"];
+const countWords = (s: string) => (s.trim().match(/\S+/g) ?? []).length;
 const mediaIdOf = (url?: string) => /\/api\/media\/(img[a-f0-9]{18})/.exec(url ?? "")?.[1];
 /** 9:00 on the planned day, local time. */
 const nineOn = (ymd: string) => new Date(`${ymd}T09:00:00`).toISOString();
@@ -173,16 +173,13 @@ async function prepareVideo(item: PlanItem, api: AutopilotApi, opts: AutopilotOp
   api.updateVideo(v.id, { script, runtimeSec: estimateRuntime(script), stage: "record" });
   if (make === "film") return;
 
-  // An AI video: the script cut to fit, then made and queued for approval.
-  const ai = opts.ai;
-  if (!ai?.consent) throw new Error("AI videos need your consent first.");
-  const headshotIds = api.profile.headshots.map((h) => mediaIdOf(h.url)).filter((x): x is string => !!x).slice(0, 3);
-  if (!headshotIds.length) throw new Error("Add a headshot in Settings: the AI video is made from it.");
-  const words = await condensed(item, v, script, api, ai.maxWords);
-  const r = await fetch("/api/cinematic", {
+  // An AI video: the advisor's AI twin says the script (cut only if it's too long), queued for approval.
+  const maxWords = opts.ai?.maxWords ?? 400;
+  const words = await condensed(item, v, script, api, maxWords);
+  const r = await fetch("/api/aivideo", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ headshotIds, script: words, settingId: ai.settingId, voiceId: ai.voiceId, aspect: v.format === "long" ? "16:9" : "9:16", aiLabel: ai.aiLabel, consent: true, videoId: v.id, autoApprove: true }),
+    body: JSON.stringify({ script: words, videoId: v.id, aspect: v.format === "long" ? "16:9" : "9:16", title: item.title }),
   });
   const j = await r.json().catch(() => null);
   if (!r.ok || !j?.ok || !j.job) throw new Error(j?.error ?? "The AI video couldn’t be started.");

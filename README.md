@@ -292,42 +292,18 @@ The colors are injected as a small `<style>` in `src/app/layout.tsx` that overri
 
 - `⌘K` / `Ctrl+K`: command palette (jump to any video, step or page)
 
-## Cinematic videos
+## AI twin and AI videos
 
-A photorealistic video of the advisor speaking their script in a chosen setting, made from one headshot (Pro). Two generations through the Higgsfield API: a cinematic still of them in the setting, which they approve, then that still animated into a talking video. Code is in `src/lib/cinematic/`.
+An advisor's **AI twin** says any script as a video of them, in their own voice, without filming (Pro). It runs on HeyGen's v3 API; the key stays on the server and nothing advisors see names the provider. Code is in `src/lib/twin/`.
 
-**Where it lives.** Advisors get it in one place: the Record step, which offers *Record yourself* (teleprompter or upload) or *Cinematic video* (no recording). The cinematic option starts from that video's script, offers to shorten it to the word limit, and "Use this video" makes the finished video the take, so it goes on to Edit and Post like a recording. There is no Cinematic tab or page on the main site. The API key and the usage and cost table are under Admin → Cinematic, which only admins can open.
+**Setup, once** (onboarding step "Build your AI twin", or Settings → Your AI twin):
 
-**Setup.** Either set `HF_CREDENTIALS` to `key-id:key-secret` in the server's environment, or paste the key under Admin → Cinematic ("Switch on"); once it is set, every Pro account gets the option. A key entered there is checked with Higgsfield first, stored encrypted (needs `SECRETS_KEY`) and never shown again; the environment's key wins when both exist.
+1. **Voice.** About a minute of the advisor reading a passage (recorded in the browser or uploaded). Converted to MP3 and cloned as an instant voice (`POST /v3/models/audio/voices`, `mode: instant`).
+2. **A video of them talking.** 15 s to 10 min, ideally about 2 minutes at 1080p, one person facing the camera with clear sound. Trained into a digital twin (`POST /v3/avatars`, `type: digital_twin`) through a direct upload (up to 200 MB; Renom re-encodes to 1080p MP4 first). The advisor then records a short **consent** clip on HeyGen's hosted page (`POST /v3/avatars/{group}/consent` returns the link, valid 24 hours); videos can't be made until consent is `accepted`.
+3. **Photos.** Their headshots, each added as a photo look in the twin's group, so it moves like the twin (rendered with the Avatar V engine, which uses the twin as the motion reference).
 
-**Add a setting preset.** Add an entry to `SETTINGS` in `src/lib/cinematic/core.ts`:
+**Making a video.** In the Record step, "AI video" (or the content plan's "Make AI videos"): the script (up to 400 words), a look, the cloned voice, `POST /v3/videos` with `engine: avatar_v` when the look supports it. When it's done the MP4 is copied into Renom's storage and becomes the video's take, so it goes through AI Edit (captions) and Post like a recording.
 
-```ts
-{
-  id: "vineyard",                      // unique, lowercase
-  name: "Vineyard terrace",            // shown on the picker
-  description: "standing on a stone terrace above a vineyard at dusk. Behind them, rows of vines and soft hills fall into soft focus",
-  lighting: "Low warm sun as a rim light, soft bounced key on the face, golden-and-green color grade",
-  short: "vineyard terrace",           // "The person in the {short} …"
-  backgroundMotion: "Leaves move gently in a light breeze",
-}
-```
+**Setup in production.** `HEYGEN_API_KEY` in Railway (an API key from HeyGen's API settings). Digital twins and voice clones need a HeyGen plan that includes them over the API; consent by uploaded video, or waived consent, is Enterprise only. Optional: `AI_VIDEO_MONTHLY_LIMIT` (default 30 per advisor), `HEYGEN_API_URL` (tests).
 
-`description` continues the sentence "wearing {wardrobe}, …". The camera, lens and film-grain language is added by the prompt templates in the same file, so every setting reads as one brand. Run `npm run test:cinematic` afterwards; one test checks every preset is complete.
-
-**Change the models** (no code change):
-
-| Variable | Default | Other values |
-| --- | --- | --- |
-| `CINEMATIC_VIDEO_MODEL` | `bytedance/seedance-2.5/image-to-video` | `alibaba/wan-3.0/image-to-video`, `xai/grok-imagine-video/v1.5/reference-to-video` |
-| `CINEMATIC_VIDEO_RESOLUTION` | `1080p` | `720p` (well under half the cost on most models) |
-| `CINEMATIC_IMAGE_MODEL` | `xai/grok-imagine-image-2.0` | `ideogram/v4.0` |
-| `CINEMATIC_MONTHLY_LIMIT` | `20` | videos per advisor per month |
-
-The video model is a strategy in `src/lib/cinematic/models.ts`: each entry lists the exact inputs that model accepts (the API rejects fields a model doesn't list) and its length range, which sets the script's word limit. To add one, add an entry there from the model's API reference.
-
-**Intone (real voice, lip-sync) upgrade.** Higgsfield's Intone and Seed Audio models are not in its developer API today (they exist in the consumer app only), so there is no flag to flip yet. When they appear in the API catalog, add them as a `VideoModel` entry in `models.ts` (character image plus a voice audio input) and select it with `CINEMATIC_VIDEO_MODEL`; nothing else in the pipeline changes.
-
-**How a job runs.** Each video is one JSON record (`cinematic/<id>.json`): inputs, consent text and time, both prompts, models, Higgsfield request ids and cost. `advance()` in `server.ts` moves it one step whenever someone looks at it (the page polls) and every ten minutes for jobs nobody has open. Every submission carries an idempotency key saved beforehand, so a retry after a timeout can't create a second, charged request. Plan, balance, credential and validation errors are never retried and are shown under Admin → Cinematic. Finished stills and MP4s are copied into Renom's storage (Higgsfield deletes its copies after seven days).
-
-**Smoke test.** `node --env-file=.env.local scripts/higgsfield/index.ts` makes one billable 5-second Seedance generation through the official SDK and prints the video URL.
+**How it runs.** The setup is `twin/<user>.json`; each video is `aivideo/<id>.json`. Looking at either moves it along, and a background tick every five minutes finishes setups and videos nobody has open. Requests that create something carry an `Idempotency-Key`. Tests: `npm run test:twin` (a stand-in HeyGen; nothing is billed).

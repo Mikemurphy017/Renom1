@@ -14,8 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Headshot } from "@/components/shared/headshot";
 import { ProBadge } from "@/components/shared/pro";
-import type { Job as CinematicJob } from "@/components/cinematic/cinematic-page";
-import { CinematicOption } from "../cinematic-option";
+import { AiVideoOption, type AiVideoJob } from "../ai-video-option";
 import { usePro, useStore } from "@/lib/store";
 import { generateScript } from "@/lib/ai/content";
 import type { Script, StoredTake, Video } from "@/lib/types";
@@ -67,9 +66,9 @@ export function RecordStep({ video, complete }: StepProps) {
   const [activeId, setActiveId] = React.useState(video.id);
   const active = queueCandidates.find((v) => v.id === activeId) ?? video;
   const lines = scriptText(active);
-  // Two ways to make the video: record yourself, or a cinematic video with no camera.
-  const [mode, setMode] = React.useState<"record" | "cinematic">("record");
-  const [usingCinematic, setUsingCinematic] = React.useState(false);
+  // Two ways to make the video: record yourself, or an AI video of you (your AI twin), no camera.
+  const [mode, setMode] = React.useState<"record" | "ai">("record");
+  const [usingAi, setUsingAi] = React.useState(false);
   const { isPro } = usePro();
 
   // prompter settings (remembered on this device)
@@ -231,8 +230,8 @@ export function RecordStep({ video, complete }: StepProps) {
     else { updateVideo(active.id, { stage: "edit" }); toast.success("Sent to AI Edit", { description: active.title }); router.push(`/studio/${active.id}/edit`); }
   };
 
-  // A finished cinematic video becomes this video's take and goes on to Edit like a recording.
-  const applyCinematic = (job: CinematicJob) => {
+  // A finished AI video becomes this video's take and goes on to Edit like a recording.
+  const applyAiVideo = (job: AiVideoJob) => {
     if (!job.uploadId) return;
     const target = active;
     const tall = job.aspect === "9:16";
@@ -245,7 +244,7 @@ export function RecordStep({ video, complete }: StepProps) {
       height: job.height ?? (tall ? 1920 : 1080),
       recordedAt: new Date().toISOString(),
     };
-    setUsingCinematic(true);
+    setUsingAi(true);
     capture.stop?.();
     clearTake(target.id);
     resetPipeline(target.id);
@@ -254,7 +253,7 @@ export function RecordStep({ video, complete }: StepProps) {
       aspect: tall ? "9:16" : "16:9",
       edit: DEFAULT_EDIT,
       overlays: peekDraft<OverlayOptions>(target.id, "edit.overlays") ?? defaultOverlays(profile, target.format),
-      // What's actually spoken in it (the script, shortened), a sentence a line.
+      // What's actually spoken in it, a sentence a line.
       script: job.script.split(/(?<=[.!?])\s+/).filter(Boolean),
     })
       .then((r) => updateVideo(target.id, { analysisJobId: r.jobId }))
@@ -438,32 +437,32 @@ export function RecordStep({ video, complete }: StepProps) {
     <div className="space-y-6 pb-10">
       <div className="mx-auto hidden max-w-[1000px] text-center sm:block">
         <h1 className="font-serif text-[34px] leading-tight tracking-tight sm:text-[40px]">{mode === "record" ? "Read it like you mean it." : "Skip the camera."}</h1>
-        <p className="mt-2 text-[15px] text-muted-foreground">{mode === "record" ? "Look at the brass line, just under your lens. Pause between sections; the edit trims the gaps." : "No camera needed: your photo, this script and a setting become a video of you saying it."}</p>
+        <p className="mt-2 text-[15px] text-muted-foreground">{mode === "record" ? "Look at the brass line, just under your lens. Pause between sections; the edit trims the gaps." : "No camera needed: your AI twin says this script, in your own voice, moving like you."}</p>
       </div>
       {!recording && !nearCam && (
         <div className="mx-auto grid max-w-[1000px] gap-2 sm:grid-cols-2" role="radiogroup" aria-label="How to make this video">
           {(
             [
               ["record", Camera, "Record yourself", "Read it from the teleprompter, or upload a video you’ve made."],
-              ["cinematic", Clapperboard, "Cinematic video", "No recording required. Made from your photo and this script."],
+              ["ai", Clapperboard, "AI video", "No recording required. Your AI twin says it, in your voice."],
             ] as const
           ).map(([id, Icon, title, body]) => (
             <button key={id} type="button" role="radio" aria-checked={mode === id} onClick={() => setMode(id)} className={cn("flex cursor-pointer items-start gap-3 rounded-2xl border p-4 text-left transition", mode === id ? "border-primary bg-brass-soft/50 shadow-soft" : "border-border bg-card hover:bg-muted/50")}>
               <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-xl", mode === id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}><Icon className="size-4" /></span>
               <span className="min-w-0">
-                <span className="flex items-center gap-2 text-[14px] font-semibold">{title}{id === "cinematic" && !isPro && <ProBadge />}</span>
+                <span className="flex items-center gap-2 text-[14px] font-semibold">{title}{id === "ai" && !isPro && <ProBadge />}</span>
                 <span className="mt-0.5 block text-[12px] text-muted-foreground">{body}</span>
               </span>
             </button>
           ))}
         </div>
       )}
-      {mode === "cinematic" && (
+      {mode === "ai" && (
         <div className="mx-auto min-w-0 max-w-[1000px]">
-          <CinematicOption video={active} script={active.script ?? generateScript(active.title, active.format)} onUse={applyCinematic} using={usingCinematic} />
+          <AiVideoOption key={active.id} video={active} script={active.script ?? generateScript(active.title, active.format)} onUse={applyAiVideo} using={usingAi} />
         </div>
       )}
-      <div className={cn("mx-auto min-w-0 max-w-[1000px] space-y-6", mode === "cinematic" && "hidden")}>
+      <div className={cn("mx-auto min-w-0 max-w-[1000px] space-y-6", mode === "ai" && "hidden")}>
         {/* Stage */}
         {/* Phones: edge to edge, as tall as the screen allows. */}
         <div data-prompter-scope className={cn("overflow-hidden bg-[#06101F]", nearCam ? "fixed inset-0 z-50 m-0 flex h-dvh w-screen flex-col" : "-mx-4 -mt-2 border-y border-border shadow-soft sm:mx-0 sm:mt-0 sm:rounded-2xl sm:border")}>

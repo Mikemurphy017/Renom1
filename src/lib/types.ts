@@ -244,8 +244,8 @@ export interface AdvisorProfile {
   ideaLog?: { title: string; subject?: string; angle?: string }[];
   /** How much the advisor means to publish, and when they record and post (see lib/plan). */
   goals?: PostingGoals;
-  /** How the content plan makes AI videos, and when the advisor consented to them. */
-  planAi?: { settingId: string; voiceId: string; aiLabel: boolean; maxWords: number; consentAt: string };
+  /** How the content plan makes AI videos (the AI twin's script limit). */
+  planAi?: { maxWords: number };
   /** The advisor's time zone (IANA, from their browser), so reminders arrive on their record day. */
   timezone?: string;
 }

@@ -3,15 +3,15 @@
  * restart:
  *  - every hour, advisors whose record day it is get their reminder (in-app
  *    notice, plus email when set up), once per record day;
- *  - every ten minutes, cinematic videos nobody has open are moved along (the
- *    still fetched, the video submitted or collected).
+ *  - every five minutes, AI videos and AI twin setups nobody has open are
+ *    moved along (training, consent, finished videos copied into storage).
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  const { advanceAll } = await import("@/lib/cinematic/server");
-  const films = () => void advanceAll().catch((e) => console.warn("[cinematic] tick failed:", (e as Error).message));
+  const { advanceAllAi } = await import("@/lib/twin/server");
+  const films = () => void advanceAllAi().catch((e) => console.warn("[aivideo] tick failed:", (e as Error).message));
   setTimeout(films, 90_000);
-  setInterval(films, 10 * 60_000).unref?.();
+  setInterval(films, 5 * 60_000).unref?.();
 
   if (process.env.RECORD_DAY_REMINDERS === "off") return;
   const { runRecordDayReminders } = await import("@/lib/notify/server");

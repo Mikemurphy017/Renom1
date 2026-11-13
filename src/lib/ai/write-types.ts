@@ -30,7 +30,7 @@ export type WriteRequest =
       otherOpenings?: string[];
       current?: Script;
       instruction?: string;
-      /** Condense `current` to this many words at most (a cinematic video is seconds, not a minute). */
+      /** Condense `current` to this many words at most. */
       maxWords?: number;
     }
   | {

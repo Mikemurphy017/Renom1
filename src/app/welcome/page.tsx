@@ -17,7 +17,7 @@ import type { AdvisorProfile } from "@/lib/types";
 import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { uploadImage } from "@/lib/media/upload";
-import { AiVoiceSection } from "@/components/settings/ai-voice";
+import { AiTwinSection } from "@/components/settings/ai-twin";
 
 const STEPS = ["welcome", "name", "practice", "audience", "voice", "beliefs", "photo", "speaking", "compliance", "connect", "done"] as const;
 type Step = (typeof STEPS)[number];
@@ -255,9 +255,9 @@ export default function WelcomePage() {
 
             {step === "speaking" && (
               <>
-                <h1 className="font-serif text-[40px] leading-tight tracking-tight">Clone your voice.</h1>
-                <p className="-mt-4 text-[15px] text-muted-foreground">Read the passage below for a minute or two, once. {BRAND.name} makes an AI copy of your voice that can read your scripts. You can do this later in Settings.</p>
-                <AiVoiceSection />
+                <h1 className="font-serif text-[40px] leading-tight tracking-tight">Build your AI twin.</h1>
+                <p className="-mt-4 text-[15px] text-muted-foreground">Your voice, a video of you talking, and a few photos. {BRAND.name} learns how you look, sound and move, so any script can become a video of you without filming. It takes about 10 minutes; you can also do it later in Settings.</p>
+                <AiTwinSection />
               </>
             )}
 

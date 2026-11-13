@@ -94,7 +94,7 @@ export function PlanPage() {
   const unprepared = monthItems.filter((p) => !p.prep && !p.videoId && !p.postId && p.date >= today);
 
   const optionsFrom = (c: PrepareChoice): AutopilotOptions => {
-    if (c.make === "ai" && c.ai) updateProfile({ planAi: { settingId: c.ai.settingId, voiceId: c.ai.voiceId, aiLabel: c.ai.aiLabel, maxWords: c.ai.maxWords, consentAt: new Date().toISOString() } });
+    if (c.make === "ai" && c.ai) updateProfile({ planAi: { maxWords: c.ai.maxWords } });
     return { make: c.make, ai: c.ai };
   };
 
@@ -144,7 +144,7 @@ export function PlanPage() {
   const retry = (it: PlanItem) => {
     const ai = profile.planAi;
     if (it.kind === "video" && it.make === "ai" && !ai) return setPreparing([it]);
-    void prepare([{ ...it, prep: undefined }], { make: it.make ?? "film", ai: ai ? { settingId: ai.settingId, voiceId: ai.voiceId, aiLabel: ai.aiLabel, maxWords: ai.maxWords, consent: true } : undefined });
+    void prepare([{ ...it, prep: undefined }], { make: it.make ?? "film", ai: ai ? { maxWords: ai.maxWords } : undefined });
   };
 
   const monthLabel = first.toLocaleDateString("en-US", { month: "long", year: "numeric" });

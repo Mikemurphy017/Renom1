@@ -64,7 +64,7 @@ Good: "The Roth conversion mistake at 63". "Sell your business before or after t
 Too long: "Why so many business owners get their exit planning wrong, and the three questions you should be asking your advisor before you sell".${revise(undefined, req.instruction)}`;
 
     case "script":
-      // A cinematic video is under 30 seconds: the same script, condensed, not a new one.
+      // A shorter cut of the same script (not a new one).
       if (req.current && req.maxWords) {
         const max = Math.max(15, Math.min(400, Math.round(req.maxWords)));
         return `Condense this video script to ${max} words or fewer, counting every word of the hook, body and close together. That limit is hard: it is spoken on camera in about ${Math.round(max / 2.5)} seconds, and anything longer cannot be filmed.

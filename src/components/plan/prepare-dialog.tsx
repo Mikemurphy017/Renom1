@@ -1,14 +1,11 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Camera, Clapperboard, Image as ImageIcon, LoaderCircle, PenLine, ShieldCheck, Sparkles, Type } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ProBadge } from "@/components/shared/pro";
-import { SETTINGS, VOICES } from "@/lib/cinematic/core";
 import type { AutopilotOptions } from "@/lib/autopilot";
 import type { PostKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -19,11 +16,11 @@ import { cn } from "@/lib/utils";
  * written, pictured and queued for them.
  */
 
-interface CinematicConfig {
+interface AiConfig {
   available: boolean;
   pro: boolean;
+  twinReady: boolean;
   limits: { maxWords: number };
-  consentText: string;
 }
 
 export interface PrepareChoice extends AutopilotOptions {
@@ -51,23 +48,19 @@ export function PrepareDialog({
 }) {
   const [make, setMake] = React.useState<"film" | "ai">("film");
   const [postKind, setPostKind] = React.useState<PostKind>("image");
-  const [cfg, setCfg] = React.useState<CinematicConfig | null>(null);
-  const [settingId, setSettingId] = React.useState(SETTINGS[0].id);
-  const [voiceId, setVoiceId] = React.useState<string>(VOICES[0].id);
-  const [consent, setConsent] = React.useState(false);
-  const [aiLabel, setAiLabel] = React.useState(false);
+  const [cfg, setCfg] = React.useState<AiConfig | null>(null);
 
   React.useEffect(() => {
-    if (!open || cfg) return;
-    fetch("/api/cinematic", { cache: "no-store" })
+    if (!open) return;
+    fetch("/api/aivideo", { cache: "no-store" })
       .then((r) => r.json())
-      .then((j) => j?.ok && setCfg({ available: j.available, pro: j.pro, limits: j.limits, consentText: j.consentText }))
+      .then((j) => j?.ok && setCfg({ available: j.available, pro: j.pro, twinReady: j.twinReady, limits: j.limits }))
       .catch(() => {});
-  }, [open, cfg]);
+  }, [open]);
 
-  const aiOk = !!cfg?.pro && !!cfg.available;
-  const ready = make === "film" || (aiOk && consent);
-  const go = () => onGo({ make, postKind, ai: make === "ai" && cfg ? { settingId, voiceId, consent, aiLabel, maxWords: cfg.limits.maxWords } : undefined });
+  const aiOk = !!cfg?.pro && !!cfg.available && cfg.twinReady;
+  const ready = make === "film" || aiOk;
+  const go = () => onGo({ make, postKind, ai: make === "ai" && cfg ? { maxWords: cfg.limits.maxWords } : undefined });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -85,7 +78,7 @@ export function PrepareDialog({
                 {(
                   [
                     ["film", Camera, "I’ll film them", "We write every script. On the day, open the studio and read it from the teleprompter.", false],
-                    ["ai", Clapperboard, "Make AI videos", "We write a short script and make the video of you. You approve it, with its post.", !aiOk],
+                    ["ai", Clapperboard, "Make AI videos", "We write the script and your AI twin films it, in your voice. You approve it, with its post.", !aiOk],
                   ] as const
                 ).map(([id, Icon, label, body, off]) => (
                   <button
@@ -100,35 +93,14 @@ export function PrepareDialog({
                     <Icon className={cn("mt-0.5 size-4 shrink-0", make === id ? "text-primary" : "text-muted-foreground")} />
                     <span className="min-w-0">
                       <span className="flex items-center gap-1.5 text-[14px] font-semibold">{label} {id === "ai" && cfg && !cfg.pro && <ProBadge />}</span>
-                      <span className="mt-0.5 block text-[12px] text-muted-foreground">{id === "ai" && cfg && cfg.pro && !cfg.available ? "AI videos aren’t switched on for this studio yet." : body}</span>
+                      <span className="mt-0.5 block text-[12px] text-muted-foreground">{id === "ai" && cfg && cfg.pro && !cfg.available ? "AI videos aren’t switched on for this studio yet." : id === "ai" && cfg && cfg.pro && !cfg.twinReady ? <>Set up your AI twin first: <Link href="/settings#ai-twin" className="text-primary underline underline-offset-2">Settings → Your AI twin</Link>.</> : body}</span>
                     </span>
                   </button>
                 ))}
               </div>
 
-              {make === "ai" && aiOk && cfg && (
-                <div className="mt-3 space-y-3 rounded-xl border border-border p-3">
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Select value={settingId} onValueChange={setSettingId}>
-                      <SelectTrigger aria-label="Setting"><SelectValue /></SelectTrigger>
-                      <SelectContent>{SETTINGS.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Select value={voiceId} onValueChange={setVoiceId}>
-                      <SelectTrigger aria-label="Voice"><SelectValue /></SelectTrigger>
-                      <SelectContent>{VOICES.map((v) => <SelectItem key={v.id} value={v.id}>{v.label}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <p className="text-[12px] text-muted-foreground">Scripts are cut to {cfg.limits.maxWords} words (about {Math.round(cfg.limits.maxWords / 2.5)} seconds) so they fit an AI video. Made from your first headshot.</p>
-                  <label className="flex cursor-pointer items-start gap-2.5 text-[13px]">
-                    <Checkbox checked={consent} onCheckedChange={(v) => setConsent(v === true)} className="mt-0.5" />
-                    <span>{cfg.consentText}</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center justify-between gap-3 text-[13px]">
-                    <span>Add an “AI-generated” label</span>
-                    <Switch checked={aiLabel} onCheckedChange={setAiLabel} />
-                  </label>
-                  <p className="flex items-start gap-2 text-[12px] text-muted-foreground"><ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-primary" /> Nothing posts until you approve it.</p>
-                </div>
+              {make === "ai" && aiOk && (
+                <p className="mt-3 flex items-start gap-2 rounded-xl border border-border p-3 text-[12px] text-muted-foreground"><ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-primary" /> Made with your AI twin, in your voice. Each one costs a little to make; nothing posts until you approve it.</p>
               )}
             </div>
           )}

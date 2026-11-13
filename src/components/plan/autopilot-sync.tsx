@@ -7,7 +7,7 @@ import { useStore } from "@/lib/store";
 import { finishAiVideo } from "@/lib/autopilot";
 
 /**
- * Watches the AI videos the content plan started. Looking at a job also moves
+ * Watches the AI twin videos the content plan started. Looking at a job also moves
  * it along; when one is finished it becomes that video's final cut, captions
  * are written, and the advisor is told it's ready to review.
  */
@@ -26,7 +26,7 @@ export function AutopilotSync() {
         if (!live || busy.current.has(item.id)) continue;
         busy.current.add(item.id);
         try {
-          const r = await fetch(`/api/cinematic/${item.aiJobId}`, { cache: "no-store" });
+          const r = await fetch(`/api/aivideo/${item.aiJobId}`, { cache: "no-store" });
           const j = await r.json().catch(() => null);
           const job = j?.job;
           const v = videos.find((x) => x.id === item.videoId);
