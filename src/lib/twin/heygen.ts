@@ -126,7 +126,37 @@ export async function createPhotoLook(groupId: string, assetId: string, name: st
   return d.avatar_item.id;
 }
 
-export type LookState = { state: "working" } | { state: "ready"; engines: string[]; preview?: string } | { state: "failed"; reason: string };
+/** A new look of the same person: a new outfit and setting, from a description. Joins the reference look's group. */
+export async function createPromptLook(o: { refLookId: string; groupId: string; name: string; prompt: string; aspect: "9:16" | "16:9"; idem: string }): Promise<string> {
+  const d = await call<{ avatar_item?: { id?: string } }>("/v3/avatars", json({ type: "prompt", name: o.name.slice(0, 100), prompt: o.prompt.slice(0, 1000), avatar_id: o.refLookId, avatar_group_id: o.groupId, aspect_ratio: o.aspect }, o.idem));
+  if (!d.avatar_item?.id) throw new TwinError("The new look wasn’t started. Try again.");
+  return d.avatar_item.id;
+}
+
+/** A curated set of looks (a look pack, usually five) for the same person. */
+export async function createLookPack(o: { refLookId: string; templateId: string; aspect: "9:16" | "16:9"; idem: string }): Promise<string[]> {
+  const d = await call<{ looks?: ({ id?: string } | string)[] }>("/v3/avatars/looks", json({ type: "look_pack", reference_look_id: o.refLookId, template_id: o.templateId, aspect_ratio: o.aspect }, o.idem));
+  const ids = (d.looks ?? []).map((l) => (typeof l === "string" ? l : l.id)).filter((x): x is string => !!x);
+  if (!ids.length) throw new TwinError("The looks weren’t started. Try again.");
+  return ids;
+}
+
+export const deleteLook = (lookId: string) => call(`/v3/avatars/looks/${encodeURIComponent(lookId)}`, { method: "DELETE" }).catch(() => {});
+
+/** Fetches a look's preview image (no key: it's a plain file URL). */
+export async function fetchPreview(url: string): Promise<{ bytes: Uint8Array; type: string } | null> {
+  try {
+    const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
+    const type = (r.headers.get("content-type") ?? "").split(";")[0].trim();
+    if (!r.ok || !/^image\/(jpeg|png|webp)$/.test(type)) return null;
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    return bytes.length && bytes.length < 15_000_000 ? { bytes, type } : null;
+  } catch {
+    return null;
+  }
+}
+
+export type LookState ={ state: "working" } | { state: "ready"; engines: string[]; preview?: string } | { state: "failed"; reason: string };
 
 export async function lookStatus(lookId: string): Promise<LookState> {
   const d = await call<{ status?: string | null; supported_api_engines?: string[]; preview_image_url?: string | null; image_url?: string | null; error?: { code?: string; message?: string } | null }>(`/v3/avatars/looks/${encodeURIComponent(lookId)}`, { timeout: 20_000 });

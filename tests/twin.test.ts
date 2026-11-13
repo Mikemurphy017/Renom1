@@ -45,7 +45,7 @@ before(async () => {
         res.end(JSON.stringify(code < 400 ? { data } : data));
       };
       // Storage and file downloads never get the API key; everything else needs it.
-      const keyless = url === "/s3/put" || url === "/out.mp4";
+      const keyless = url === "/s3/put" || url === "/out.mp4" || url === "/preview.jpg";
       if (keyless && req.headers["x-api-key"]) return send({ error: { code: "leak", message: "the API key was sent to storage" } }, 400);
       if (!keyless && req.headers["x-api-key"] !== "test-key") return send({ error: { code: "unauthorized", message: "bad key" } }, 401);
       if (url === "/v3/assets" && req.method === "POST") return send({ asset_id: `asset_small_${mock.calls.length}` });
@@ -57,10 +57,17 @@ before(async () => {
       if (url.startsWith("/v3/models/audio/voices/") && req.method === "DELETE") return send({});
       if (url === "/v3/avatars" && req.method === "POST") {
         const b = JSON.parse(body || "{}");
+        if (b.type === "prompt") return send({ avatar_item: { id: `look_prompt_${mock.calls.length}` }, avatar_group: { id: b.avatar_group_id } });
         if (b.type === "digital_twin") return send({ avatar_item: { id: "look_twin", default_voice_id: "voice_twin" }, avatar_group: { id: "group_1" } });
         return send({ avatar_item: { id: `look_photo_${b.file.asset_id}` }, avatar_group: { id: b.avatar_group_id } });
       }
-      if (url.startsWith("/v3/avatars/looks/")) return send(ready(url) ? { status: "completed", supported_api_engines: ["avatar_iv", "avatar_v"] } : { status: "processing" });
+      if (url === "/v3/avatars/looks" && req.method === "POST") return send({ group_id: "group_1", looks: [1, 2, 3, 4, 5].map((i) => ({ id: `look_pack_${i}` })) });
+      if (url.startsWith("/v3/avatars/looks/") && req.method === "DELETE") return send({ id: url.split("/").pop() });
+      if (url.startsWith("/v3/avatars/looks/")) return send(ready(url) ? { status: "completed", supported_api_engines: ["avatar_iv", "avatar_v"], preview_image_url: `${base}/preview.jpg` } : { status: "processing" });
+      if (url === "/preview.jpg") {
+        res.setHeader("content-type", "image/jpeg");
+        return res.end(readFileSync(path.join(dir, "face.jpg")));
+      }
       if (url === "/v3/avatars/group_1/consent") return send({ url: "https://consent.example/abc", avatar_group: { consent_status: "pending" } });
       if (url === "/v3/avatars/group_1" && req.method === "GET") return send({ id: "group_1", consent_status: mock.consent });
       if (url === "/v3/avatars/group_1" && req.method === "DELETE") return send({});
@@ -158,6 +165,53 @@ test("an AI video uses the look, the cloned voice and Avatar V, then lands in Re
   assert.match(view.videoUrl ?? "", /^\/api\/video\/files\//);
   assert.equal(view.videoId, "vabc123");
   assert.deepEqual([view.width, view.height], [360, 640]);
+});
+
+test("new looks: a described outfit and setting, and a set of five, made from the twin in its group", async () => {
+  const start = await twin.refresh(user);
+  assert.ok(start.looks.find((l) => l.kind === "video")?.mediaId, "the twin's own look gets a picture in Renom's storage");
+  await assert.rejects(() => twin.addLook(user, { prompt: "suit" }), /Describe the outfit/);
+
+  const v = await twin.addLook(user, { prompt: "Navy suit and white shirt, modern office with a city view", aspect: "16:9" });
+  assert.equal(v.scenesPending[0].status, "working");
+  assert.equal(v.scenesPending[0].name, "Navy suit and white shirt");
+  const sent = JSON.parse(mock.calls.filter((c) => c.url === "/v3/avatars").at(-1)!.body);
+  assert.equal(sent.type, "prompt");
+  assert.equal(sent.avatar_group_id, "group_1");
+  assert.match(sent.avatar_id, /^look_/, "the advisor's own look is the reference");
+  assert.equal(sent.aspect_ratio, "16:9");
+  assert.match(sent.prompt, /Navy suit.*Same person/);
+
+  await assert.rejects(() => twin.addLookPack(user, { pack: "corporate" }), /men’s or women’s/);
+  await twin.addLookPack(user, { pack: "corporate", styling: "men" });
+  const pack = JSON.parse(mock.calls.find((c) => c.url === "/v3/avatars/looks")!.body);
+  assert.equal(pack.type, "look_pack");
+  assert.equal(pack.template_id, "5e659e76755d47fd9160a2d7dedce124");
+
+  const done = await until(() => twin.refresh(user), (x) => x.scenesPending.length === 0);
+  const scenes = done.looks.filter((l) => l.kind === "scene");
+  assert.equal(scenes.length, 6);
+  assert.ok(scenes.every((l) => l.mediaId), "each look's picture is kept in Renom's storage");
+  assert.equal(done.limits.looksLeft, done.limits.looksPerMonth - 6);
+  assert.equal(JSON.stringify(done).includes("preview.jpg"), false, "no provider URLs reach the page");
+
+  const office = scenes.find((l) => l.aspect === "16:9")!;
+  await twin.setDefaultLook(user, office.id);
+  await twin.renameLook(user, office.id, "City office");
+  const job = await twin.startAiVideo(user, { script: "Here is one thing to check before the end of the year.", aspect: "16:9" });
+  assert.equal(JSON.parse(mock.calls.filter((c) => c.url === "/v3/videos").at(-1)!.body).avatar_id, office.id);
+  assert.equal(job.lookId, office.id);
+
+  const after = await twin.removeLook(user, office.id);
+  assert.ok(mock.calls.some((c) => c.method === "DELETE" && c.url === `/v3/avatars/looks/${office.id}`));
+  assert.equal(after.looks.some((l) => l.id === office.id), false);
+  assert.notEqual(after.defaultLook, office.id);
+});
+
+test("new looks stop at the monthly allowance", async () => {
+  process.env.AI_LOOKS_MONTHLY_LIMIT = "8";
+  await assert.rejects(() => twin.addLookPack(user, { pack: "casual", styling: "women" }), /2 more looks this month/);
+  delete process.env.AI_LOOKS_MONTHLY_LIMIT;
 });
 
 test("scripts that are too long or empty are turned down", async () => {

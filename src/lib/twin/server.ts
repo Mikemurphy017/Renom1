@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { getJSON, objects, putJSON } from "@/lib/storage/objects";
-import { isMediaId, mediaKey } from "@/lib/storage/media";
+import { isMediaId, mediaKey, newMediaId } from "@/lib/storage/media";
 import { downloadUpload, getUpload, isStorageId, saveUpload } from "@/lib/video/storage";
 import { probe, runFfmpeg } from "@/lib/video/local/ffmpeg";
 import { listUsers, type User } from "@/lib/auth/server";
@@ -30,9 +30,28 @@ export interface TwinRecord {
   voice?: { id: string; status: Part; error?: string; createdAt: string; seconds?: number };
   twin?: { groupId: string; lookId: string; voiceId?: string; status: Part; error?: string; engines?: string[]; consent: "none" | "pending" | "accepted" | "rejected"; consentUrl?: string; consentUrlAt?: string; createdAt: string; uploadId: string };
   photos?: { mediaId: string; lookId: string; status: Part; error?: string; engines?: string[]; createdAt: string }[];
+  /** The twin's own look, as a picture (copied once it's trained). */
+  twinPreview?: { mediaId?: string; tried: boolean };
+  /** Looks made from a description or a curated set: new outfits and settings, same person. */
+  scenes?: Scene[];
+  /** Looks made this month: a guard against runaway cost. */
+  looksMade?: { month: string; n: number };
   /** The look AI videos use by default (a photo look or the twin itself). */
   defaultLook?: string;
   updatedAt: string;
+}
+
+export interface Scene {
+  lookId: string;
+  name: string;
+  prompt?: string;
+  pack?: string;
+  aspect: "9:16" | "16:9";
+  status: Part;
+  error?: string;
+  engines?: string[];
+  mediaId?: string;
+  createdAt: string;
 }
 
 /** What the advisor's page sees: no provider ids. */
@@ -43,7 +62,10 @@ export interface TwinView {
   photos: { mediaId: string; status: Part; error?: string }[];
   /** Everything needed for a video: voice ready, twin trained and consented. */
   ready: boolean;
-  looks: { id: string; label: string; mediaId?: string }[];
+  looks: { id: string; label: string; mediaId?: string; kind: "photo" | "scene" | "video"; aspect?: "9:16" | "16:9" }[];
+  /** New looks being made, or that didn't work (ready ones are in looks). */
+  scenesPending: { id: string; name: string; status: Part; error?: string }[];
+  limits: { looksPerMonth: number; looksLeft: number; maxLooks: number };
   defaultLook?: string;
 }
 
@@ -59,10 +81,17 @@ const now = () => new Date().toISOString();
 export const readTwin = async (userId: string) => (await getJSON<TwinRecord>(twinKey(userId)).catch(() => null)) ?? { userId, updatedAt: now() };
 const saveTwin = (t: TwinRecord) => putJSON(twinKey(t.userId), { ...t, updatedAt: now() });
 
-const looksOf = (t: TwinRecord) => [
-  ...(t.photos ?? []).filter((p) => p.status === "ready").map((p, i) => ({ id: p.lookId, label: `Photo ${i + 1}`, mediaId: p.mediaId, engines: p.engines ?? [] })),
-  ...(t.twin?.status === "ready" ? [{ id: t.twin.lookId, label: "Your video", mediaId: undefined, engines: t.twin.engines ?? [] }] : []),
+type Look = { id: string; label: string; mediaId?: string; kind: "photo" | "scene" | "video"; aspect?: "9:16" | "16:9"; engines: string[] };
+const looksOf = (t: TwinRecord): Look[] => [
+  ...(t.photos ?? []).filter((p) => p.status === "ready").map((p, i) => ({ id: p.lookId, label: `Photo ${i + 1}`, mediaId: p.mediaId, kind: "photo" as const, engines: p.engines ?? [] })),
+  ...(t.scenes ?? []).filter((s) => s.status === "ready").map((s) => ({ id: s.lookId, label: s.name, mediaId: s.mediaId, kind: "scene" as const, aspect: s.aspect, engines: s.engines ?? [] })),
+  ...(t.twin?.status === "ready" ? [{ id: t.twin.lookId, label: "Your video", mediaId: t.twinPreview?.mediaId, kind: "video" as const, engines: t.twin.engines ?? [] }] : []),
 ];
+
+/** New looks per advisor per month, and how many they can keep. */
+export const looksMonthlyLimit = () => Math.max(1, Number(process.env.AI_LOOKS_MONTHLY_LIMIT) || 20);
+export const MAX_SCENES = 30;
+const looksLeft = (t: TwinRecord) => looksMonthlyLimit() - (t.looksMade?.month === now().slice(0, 7) ? t.looksMade.n : 0);
 export const isReady = (t: TwinRecord) => t.voice?.status === "ready" && t.twin?.status === "ready" && t.twin.consent === "accepted";
 
 export function viewTwin(t: TwinRecord): TwinView {
@@ -73,7 +102,9 @@ export function viewTwin(t: TwinRecord): TwinView {
     video: t.twin ? { status: t.twin.status, error: t.twin.error, createdAt: t.twin.createdAt, consent: t.twin.consent, consentUrl: t.twin.consent === "accepted" ? undefined : t.twin.consentUrl } : null,
     photos: (t.photos ?? []).map((p) => ({ mediaId: p.mediaId, status: p.status, error: p.error })),
     ready: isReady(t),
-    looks: looks.map(({ id, label, mediaId }) => ({ id, label, mediaId })),
+    looks: looks.map(({ id, label, mediaId, kind, aspect }) => ({ id, label, mediaId, kind, aspect })),
+    scenesPending: (t.scenes ?? []).filter((s) => s.status !== "ready").map((s) => ({ id: s.lookId, name: s.name, status: s.status, error: s.error })),
+    limits: { looksPerMonth: looksMonthlyLimit(), looksLeft: Math.max(0, looksLeft(t)), maxLooks: MAX_SCENES },
     defaultLook: t.defaultLook && looks.some((l) => l.id === t.defaultLook) ? t.defaultLook : looks[0]?.id,
   };
 }
@@ -140,6 +171,9 @@ export async function setVideo(user: User, uploadId: string, returnUrl: string, 
     t.twin = { groupId: made.groupId, lookId: made.lookId, voiceId: made.voiceId, status: "working", consent: consentUrl ? "pending" : "none", consentUrl, consentUrlAt: consentUrl ? now() : undefined, createdAt: now(), uploadId };
     // Photos belong to the old twin's group: they're made again for the new one.
     t.photos = (t.photos ?? []).map((p) => ({ ...p, lookId: "", status: "working" as Part }));
+    // New looks were made of the old twin, and go with its group.
+    t.scenes = [];
+    t.twinPreview = undefined;
     await saveTwin(t);
     if (old && old !== made.groupId) await hg.deleteGroup(old);
     return refresh(user);
@@ -173,6 +207,104 @@ export async function setPhotos(user: User, mediaIds: unknown, consent: unknown)
   return refresh(user);
 }
 
+// ── More looks: new outfits and settings, same person ──
+
+/** Curated sets, each in a men's and a women's styling. */
+export const LOOK_PACKS = {
+  corporate: { label: "Modern corporate", women: "5a8e6be843ee4321a014946bf62aa322", men: "5e659e76755d47fd9160a2d7dedce124" },
+  casual: { label: "Business casual", women: "e1650a9029d04ea1a350421c163295fd", men: "a5f8e0c0cb654c1a83c695629b173af5" },
+  keynote: { label: "Keynote presenter", women: "b0cae4fbae384ab9ab9a8e73ba504be8", men: "71e84769162d4f4186563ad9e0fc45b8" },
+  minimal: { label: "Clean and minimal", women: "e7b000e2cb0d44f1a2d2f291a38b395a", men: "9600f78f27bb49d792e1c56ce624b929" },
+} as const;
+export type LookPack = keyof typeof LOOK_PACKS;
+const PACK_SIZE = 5;
+
+// Keeps the person themself: only the clothes, the setting and the light change.
+const SAME_PERSON = "Same person, with their face, features, skin tone and hair unchanged. Photorealistic, natural matte skin, looking at the camera, head-and-shoulders to waist-up framing for a talking video.";
+
+function lookBase(t: TwinRecord, from: unknown, need: number) {
+  if (!t.twin || t.twin.status !== "ready" || t.twin.consent !== "accepted") throw new TwinUserError("Finish your video and consent first: new looks are made from your AI twin.", 409);
+  if ((t.scenes ?? []).length + need > MAX_SCENES) throw new TwinUserError(`You can keep up to ${MAX_SCENES} looks. Delete some to make more.`, 409);
+  if (looksLeft(t) < need) throw new TwinUserError(looksLeft(t) > 0 ? `You can make ${looksLeft(t)} more ${looksLeft(t) === 1 ? "look" : "looks"} this month.` : `You’ve made ${looksMonthlyLimit()} new looks this month. More open up on the 1st.`, 429);
+  const looks = looksOf(t);
+  const ref = looks.find((l) => l.id === from) ?? looks.find((l) => l.id === t.defaultLook) ?? looks.find((l) => l.kind === "video") ?? looks[0];
+  if (!ref) throw new TwinUserError("Your AI twin has no look ready yet.", 409);
+  return { groupId: t.twin.groupId, ref };
+}
+const counted = (t: TwinRecord, n: number) => {
+  const month = now().slice(0, 7);
+  t.looksMade = { month, n: (t.looksMade?.month === month ? t.looksMade.n : 0) + n };
+};
+const nameFrom = (prompt: string) => {
+  const words = prompt.split(/[.,;\n]/)[0].split(/\s+/).filter(Boolean).slice(0, 6);
+  while (words.length > 1 && /^(with|a|an|the|in|and|of|at|on|by|for|,)$/i.test(words.at(-1)!.replace(/,$/, ""))) words.pop();
+  const w = words.join(" ").replace(/[,:-]+$/, "");
+  return w ? w[0].toUpperCase() + w.slice(1) : "New look";
+};
+
+/** One new look from a description of the outfit and setting. */
+export async function addLook(user: User, b: { prompt?: unknown; name?: unknown; from?: unknown; aspect?: unknown }) {
+  const prompt = typeof b.prompt === "string" ? b.prompt.replace(/\s+/g, " ").trim() : "";
+  if (prompt.length < 8) throw new TwinUserError("Describe the outfit and the setting, e.g. “Navy suit, modern office with a city view”.");
+  if (prompt.length > 600) throw new TwinUserError("Keep the description under 600 characters.");
+  const t = await readTwin(user.id);
+  const { groupId, ref } = lookBase(t, b.from, 1);
+  const aspect: "9:16" | "16:9" = b.aspect === "16:9" ? "16:9" : "9:16";
+  const name = (typeof b.name === "string" && b.name.trim() ? b.name.trim() : nameFrom(prompt)).slice(0, 60);
+  const lookId = await hg.createPromptLook({ refLookId: ref.id, groupId, name: `Renom ${name}`, prompt: `${prompt}. ${SAME_PERSON}`, aspect, idem: randomUUID() });
+  t.scenes = [{ lookId, name, prompt, aspect, status: "working", createdAt: now() }, ...(t.scenes ?? [])];
+  counted(t, 1);
+  await saveTwin(t);
+  return viewTwin(t);
+}
+
+/** A curated set of looks (five), styled for men or women. */
+export async function addLookPack(user: User, b: { pack?: unknown; styling?: unknown; from?: unknown; aspect?: unknown }) {
+  const pack = typeof b.pack === "string" && b.pack in LOOK_PACKS ? LOOK_PACKS[b.pack as LookPack] : null;
+  if (!pack) throw new TwinUserError("Pick a set of looks.");
+  if (b.styling !== "men" && b.styling !== "women") throw new TwinUserError("Pick men’s or women’s styling.");
+  const t = await readTwin(user.id);
+  const { ref } = lookBase(t, b.from, PACK_SIZE);
+  const aspect: "9:16" | "16:9" = b.aspect === "16:9" ? "16:9" : "9:16";
+  const ids = await hg.createLookPack({ refLookId: ref.id, templateId: pack[b.styling], aspect, idem: randomUUID() });
+  t.scenes = [...ids.map((lookId, i) => ({ lookId, name: `${pack.label} ${i + 1}`, pack: pack.label, aspect, status: "working" as Part, createdAt: now() })), ...(t.scenes ?? [])];
+  counted(t, ids.length);
+  await saveTwin(t);
+  return viewTwin(t);
+}
+
+export async function renameLook(user: User, lookId: string, name: unknown) {
+  const t = await readTwin(user.id);
+  const s = (t.scenes ?? []).find((x) => x.lookId === lookId);
+  const n = typeof name === "string" ? name.replace(/\s+/g, " ").trim().slice(0, 60) : "";
+  if (!s || !n) throw new TwinUserError("Give the look a name.");
+  s.name = n;
+  await saveTwin(t);
+  return viewTwin(t);
+}
+
+/** Deletes one of the new looks (the twin itself and photos are managed above). */
+export async function removeLook(user: User, lookId: string) {
+  const t = await readTwin(user.id);
+  const s = (t.scenes ?? []).find((x) => x.lookId === lookId);
+  if (!s) throw new TwinUserError("That look couldn’t be found.", 404);
+  t.scenes = (t.scenes ?? []).filter((x) => x !== s);
+  if (t.defaultLook === lookId) t.defaultLook = undefined;
+  await saveTwin(t);
+  await hg.deleteLook(lookId);
+  if (s.mediaId) await objects().remove(mediaKey(s.mediaId)).catch(() => {});
+  return viewTwin(t);
+}
+
+/** Keeps a look's picture in Renom's own storage, so it shows without the provider. */
+async function keepPreview(url?: string) {
+  const img = url ? await hg.fetchPreview(url) : null;
+  if (!img) return undefined;
+  const id = newMediaId();
+  await objects().put(mediaKey(id), img.bytes, img.type);
+  return id;
+}
+
 export async function setDefaultLook(user: User, lookId: string) {
   const t = await readTwin(user.id);
   if (!looksOf(t).some((l) => l.id === lookId)) throw new TwinUserError("Pick one of your looks.");
@@ -186,6 +318,7 @@ export async function removeTwin(user: User) {
   if (t.voice?.id) await hg.deleteVoice(t.voice.id);
   if (t.twin?.voiceId) await hg.deleteVoice(t.twin.voiceId);
   if (t.twin?.groupId) await hg.deleteGroup(t.twin.groupId);
+  for (const id of [...(t.scenes ?? []).map((s) => s.mediaId), t.twinPreview?.mediaId]) if (id) await objects().remove(mediaKey(id)).catch(() => {});
   await objects().remove(twinKey(user.id)).catch(() => {});
 }
 
@@ -218,8 +351,24 @@ export async function refresh(user: User): Promise<TwinView> {
       const s = await hg.lookStatus(t.twin!.lookId);
       if (s.state === "working") return;
       t.twin = { ...t.twin!, status: s.state === "ready" ? "ready" : "failed", error: s.state === "failed" ? s.reason : undefined, engines: s.state === "ready" ? s.engines : undefined };
+      if (s.state === "ready") t.twinPreview = { mediaId: await keepPreview(s.preview), tried: true };
       changed = true;
     });
+  if (t.twin?.status === "ready" && !t.twinPreview?.tried)
+    await safe(async () => {
+      const s = await hg.lookStatus(t.twin!.lookId);
+      t.twinPreview = { mediaId: s.state === "ready" ? await keepPreview(s.preview) : undefined, tried: true };
+      changed = true;
+    });
+  for (const sc of t.scenes ?? []) {
+    if (sc.status !== "working") continue;
+    await safe(async () => {
+      const s = await hg.lookStatus(sc.lookId);
+      if (s.state === "working") return;
+      Object.assign(sc, s.state === "ready" ? { status: "ready", engines: s.engines, mediaId: await keepPreview(s.preview), error: undefined } : { status: "failed", error: s.reason });
+      changed = true;
+    });
+  }
   if (t.twin && t.twin.consent !== "accepted")
     await safe(async () => {
       const c = await hg.consentStatus(t.twin!.groupId);
@@ -409,6 +558,6 @@ export async function advanceAllAi() {
       if (j?.status === "working") await advanceJob(id).catch(() => null);
     }
     const t = await getJSON<TwinRecord>(twinKey(u.id)).catch(() => null);
-    if (t && (t.voice?.status === "working" || t.twin?.status === "working" || t.twin?.consent === "pending" || (t.photos ?? []).some((p) => p.status === "working"))) await refresh(u).catch(() => null);
+    if (t && (t.voice?.status === "working" || t.twin?.status === "working" || t.twin?.consent === "pending" || (t.photos ?? []).some((p) => p.status === "working") || (t.scenes ?? []).some((s) => s.status === "working"))) await refresh(u).catch(() => null);
   }
 }

@@ -13,6 +13,7 @@ import { uploadImage } from "@/lib/media/upload";
 import { persistTake } from "@/lib/video/client";
 import { readVideoMeta, videoType } from "@/lib/media/video-file";
 import { cn, fmtDuration } from "@/lib/utils";
+import { TwinLooks } from "./twin-looks";
 
 /**
  * The advisor's AI twin: their voice, a video of them talking (so it moves and
@@ -28,7 +29,9 @@ export interface TwinView {
   video: { status: Part; error?: string; createdAt: string; consent: "none" | "pending" | "accepted" | "rejected"; consentUrl?: string } | null;
   photos: { mediaId: string; status: Part; error?: string }[];
   ready: boolean;
-  looks: { id: string; label: string; mediaId?: string }[];
+  looks: { id: string; label: string; mediaId?: string; kind: "photo" | "scene" | "video"; aspect?: "9:16" | "16:9" }[];
+  scenesPending: { id: string; name: string; status: Part; error?: string }[];
+  limits: { looksPerMonth: number; looksLeft: number; maxLooks: number };
   defaultLook?: string;
 }
 
@@ -43,7 +46,7 @@ export function useTwin() {
     void load();
   }, [load]);
   // Training and consent finish on their own: keep looking while something is working.
-  const working = !!state && (state.twin.voice?.status === "working" || state.twin.video?.status === "working" || state.twin.video?.consent === "pending" || state.twin.photos.some((p) => p.status === "working"));
+  const working = !!state && (state.twin.voice?.status === "working" || state.twin.video?.status === "working" || state.twin.video?.consent === "pending" || state.twin.photos.some((p) => p.status === "working") || state.twin.scenesPending.some((p) => p.status === "working"));
   React.useEffect(() => {
     if (!working) return;
     const t = window.setInterval(() => void load(), 12_000);
@@ -336,6 +339,8 @@ export function AiTwinSection() {
         )}
         {!twin.video && twin.photos.length > 0 && <p className="mt-2 text-[12px] text-muted-foreground">Photos are added once your video is uploaded.</p>}
       </Step>
+
+      {twin.video?.status === "ready" && twin.video.consent === "accepted" && <TwinLooks twin={twin} onTwin={set} />}
 
       {needsConsentTick && (
         <label className="flex items-start gap-2.5 text-[13px]">

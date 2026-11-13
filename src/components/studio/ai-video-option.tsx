@@ -42,6 +42,7 @@ interface Look {
   id: string;
   label: string;
   mediaId?: string;
+  aspect?: "9:16" | "16:9";
 }
 
 const words = (s: string) => (s.trim().match(/\S+/g) ?? []).length;
@@ -142,18 +143,22 @@ export function AiVideoOption({ video, script, onUse, using }: { video: Video; s
 
       <section className="rounded-2xl border border-border bg-card p-5 shadow-soft">
         <div className="flex items-center gap-2 text-[15px] font-semibold"><Clapperboard className="size-4 text-primary" /> {jobs.length ? "Make another version" : "Make it with your AI twin"}</div>
-        {looks.length > 1 && (
-          <div className="mt-4">
-            <div className="mb-2 text-[12px] font-medium text-muted-foreground">Look</div>
-            <div className="flex flex-wrap gap-2">
+        <div className="mt-4">
+          <div className="mb-2 flex items-baseline justify-between gap-2 text-[12px]">
+            <span className="font-medium text-muted-foreground">Look{look && looks.length > 1 ? `: ${looks.find((l) => l.id === look)?.label ?? ""}` : ""}</span>
+            <Link href="/settings#ai-twin-looks" className="text-primary underline-offset-2 hover:underline">New look</Link>
+          </div>
+          {looks.length > 1 && (
+            <div className="flex max-h-56 flex-wrap gap-2 overflow-y-auto">
               {looks.map((l) => (
-                <button key={l.id} type="button" onClick={() => setLook(l.id)} aria-pressed={look === l.id} className={cn("relative size-16 cursor-pointer overflow-hidden rounded-xl border-2 bg-muted text-[11px] text-muted-foreground", look === l.id ? "border-primary" : "border-transparent opacity-70 hover:opacity-100")} title={l.label}>
+                <button key={l.id} type="button" onClick={() => setLook(l.id)} aria-pressed={look === l.id} className={cn("relative h-20 w-16 shrink-0 cursor-pointer overflow-hidden rounded-xl border-2 bg-muted text-[11px] text-muted-foreground", look === l.id ? "border-primary" : "border-transparent opacity-70 hover:opacity-100")} title={l.label}>
                   {l.mediaId ? <img src={`/api/media/${l.mediaId}`} alt={l.label} className="absolute inset-0 h-full w-full object-cover" /> : <span className="flex h-full items-center justify-center px-1 text-center">{l.label}</span>}
+                  {l.aspect && l.aspect !== (video.format === "long" ? "16:9" : "9:16") && <span className="absolute inset-x-0 bottom-0 bg-black/55 text-center text-[9px] text-white">{l.aspect === "16:9" ? "Wide" : "Vertical"}</span>}
                 </button>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
         <div className="mt-4">
           <div className="mb-1.5 text-[12px] font-medium text-muted-foreground">What you’ll say</div>
           <Textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} className="font-serif text-[15px]" />
