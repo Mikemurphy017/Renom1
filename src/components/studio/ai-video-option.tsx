@@ -36,6 +36,7 @@ interface Config {
   available: boolean;
   pro: boolean;
   twinReady: boolean;
+  missing: string[];
   limits: { maxWords: number };
 }
 interface Look {
@@ -60,7 +61,7 @@ export function AiVideoOption({ video, script, onUse, using }: { video: Video; s
   const load = React.useCallback(async () => {
     const [a, t] = await Promise.all([fetch("/api/aivideo", { cache: "no-store" }).then((r) => r.json()).catch(() => null), fetch("/api/twin", { cache: "no-store" }).then((r) => r.json()).catch(() => null)]);
     if (a?.ok) {
-      setCfg({ available: a.available, pro: a.pro, twinReady: a.twinReady, limits: a.limits });
+      setCfg({ available: a.available, pro: a.pro, twinReady: a.twinReady, missing: a.missing ?? [], limits: a.limits });
       setJobs((a.jobs as AiVideoJob[]).filter((j) => j.videoId === video.id));
     }
     if (t?.ok) {
@@ -113,9 +114,19 @@ export function AiVideoOption({ video, script, onUse, using }: { video: Video; s
     return (
       <div className="rounded-2xl border border-border bg-card p-6 text-center">
         <UserRound className="mx-auto size-6 text-primary" />
-        <h2 className="mt-2 font-serif text-2xl">Set up your AI twin first</h2>
-        <p className="mx-auto mt-1 max-w-md text-[14px] text-muted-foreground">Once: your voice, a video of you talking and a few photos. Then any script becomes a video of you, without filming.</p>
-        <Button asChild className="mt-4 rounded-full"><Link href="/settings#ai-twin">Set up my AI twin</Link></Button>
+        <h2 className="mt-2 font-serif text-2xl">{cfg.missing.length && cfg.missing.length < 3 ? "Your AI twin is almost ready" : "Set up your AI twin first"}</h2>
+        {cfg.missing.length ? (
+          <ul className="mx-auto mt-2 max-w-md space-y-1 text-left text-[14px] text-muted-foreground">
+            <li className="text-[13px] font-medium text-foreground">Still needed:</li>
+            {cfg.missing.map((m) => <li key={m} className="flex gap-2"><span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />{m}</li>)}
+          </ul>
+        ) : (
+          <p className="mx-auto mt-1 max-w-md text-[14px] text-muted-foreground">Once: your voice, a video of you talking and a few photos. Then any script becomes a video of you, without filming.</p>
+        )}
+        <div className="mt-4 flex justify-center gap-2">
+          <Button asChild className="rounded-full"><Link href="/settings#ai-twin">{cfg.missing.length && cfg.missing.length < 3 ? "Finish my AI twin" : "Set up my AI twin"}</Link></Button>
+          <Button variant="outline" className="rounded-full" onClick={() => void load()}>Check again</Button>
+        </div>
       </div>
     );
 

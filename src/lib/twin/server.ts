@@ -93,6 +93,16 @@ const looksOf = (t: TwinRecord): Look[] => [
 export const looksMonthlyLimit = () => Math.max(1, Number(process.env.AI_LOOKS_MONTHLY_LIMIT) || 20);
 export const MAX_SCENES = 30;
 const looksLeft = (t: TwinRecord) => looksMonthlyLimit() - (t.looksMade?.month === now().slice(0, 7) ? t.looksMade.n : 0);
+/** What still stands between the advisor and an AI video, in plain words. */
+export function missingParts(t: TwinRecord): { part: "voice" | "video" | "consent"; text: string }[] {
+  const out: { part: "voice" | "video" | "consent"; text: string }[] = [];
+  const v = t.voice;
+  if (v?.status !== "ready") out.push({ part: "voice", text: !v ? "Your voice: not added yet." : v.status === "working" ? "Your voice: still being cloned (usually under a minute)." : `Your voice didn’t work: ${v.error ?? "record it again."}` });
+  const w = t.twin;
+  if (w?.status !== "ready") out.push({ part: "video", text: !w ? "A video of you talking: not added yet." : w.status === "working" ? "Your video: still being learned (can take a few hours)." : `Your video didn’t work: ${w.error ?? "upload it again."}` });
+  if (w && w.consent !== "accepted") out.push({ part: "consent", text: w.consent === "rejected" ? "Your consent recording wasn’t accepted: record it again." : w.consent === "pending" ? "Your consent: record it, or it’s still being checked." : "Your consent: not recorded yet." });
+  return out;
+}
 export const isReady = (t: TwinRecord) => t.voice?.status === "ready" && t.twin?.status === "ready" && t.twin.consent === "accepted";
 
 export function viewTwin(t: TwinRecord): TwinView {
