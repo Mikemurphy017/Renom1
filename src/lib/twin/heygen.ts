@@ -29,7 +29,7 @@ interface Envelope<T> {
   error?: { code?: string; message?: string; param?: string } | null;
 }
 
-async function call<T>(path: string, init: RequestInit & { timeout?: number; idem?: string } = {}): Promise<T> {
+async function call<T>(path: string, init: RequestInit & { timeout?: number; idem?: string; raw?: boolean } = {}): Promise<T> {
   if (!twinConfigured()) throw new TwinError("AI videos aren’t switched on for this studio yet.", 503);
   const headers: Record<string, string> = { "X-Api-Key": KEY(), Accept: "application/json", ...((init.headers as Record<string, string>) ?? {}) };
   if (init.idem) headers["Idempotency-Key"] = init.idem;
@@ -52,7 +52,7 @@ async function call<T>(path: string, init: RequestInit & { timeout?: number; ide
     if (res.status === 404) throw new TwinError("Not found.", 404, "not_found");
     throw new TwinError(res.status >= 500 ? "The AI video service had a problem. Please try again." : e.message ? `The AI video service couldn’t use that: ${e.message}` : "The AI video service couldn’t use that.", res.status >= 500 ? 502 : 400, e.code);
   }
-  return (j?.data ?? (j as unknown)) as T;
+  return (init.raw ? j : (j?.data ?? (j as unknown))) as T;
 }
 
 const json = (body: unknown, idem?: string) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), idem });
@@ -126,16 +126,40 @@ export async function createPhotoLook(groupId: string, assetId: string, name: st
   return d.avatar_item.id;
 }
 
-/** A new look of the same person: a new outfit and setting, from a description. Joins the reference look's group. */
-export async function createPromptLook(o: { refLookId: string; groupId: string; name: string; prompt: string; aspect: "9:16" | "16:9"; idem: string }): Promise<string> {
-  const d = await call<{ avatar_item?: { id?: string } }>("/v3/avatars", json({ type: "prompt", name: o.name.slice(0, 100), prompt: o.prompt.slice(0, 1000), avatar_id: o.refLookId, avatar_group_id: o.groupId, aspect_ratio: o.aspect }, o.idem));
-  if (!d.avatar_item?.id) throw new TwinError("The new look wasn’t started. Try again.");
-  return d.avatar_item.id;
+export interface LookTemplate {
+  id: string;
+  type: "look_pack" | "template";
+  name: string;
+  gender: "male" | "female" | null;
+  preview?: string;
+  count: number;
 }
 
-/** A curated set of looks (a look pack, usually five) for the same person. */
-export async function createLookPack(o: { refLookId: string; templateId: string; aspect: "9:16" | "16:9"; idem: string }): Promise<string[]> {
-  const d = await call<{ looks?: ({ id?: string } | string)[] }>("/v3/avatars/looks", json({ type: "look_pack", reference_look_id: o.refLookId, template_id: o.templateId, aspect_ratio: o.aspect }, o.idem));
+/** The look templates and look packs the studio's plan can apply (the provider's gallery). */
+export async function listLookTemplates(): Promise<LookTemplate[]> {
+  const out: LookTemplate[] = [];
+  let token: string | undefined;
+  for (let page = 0; page < 20; page++) {
+    const q = new URLSearchParams({ limit: "50", ...(token ? { token } : {}) });
+    const res = await call<unknown>(`/v3/avatars/look-templates?${q}`, { timeout: 30_000, raw: true });
+    // The list comes either bare (data: [...], has_more beside it) or wrapped.
+    const r = res as { data?: unknown[]; has_more?: boolean; next_token?: string | null } | unknown[];
+    const items = (Array.isArray(r) ? r : (r.data ?? [])) as { id?: string; type?: string; name?: string | null; gender?: string | null; preview_image_url?: string | null; looks_count?: number }[];
+    for (const i of items) {
+      if (!i.id || (i.type !== "look_pack" && i.type !== "template")) continue;
+      out.push({ id: i.id, type: i.type, name: (i.name ?? "").trim() || "Look", gender: i.gender === "male" || i.gender === "female" ? i.gender : null, preview: i.preview_image_url ?? undefined, count: Math.max(1, Number(i.looks_count) || (i.type === "template" ? 2 : 5)) });
+    }
+    const more = !Array.isArray(r) && r.has_more && r.next_token;
+    if (!more) break;
+    token = r.next_token!;
+  }
+  return out;
+}
+
+/** Applies a look template (two looks) or a look pack (usually five) to the advisor's own look. */
+export async function createTemplateLooks(o: { refLookId: string; templateId: string; type: "look_pack" | "template"; aspect: "9:16" | "16:9"; idem: string }): Promise<string[]> {
+  const body = { type: o.type, reference_look_id: o.refLookId, template_id: o.templateId, ...(o.type === "look_pack" ? { aspect_ratio: o.aspect } : {}) };
+  const d = await call<{ looks?: ({ id?: string } | string)[] }>("/v3/avatars/looks", json(body, o.idem));
   const ids = (d.looks ?? []).map((l) => (typeof l === "string" ? l : l.id)).filter((x): x is string => !!x);
   if (!ids.length) throw new TwinError("The looks weren’t started. Try again.");
   return ids;

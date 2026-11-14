@@ -3,7 +3,7 @@ import { currentUser } from "@/lib/auth/server";
 import { isPro, proOnly } from "@/lib/billing/tier";
 import { baseUrl } from "@/lib/email";
 import { TwinError } from "@/lib/twin/heygen";
-import { CONSENT_TEXT, TwinUserError, addLook, addLookPack, newConsentLink, refresh, removeLook, removeTwin, renameLook, setDefaultLook, setPhotos, setVideo, setVoice } from "@/lib/twin/server";
+import { CONSENT_TEXT, TwinUserError, addTemplateLooks, newConsentLink, refresh, removeLook, removeTwin, renameLook, setDefaultLook, setPhotos, setVideo, setVoice } from "@/lib/twin/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 /**
  * Multipart (the voice): audio, seconds, consent=yes.
  * JSON: { action: "video", uploadId, consent } | { action: "photos", mediaIds, consent } | { action: "consent-link" } | { action: "default", lookId }
- *  | { action: "look", prompt, name?, from?, aspect? } | { action: "look-pack", pack, styling, from?, aspect? }
+ *  | { action: "template-looks", templateId, from?, aspect? }
  *  | { action: "rename-look", lookId, name } | { action: "remove-look", lookId }.
  */
 export async function POST(request: Request) {
@@ -44,13 +44,12 @@ export async function POST(request: Request) {
       const twin = await setVoice(user, { bytes: new Uint8Array(await f.arrayBuffer()), name: (f as File).name || "voice.webm" }, Number(form.get("seconds")) || undefined, form.get("consent"));
       return NextResponse.json({ ok: true, twin });
     }
-    const b = (await request.json().catch(() => null)) as { action?: string; uploadId?: unknown; mediaIds?: unknown; consent?: unknown; lookId?: unknown; prompt?: unknown; name?: unknown; from?: unknown; aspect?: unknown; pack?: unknown; styling?: unknown } | null;
+    const b = (await request.json().catch(() => null)) as { action?: string; uploadId?: unknown; mediaIds?: unknown; consent?: unknown; lookId?: unknown; name?: unknown; from?: unknown; aspect?: unknown; templateId?: unknown } | null;
     if (b?.action === "video") return NextResponse.json({ ok: true, twin: await setVideo(user, String(b.uploadId ?? ""), back(), b.consent) });
     if (b?.action === "photos") return NextResponse.json({ ok: true, twin: await setPhotos(user, b.mediaIds, b.consent) });
     if (b?.action === "consent-link") return NextResponse.json({ ok: true, url: await newConsentLink(user, back()), twin: await refresh(user) });
     if (b?.action === "default") return NextResponse.json({ ok: true, twin: await setDefaultLook(user, String(b.lookId ?? "")) });
-    if (b?.action === "look") return NextResponse.json({ ok: true, twin: await addLook(user, b) });
-    if (b?.action === "look-pack") return NextResponse.json({ ok: true, twin: await addLookPack(user, b) });
+    if (b?.action === "template-looks") return NextResponse.json({ ok: true, twin: await addTemplateLooks(user, b) });
     if (b?.action === "rename-look") return NextResponse.json({ ok: true, twin: await renameLook(user, String(b.lookId ?? ""), b.name) });
     if (b?.action === "remove-look") return NextResponse.json({ ok: true, twin: await removeLook(user, String(b.lookId ?? "")) });
     return NextResponse.json({ ok: false, error: "Unknown action." }, { status: 400 });

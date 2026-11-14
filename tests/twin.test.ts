@@ -61,7 +61,22 @@ before(async () => {
         if (b.type === "digital_twin") return send({ avatar_item: { id: "look_twin", default_voice_id: "voice_twin" }, avatar_group: { id: "group_1" } });
         return send({ avatar_item: { id: `look_photo_${b.file.asset_id}` }, avatar_group: { id: b.avatar_group_id } });
       }
-      if (url === "/v3/avatars/looks" && req.method === "POST") return send({ group_id: "group_1", looks: [1, 2, 3, 4, 5].map((i) => ({ id: `look_pack_${i}` })) });
+      if (url === "/v3/avatars/looks" && req.method === "POST") {
+        const b = JSON.parse(body || "{}");
+        const n = b.type === "look_pack" ? 5 : 2;
+        return send({ group_id: "group_1", looks: Array.from({ length: n }, (_, i) => ({ id: `look_${b.type}_${i + 1}` })) });
+      }
+      if (url.startsWith("/v3/avatars/look-templates")) {
+        res.setHeader("content-type", "application/json");
+        const page2 = url.includes("token=p2");
+        const items = page2
+          ? [{ id: "b".repeat(32), type: "template", name: "Studio Streamer", gender: "male", preview_image_url: `${base}/preview.jpg`, looks_count: 2 }]
+          : [
+              { id: "5e659e76755d47fd9160a2d7dedce124", type: "look_pack", name: "Modern Corporate", gender: "male", preview_image_url: `${base}/preview.jpg`, looks_count: 5 },
+              { id: "a".repeat(32), type: "template", name: "Professor", gender: null, preview_image_url: null, looks_count: 2 },
+            ];
+        return res.end(JSON.stringify({ data: items, has_more: !page2, next_token: page2 ? null : "p2" }));
+      }
       if (url.startsWith("/v3/avatars/looks/") && req.method === "DELETE") return send({ id: url.split("/").pop() });
       if (url.startsWith("/v3/avatars/looks/")) return send(ready(url) ? { status: "completed", supported_api_engines: ["avatar_iv", "avatar_v"], preview_image_url: `${base}/preview.jpg` } : { status: "processing" });
       if (url === "/preview.jpg") {
@@ -175,32 +190,34 @@ test("an AI video uses the look, the cloned voice and Avatar V, then lands in Re
   assert.deepEqual([view.width, view.height], [360, 640]);
 });
 
-test("new looks: a described outfit and setting, and a set of five, made from the twin in its group", async () => {
+test("new looks come from the gallery: templates and look packs, applied to the advisor's own look", async () => {
   const start = await twin.refresh(user);
   assert.ok(start.looks.find((l) => l.kind === "video")?.mediaId, "the twin's own look gets a picture in Renom's storage");
-  await assert.rejects(() => twin.addLook(user, { prompt: "suit" }), /Describe the outfit/);
 
-  const v = await twin.addLook(user, { prompt: "Navy suit and white shirt, modern office with a city view", aspect: "16:9" });
-  assert.equal(v.scenesPending[0].status, "working");
-  assert.equal(v.scenesPending[0].name, "Navy suit and white shirt");
-  const sent = JSON.parse(mock.calls.filter((c) => c.url === "/v3/avatars").at(-1)!.body);
-  assert.equal(sent.type, "prompt");
-  assert.equal(sent.avatar_group_id, "group_1");
-  assert.match(sent.avatar_id, /^look_/, "the advisor's own look is the reference");
-  assert.equal(sent.aspect_ratio, "16:9");
-  assert.match(sent.prompt, /Navy suit.*Same person/);
+  const gallery = (await twin.lookTemplates()).map(twin.viewTemplate);
+  assert.deepEqual(gallery.map((t) => [t.name, t.kind, t.styling, t.count]), [["Modern Corporate", "pack", "men", 5], ["Professor", "single", null, 2], ["Studio Streamer", "single", "men", 2]], "every page is read");
+  assert.equal(JSON.stringify(gallery).includes("preview.jpg"), false, "covers come through Renom, not the provider");
+  assert.match(gallery[0].image ?? "", /^\/api\/twin\/templates\/[a-f0-9]{32}$/);
+  assert.ok((await twin.templateImage(gallery[0].id))?.bytes.length, "a cover can be fetched");
+  assert.equal(await twin.templateImage("../etc/passwd"), null);
 
-  await assert.rejects(() => twin.addLookPack(user, { pack: "corporate" }), /men’s or women’s/);
-  await twin.addLookPack(user, { pack: "corporate", styling: "men" });
-  const pack = JSON.parse(mock.calls.find((c) => c.url === "/v3/avatars/looks")!.body);
-  assert.equal(pack.type, "look_pack");
-  assert.equal(pack.template_id, "5e659e76755d47fd9160a2d7dedce124");
+  await assert.rejects(() => twin.addTemplateLooks(user, { templateId: "f".repeat(32) }), /Pick one of the templates/);
+  const v = await twin.addTemplateLooks(user, { templateId: "a".repeat(32), aspect: "16:9" });
+  assert.deepEqual(v.scenesPending.map((p) => p.name), ["Professor 1", "Professor 2"]);
+  const single = JSON.parse(mock.calls.filter((c) => c.url === "/v3/avatars/looks").at(-1)!.body);
+  assert.equal(single.type, "template");
+  assert.match(single.reference_look_id, /^look_/, "the advisor's own look is the reference");
+  assert.equal(single.aspect_ratio, undefined, "single templates keep their own shape");
+
+  await twin.addTemplateLooks(user, { templateId: "5e659e76755d47fd9160a2d7dedce124", aspect: "16:9" });
+  const pack = JSON.parse(mock.calls.filter((c) => c.url === "/v3/avatars/looks").at(-1)!.body);
+  assert.deepEqual([pack.type, pack.template_id, pack.aspect_ratio], ["look_pack", "5e659e76755d47fd9160a2d7dedce124", "16:9"]);
 
   const done = await until(() => twin.refresh(user), (x) => x.scenesPending.length === 0);
   const scenes = done.looks.filter((l) => l.kind === "scene");
-  assert.equal(scenes.length, 6);
+  assert.equal(scenes.length, 7);
   assert.ok(scenes.every((l) => l.mediaId), "each look's picture is kept in Renom's storage");
-  assert.equal(done.limits.looksLeft, done.limits.looksPerMonth - 6);
+  assert.equal(done.limits.looksLeft, done.limits.looksPerMonth - 7);
   assert.equal(JSON.stringify(done).includes("preview.jpg"), false, "no provider URLs reach the page");
 
   const office = scenes.find((l) => l.aspect === "16:9")!;
@@ -240,7 +257,7 @@ test("the plan mixes up the looks: least recently used first, matching the shape
 
 test("new looks stop at the monthly allowance", async () => {
   process.env.AI_LOOKS_MONTHLY_LIMIT = "8";
-  await assert.rejects(() => twin.addLookPack(user, { pack: "casual", styling: "women" }), /2 more looks this month/);
+  await assert.rejects(() => twin.addTemplateLooks(user, { templateId: "5e659e76755d47fd9160a2d7dedce124" }), /1 more look this month/);
   delete process.env.AI_LOOKS_MONTHLY_LIMIT;
 });
 

@@ -46,7 +46,8 @@ export interface Scene {
   name: string;
   prompt?: string;
   pack?: string;
-  aspect: "9:16" | "16:9";
+  /** Look packs are made in the shape asked for; single templates keep their own. */
+  aspect?: "9:16" | "16:9";
   status: Part;
   error?: string;
   engines?: string[];
@@ -207,20 +208,40 @@ export async function setPhotos(user: User, mediaIds: unknown, consent: unknown)
   return refresh(user);
 }
 
-// ── More looks: new outfits and settings, same person ──
+// ── More looks: the provider's look templates applied to the advisor ──
 
-/** Curated sets, each in a men's and a women's styling. */
-export const LOOK_PACKS = {
-  corporate: { label: "Modern corporate", women: "5a8e6be843ee4321a014946bf62aa322", men: "5e659e76755d47fd9160a2d7dedce124" },
-  casual: { label: "Business casual", women: "e1650a9029d04ea1a350421c163295fd", men: "a5f8e0c0cb654c1a83c695629b173af5" },
-  keynote: { label: "Keynote presenter", women: "b0cae4fbae384ab9ab9a8e73ba504be8", men: "71e84769162d4f4186563ad9e0fc45b8" },
-  minimal: { label: "Clean and minimal", women: "e7b000e2cb0d44f1a2d2f291a38b395a", men: "9600f78f27bb49d792e1c56ce624b929" },
-} as const;
-export type LookPack = keyof typeof LOOK_PACKS;
-const PACK_SIZE = 5;
+/** The gallery as the advisor's page sees it: no provider ids or URLs. */
+export interface LookTemplateView {
+  id: string;
+  kind: "pack" | "single";
+  name: string;
+  styling: "men" | "women" | null;
+  count: number;
+  image?: string;
+}
 
-// Keeps the person themself: only the clothes, the setting and the light change.
-const SAME_PERSON = "Same person, with their face, features, skin tone and hair unchanged. Photorealistic, natural matte skin, looking at the camera, head-and-shoulders to waist-up framing for a talking video.";
+let catalog: { at: number; items: hg.LookTemplate[] } | null = null;
+let loading: Promise<hg.LookTemplate[]> | null = null;
+/** The template gallery, kept for six hours (it changes rarely). */
+export async function lookTemplates(): Promise<hg.LookTemplate[]> {
+  if (catalog && Date.now() - catalog.at < 6 * 3600_000) return catalog.items;
+  loading ??= hg
+    .listLookTemplates()
+    .then((items) => {
+      catalog = { at: Date.now(), items };
+      return items;
+    })
+    .finally(() => (loading = null));
+  return loading;
+}
+export const clearLookTemplates = () => (catalog = null);
+// Provider template ids are 32 hex characters; Renom shows its own short handle for them.
+export const isTemplateId = (id: unknown): id is string => typeof id === "string" && /^[a-f0-9]{32}$/.test(id);
+export const viewTemplate = (x: hg.LookTemplate): LookTemplateView => ({ id: x.id, kind: x.type === "look_pack" ? "pack" : "single", name: x.name, styling: x.gender === "male" ? "men" : x.gender === "female" ? "women" : null, count: x.count, image: x.preview ? `/api/twin/templates/${x.id}` : undefined });
+export async function templateImage(id: string) {
+  const x = isTemplateId(id) ? (await lookTemplates()).find((t) => t.id === id) : undefined;
+  return x?.preview ? hg.fetchPreview(x.preview) : null;
+}
 
 function lookBase(t: TwinRecord, from: unknown, need: number) {
   if (!t.twin || t.twin.status !== "ready" || t.twin.consent !== "accepted") throw new TwinUserError("Finish your video and consent first: new looks are made from your AI twin.", 409);
@@ -235,39 +256,16 @@ const counted = (t: TwinRecord, n: number) => {
   const month = now().slice(0, 7);
   t.looksMade = { month, n: (t.looksMade?.month === month ? t.looksMade.n : 0) + n };
 };
-const nameFrom = (prompt: string) => {
-  const words = prompt.split(/[.,;\n]/)[0].split(/\s+/).filter(Boolean).slice(0, 6);
-  while (words.length > 1 && /^(with|a|an|the|in|and|of|at|on|by|for|,)$/i.test(words.at(-1)!.replace(/,$/, ""))) words.pop();
-  const w = words.join(" ").replace(/[,:-]+$/, "");
-  return w ? w[0].toUpperCase() + w.slice(1) : "New look";
-};
 
-/** One new look from a description of the outfit and setting. */
-export async function addLook(user: User, b: { prompt?: unknown; name?: unknown; from?: unknown; aspect?: unknown }) {
-  const prompt = typeof b.prompt === "string" ? b.prompt.replace(/\s+/g, " ").trim() : "";
-  if (prompt.length < 8) throw new TwinUserError("Describe the outfit and the setting, e.g. “Navy suit, modern office with a city view”.");
-  if (prompt.length > 600) throw new TwinUserError("Keep the description under 600 characters.");
+/** Applies one of the gallery's templates (two looks) or look packs (usually five) to the advisor's look. */
+export async function addTemplateLooks(user: User, b: { templateId?: unknown; from?: unknown; aspect?: unknown }) {
+  const tpl = isTemplateId(b.templateId) ? (await lookTemplates()).find((x) => x.id === b.templateId) : undefined;
+  if (!tpl) throw new TwinUserError("Pick one of the templates.");
   const t = await readTwin(user.id);
-  const { groupId, ref } = lookBase(t, b.from, 1);
+  const { ref } = lookBase(t, b.from, tpl.count);
   const aspect: "9:16" | "16:9" = b.aspect === "16:9" ? "16:9" : "9:16";
-  const name = (typeof b.name === "string" && b.name.trim() ? b.name.trim() : nameFrom(prompt)).slice(0, 60);
-  const lookId = await hg.createPromptLook({ refLookId: ref.id, groupId, name: `Renom ${name}`, prompt: `${prompt}. ${SAME_PERSON}`, aspect, idem: randomUUID() });
-  t.scenes = [{ lookId, name, prompt, aspect, status: "working", createdAt: now() }, ...(t.scenes ?? [])];
-  counted(t, 1);
-  await saveTwin(t);
-  return viewTwin(t);
-}
-
-/** A curated set of looks (five), styled for men or women. */
-export async function addLookPack(user: User, b: { pack?: unknown; styling?: unknown; from?: unknown; aspect?: unknown }) {
-  const pack = typeof b.pack === "string" && b.pack in LOOK_PACKS ? LOOK_PACKS[b.pack as LookPack] : null;
-  if (!pack) throw new TwinUserError("Pick a set of looks.");
-  if (b.styling !== "men" && b.styling !== "women") throw new TwinUserError("Pick men’s or women’s styling.");
-  const t = await readTwin(user.id);
-  const { ref } = lookBase(t, b.from, PACK_SIZE);
-  const aspect: "9:16" | "16:9" = b.aspect === "16:9" ? "16:9" : "9:16";
-  const ids = await hg.createLookPack({ refLookId: ref.id, templateId: pack[b.styling], aspect, idem: randomUUID() });
-  t.scenes = [...ids.map((lookId, i) => ({ lookId, name: `${pack.label} ${i + 1}`, pack: pack.label, aspect, status: "working" as Part, createdAt: now() })), ...(t.scenes ?? [])];
+  const ids = await hg.createTemplateLooks({ refLookId: ref.id, templateId: tpl.id, type: tpl.type, aspect, idem: randomUUID() });
+  t.scenes = [...ids.map((lookId, i) => ({ lookId, name: ids.length > 1 ? `${tpl.name} ${i + 1}` : tpl.name, pack: tpl.name, aspect: tpl.type === "look_pack" ? aspect : undefined, status: "working" as Part, createdAt: now() })), ...(t.scenes ?? [])];
   counted(t, ids.length);
   await saveTwin(t);
   return viewTwin(t);
