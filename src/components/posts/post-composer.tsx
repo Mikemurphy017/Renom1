@@ -4,7 +4,7 @@
 import { ProUpsell } from "@/components/shared/pro";
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, CalendarClock, Check, CircleCheck, Copy, Download, ExternalLink, ImagePlus, LayoutTemplate, LoaderCircle, Plug, Send, Sparkles, TriangleAlert, Type, Image as ImageIcon, Wand2 } from "lucide-react";
+import { ArrowLeft, CalendarClock, ChartColumn, Check, CircleCheck, Copy, Download, ExternalLink, ImagePlus, LayoutTemplate, LoaderCircle, Plug, Send, Sparkles, TriangleAlert, Type, Image as ImageIcon, Wand2 } from "lucide-react";
 import { celebrate } from "@/lib/celebrate";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import { uploadImage } from "@/lib/media/upload";
 import { headlineFrom } from "@/lib/posts/graphic";
 import { postSourceOf } from "@/lib/posts/from-video";
 import { GraphicMaker } from "./post-graphic";
+import { InfographicMaker } from "./post-infographic";
 import { SERVICE_OF } from "@/lib/social/types";
 import { connectBuffer, publishPost, useSocialPosts, useSocialStatus } from "@/lib/social/use-social";
 import { POST_PLATFORMS, type PostAspect, type PostCopy, type PostDraft, type PostImage, type PostPlatform } from "@/lib/types";
@@ -197,13 +198,13 @@ function Composer({ post, update, profile }: { post: PostDraft; update: (patch: 
 
 type Scene = { id: string; label: string; brief: string };
 /** The picture: an AI photo, an AI photo with a headline graphic on it, a graphic with no photo, or the advisor's own. */
-type Mode = "ai" | "ai-graphic" | "graphic" | "upload";
+type Mode = "ai" | "ai-graphic" | "graphic" | "infographic" | "upload";
 const SOURCE_LABEL = { ai: "AI", upload: "Yours", graphic: "Graphic" } as const;
 
 function ImageStep({ post, update }: { post: PostDraft; update: (patch: Partial<PostDraft> | ((p: PostDraft) => Partial<PostDraft>)) => void }) {
   const { profile } = useStore();
   const headshots = profile.headshots.filter((h) => h.url);
-  const [mode, setMode] = React.useState<Mode>(() => (post.image?.source === "graphic" ? (post.image.baseId ? "ai-graphic" : "graphic") : post.image?.source === "upload" ? "upload" : "ai"));
+  const [mode, setMode] = React.useState<Mode>(() => (post.image?.infographic ? "infographic" : post.image?.source === "graphic" ? (post.image.baseId ? "ai-graphic" : "graphic") : post.image?.source === "upload" ? "upload" : "ai"));
   const headline = post.graphicHeadline ?? headlineFrom(post.copy[0]?.text ?? "", post.topic);
   const setHeadline = (h: string) => update({ graphicHeadline: h });
   const [scenes, setScenes] = React.useState<Scene[]>([]);
@@ -262,13 +263,14 @@ function ImageStep({ post, update }: { post: PostDraft; update: (patch: Partial<
   const base = post.image && post.image.source !== "graphic" ? post.image : (plain.find((g) => g.id === post.image?.baseId) ?? plain[0]);
 
   return (
-    <Step n={3} title="The picture" desc="A photo of you, a photo with your headline on it, or a headline graphic with no photo.">
-      <div className="mb-3 grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Kind of picture">
+    <Step n={3} title="The picture" desc="A photo of you, a photo with your headline on it, a headline card, or a colourful infographic.">
+      <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4" role="radiogroup" aria-label="Kind of picture">
         {(
           [
             ["ai", Wand2, "AI image", "A photo of you, made from your headshots."],
             ["ai-graphic", Sparkles, "AI image with graphics", "That photo with your headline and name on it."],
             ["graphic", LayoutTemplate, "Graphic, no image", "Your headline on a clean branded card."],
+            ["infographic", ChartColumn, "Infographic", "Charts, big numbers and bold colour, from your post."],
           ] as const
         ).map(([id, Icon, title, body]) => (
           <button key={id} type="button" role="radio" aria-checked={mode === id} onClick={() => setMode(id)} className={cn("flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-left transition", mode === id ? "border-primary bg-brass-soft/50" : "border-border hover:bg-muted/50")}>
@@ -281,7 +283,14 @@ function ImageStep({ post, update }: { post: PostDraft; update: (patch: Partial<
         <ImagePlus className="size-3.5" /> {mode === "upload" ? "Back to the options above" : "Or upload a picture of your own"}
       </button>
 
-      {mode === "graphic" ? (
+      {mode === "infographic" ? (
+        <div className="space-y-3">
+          <ToggleGroup type="single" value={aspect} onValueChange={(v) => v && setAspect(v as PostAspect)}>
+            {ASPECTS.map((a) => <ToggleGroupItem key={a.id} value={a.id} className="text-[12px]">{a.label}</ToggleGroupItem>)}
+          </ToggleGroup>
+          <InfographicMaker post={post} aspect={aspect} onAdd={add} onPlans={(infographics) => update({ infographics })} />
+        </div>
+      ) : mode === "graphic" ? (
         <div className="space-y-3">
           <ToggleGroup type="single" value={aspect} onValueChange={(v) => v && setAspect(v as PostAspect)}>
             {ASPECTS.map((a) => <ToggleGroupItem key={a.id} value={a.id} className="text-[12px]">{a.label}</ToggleGroupItem>)}

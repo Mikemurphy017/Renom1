@@ -5,6 +5,8 @@ import { WRITERS } from "@/lib/ai/writers";
 import { estimateRuntime } from "@/lib/ai/content";
 import { uploadImage } from "@/lib/media/upload";
 import { canvasBlob, drawGraphic, headlineFrom } from "@/lib/posts/graphic";
+import { INFO_PALETTES, brandPalette, drawInfographic } from "@/lib/posts/infographic";
+import type { Infographic } from "@/lib/posts/infographic-spec";
 import { seedDraft } from "@/lib/drafts";
 import type { AdvisorProfile, PlanItem, PlatformId, PostDraft, PostImage, PostPlatform, Script, Video } from "@/lib/types";
 import type { PlatformCopy } from "@/lib/ai/content";
@@ -75,18 +77,49 @@ async function aiImageReady(profile: AdvisorProfile) {
   return j?.configured ? headshots : null;
 }
 
-/** One picture for a post: an AI photo of the advisor when possible, otherwise a headline graphic. */
-async function pictureFor(post: PostDraft, headline: string, scene: string | undefined, headshots: string[] | null, profile: AdvisorProfile): Promise<PostImage> {
-  if (headshots && scene && scene.length >= 8) {
+let posts = 0;
+/** A colourful infographic made from the post (the first of Claude's plans), or null. */
+async function infographicFor(post: PostDraft, text: string, profile: AdvisorProfile): Promise<{ image: PostImage; plans: Infographic[] } | null> {
+  try {
+    const r = await fetch("/api/posts/infographic", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, topic: post.topic }) });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j?.ok || !j.options?.length) throw new Error(j?.error ?? "no plans");
+    const plans = j.options as Infographic[];
+    // A different bright palette from one post to the next.
+    const palettes = INFO_PALETTES.filter((x) => x.id !== "mint");
+    const palette = brandPalette(profile.brandColors) && posts % 3 === 0 ? brandPalette(profile.brandColors)! : palettes[posts % palettes.length];
+    const canvas = document.createElement("canvas");
+    await drawInfographic(canvas, { spec: plans[0], palette, aspect: "4:5", name: profile.name, sub: [profile.credentials, profile.firm].filter(Boolean).join(" · ") });
+    const up = await uploadImage(await canvasBlob(canvas), "thumbnail", "post-infographic");
+    return { image: { id: up.id, url: up.url, source: "graphic", aspect: "4:5", headline: plans[0].headline, infographic: true }, plans };
+  } catch (e) {
+    console.warn("[plan] infographic failed:", (e as Error).message);
+    return null;
+  }
+}
+
+/**
+ * One picture for a post. Image posts take turns: an AI photo of the advisor,
+ * then a colourful infographic made from the post. Without AI photos, an
+ * infographic; if that can't be made, a headline graphic.
+ */
+async function pictureFor(post: PostDraft, headline: string, scene: string | undefined, headshots: string[] | null, profile: AdvisorProfile, text: string): Promise<{ image: PostImage; plans?: Infographic[] }> {
+  const turn = posts++;
+  const photo = !!headshots && !!scene && scene.length >= 8;
+  if (!photo || turn % 2 === 1) {
+    const ig = await infographicFor(post, text, profile);
+    if (ig) return ig;
+  }
+  if (photo) {
     const r = await fetch("/api/posts/image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ headshots: headshots.slice(0, 4), scene, aspect: "4:5" }) });
     const j = await r.json().catch(() => ({}));
-    if (r.ok && j.ok && j.image) return j.image as PostImage;
+    if (r.ok && j.ok && j.image) return { image: j.image as PostImage };
     console.warn("[plan] AI picture failed, using a graphic:", j.error);
   }
   const canvas = document.createElement("canvas");
   await drawGraphic(canvas, { headline, name: profile.name, sub: [profile.credentials, profile.firm].filter(Boolean).join(" · "), aspect: "4:5", theme: "navy", place: "bottom", brand: profile.brandColors });
   const up = await uploadImage(await canvasBlob(canvas), "thumbnail", "post-graphic");
-  return { id: up.id, url: up.url, source: "graphic", aspect: "4:5", headline };
+  return { image: { id: up.id, url: up.url, source: "graphic", aspect: "4:5", headline } };
 }
 
 async function preparePost(item: PlanItem, api: AutopilotApi, ctx: { openings: string[]; headshots: string[] | null }) {
@@ -118,8 +151,8 @@ async function preparePost(item: PlanItem, api: AutopilotApi, ctx: { openings: s
     api.updatePost(p.id, { copy, imageIdea: scene, graphicHeadline: headline, plannedFor: p.plannedFor ?? nineOn(item.date) });
   }
   if (p.kind === "image" && !p.image) {
-    const img = await pictureFor(p, headline || headlineFrom(copy[0]?.text ?? "", item.title), scene, ctx.headshots, api.profile);
-    api.updatePost(p.id, { image: img, images: [img] });
+    const { image: img, plans } = await pictureFor(p, headline || headlineFrom(copy[0]?.text ?? "", item.title), scene, ctx.headshots, api.profile, copy[0]?.text ?? "");
+    api.updatePost(p.id, { image: img, images: [img], ...(plans ? { infographics: plans } : {}) });
   }
 }
 

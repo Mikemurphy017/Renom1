@@ -185,6 +185,8 @@ export interface PostImage {
   baseId?: string;
   /** The words on a graphic. */
   headline?: string;
+  /** A chart or figure graphic (an infographic), not a headline card. */
+  infographic?: boolean;
 }
 
 export interface PostDraft {
@@ -203,6 +205,8 @@ export interface PostDraft {
   imageIdea?: string;
   /** The headline for this post's graphic (suggested by Claude, edited by the advisor). */
   graphicHeadline?: string;
+  /** Infographic plans for this post (kept so they aren't asked for again). */
+  infographics?: import("./posts/infographic-spec").Infographic[];
   /** When the plan has it going out (local date and time): the default when scheduling. */
   plannedFor?: string;
   status: "draft" | "scheduled" | "published";

@@ -127,7 +127,7 @@ export function PrepareDialog({
               <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Kind of post">
                 {(
                   [
-                    ["image", ImageIcon, "Text + picture", "Written in your voice, with one picture: an AI photo of you, or a headline graphic."],
+                    ["image", ImageIcon, "Text + picture", "Written in your voice, with one picture: AI photos of you and colourful infographics made from the post, taking turns."],
                     ["text", Type, "Text only", "Written in your voice, no picture."],
                   ] as const
                 ).map(([id, Icon, label, body]) => (
