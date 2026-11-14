@@ -105,6 +105,7 @@ export function LookStudio({ open, onOpenChange, twin, busy, onGenerate }: { ope
               {ref?.mediaId ? <img src={`/api/media/${ref.mediaId}`} alt={ref.label} className="absolute inset-0 h-full w-full object-cover" /> : <UserRound className="absolute inset-0 m-auto size-8 text-muted-foreground" />}
             </div>
             <p className="mt-2 text-center text-[12px] text-muted-foreground">New looks keep your appearance from this look.</p>
+            {!twin.looks.some((l) => l.kind === "photo") && <p className="mt-2 rounded-lg bg-muted/60 p-2 text-center text-[11px] text-muted-foreground">Add photos of you in step 3 (“Photos of you”) for more starting looks.</p>}
             {twin.looks.length > 1 && (
               <div className="mt-3 flex flex-wrap justify-center gap-1.5">
                 {twin.looks.map((l) => (

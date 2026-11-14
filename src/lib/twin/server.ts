@@ -198,7 +198,7 @@ export async function newConsentLink(user: User, returnUrl: string) {
 
 /** Photos of the advisor (their own headshots): each becomes a look that moves like the twin. */
 export async function setPhotos(user: User, mediaIds: unknown, consent: unknown) {
-  const ids = (Array.isArray(mediaIds) ? mediaIds : []).filter(isMediaId).slice(0, 6);
+  const ids = (Array.isArray(mediaIds) ? mediaIds : []).filter(isMediaId).slice(0, 12);
   if (!ids.length) throw new TwinUserError("Pick at least one photo of you.");
   const t = await readTwin(user.id);
   needConsent(t, consent);

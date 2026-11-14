@@ -65,6 +65,7 @@ const AUDIO_EXT = /\.(mp3|m4a|wav|aac|ogg|oga|opus|webm|flac|mp4|caf|aiff?)$/i;
 const AUDIO_ACCEPT = "audio/*,.mp3,.m4a,.wav,.aac,.ogg,.opus,.webm,.flac,.mp4,.caf,.aif,.aiff";
 // Some browsers report voice memos (.m4a) as video/mp4 or with no type at all: trust the extension too.
 const isAudioFile = (f: File) => f.type.startsWith("audio/") || AUDIO_EXT.test(f.name) || (f.type === "video/mp4" && /\.m4a$/i.test(f.name));
+const MAX_PHOTOS = 12;
 const mediaIdOf = (url?: string) => /\/api\/media\/(img[a-f0-9]{18})/.exec(url ?? "")?.[1];
 
 function pickMime() {
@@ -218,10 +219,14 @@ export function AiTwinSection() {
     });
 
   // ── photos ──
-  const headshots = profile.headshots.filter((h) => mediaIdOf(h.url));
+  // Their own photos, then the AI photo set made for covers: all of them are them, and each can become a look.
+  const own = profile.headshots.flatMap((h) => (mediaIdOf(h.url) ? [{ id: mediaIdOf(h.url)!, url: h.url!, label: "Your photo" }] : []));
+  const set_ = (profile.photoSet ?? []).flatMap((p) => (mediaIdOf(p.url) && !own.some((o) => o.id === mediaIdOf(p.url)) ? [{ id: mediaIdOf(p.url)!, url: p.url, label: p.label }] : []));
   const chosen = new Set(state?.twin.photos.map((p) => p.mediaId) ?? []);
   const [picked, setPicked] = React.useState<string[] | null>(null);
-  const selection = picked ?? [...chosen];
+  // Nothing added yet: start with all their own photos ticked, so it's one click.
+  const selection = picked ?? (chosen.size ? [...chosen] : own.slice(0, MAX_PHOTOS).map((o) => o.id));
+  const changed = !!picked || (!chosen.size && selection.length > 0);
   const addPhotos = async (files: FileList | null) => {
     for (const f of Array.from(files ?? []).slice(0, 4)) {
       try {
@@ -333,28 +338,32 @@ export function AiTwinSection() {
         )}
       </Step>
 
-      <Step n={3} title="Photos of you" hint="Two to four clear photos, different outfits or settings if you like. Each becomes a look that moves like you." status={<Status part={twin.photos.length ? (twin.photos.some((p) => p.status === "working") ? "working" : twin.photos.some((p) => p.status === "ready") ? "ready" : "failed") : null} label={twin.photos.some((p) => p.status === "ready") && !twin.photos.some((p) => p.status === "working") ? `${twin.photos.filter((p) => p.status === "ready").length} ready` : undefined} />}>
+      <Step n={3} title="Photos of you" hint="Clear photos of just you, in different outfits or settings. Each becomes a look that moves like you." status={<Status part={twin.photos.length ? (twin.photos.some((p) => p.status === "working") ? "working" : twin.photos.some((p) => p.status === "ready") ? "ready" : "failed") : null} label={twin.photos.some((p) => p.status === "ready") && !twin.photos.some((p) => p.status === "working") ? `${twin.photos.filter((p) => p.status === "ready").length} ready` : undefined} />}>
         <div className="flex flex-wrap gap-2">
-          {headshots.map((h) => {
-            const id = mediaIdOf(h.url)!;
+          {[...own, ...set_].map((h, i) => {
+            const id = h.id;
             const on = selection.includes(id);
             const st = twin.photos.find((p) => p.mediaId === id);
             return (
-              <button key={h.id} type="button" onClick={() => setPicked(on ? selection.filter((x) => x !== id) : [...selection, id].slice(0, 6))} aria-pressed={on} className={cn("relative size-20 cursor-pointer overflow-hidden rounded-xl border-2 transition", on ? "border-primary" : "border-transparent opacity-70 hover:opacity-100")} title={st?.error}>
-                <img src={h.url} alt="Your photo" className="absolute inset-0 h-full w-full object-cover" />
+              <React.Fragment key={id}>
+              {i === own.length && <div className="w-full pt-1 text-[12px] font-medium text-muted-foreground">From your cover photo set</div>}
+              <button type="button" onClick={() => setPicked(on ? selection.filter((x) => x !== id) : selection.length >= MAX_PHOTOS ? selection : [...selection, id])} aria-pressed={on} className={cn("relative size-20 cursor-pointer overflow-hidden rounded-xl border-2 transition", on ? "border-primary" : "border-transparent opacity-70 hover:opacity-100")} title={st?.error ?? h.label}>
+                <img src={h.url} alt={h.label} className="absolute inset-0 h-full w-full object-cover" />
                 {on && <span className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="size-3" /></span>}
                 {st?.status === "working" && <span className="absolute inset-x-0 bottom-0 bg-black/55 py-0.5 text-center text-[9px] text-white">Adding…</span>}
                 {st?.status === "failed" && <span className="absolute inset-x-0 bottom-0 bg-destructive/85 py-0.5 text-center text-[9px] text-white">Didn’t work</span>}
               </button>
+              </React.Fragment>
             );
           })}
           <button type="button" onClick={() => photoInput.current?.click()} className="flex size-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-[11px] text-muted-foreground hover:border-primary/50"><ImagePlus className="size-4" /> Add photo</button>
           <input ref={photoInput} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(e) => { void addPhotos(e.target.files); e.target.value = ""; }} />
         </div>
-        {picked && (
+        {changed && (
           <Button size="sm" className="mt-3" onClick={sendPhotos} disabled={!!busy || !selection.length || !consentOk}>{busy === "photos" ? <LoaderCircle className="animate-spin" /> : <Check />} Use these {selection.length} {selection.length === 1 ? "photo" : "photos"}</Button>
         )}
-        {picked && selection.length > 0 && <div className="mt-1.5">{tickFirst}</div>}
+        {changed && selection.length > 0 && <div className="mt-1.5">{tickFirst}</div>}
+        <p className="mt-2 text-[12px] text-muted-foreground">Tap photos to choose, up to {MAX_PHOTOS}. Each one you add is another starting look for new looks and AI videos.</p>
         {!twin.video && twin.photos.length > 0 && <p className="mt-2 text-[12px] text-muted-foreground">Photos are added once your video is uploaded.</p>}
       </Step>
 
