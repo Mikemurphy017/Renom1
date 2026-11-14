@@ -425,6 +425,12 @@ export interface AiVideoJob {
   aspect: "9:16" | "16:9";
   lookId: string;
   providerId?: string;
+  /** For a second try without Avatar V if the first fails. */
+  voiceId?: string;
+  engines?: string[];
+  fellBack?: boolean;
+  /** The provider's own reason for a failure (server side only, for support). */
+  providerError?: string;
   status: "working" | "ready" | "failed";
   error?: string;
   uploadId?: string;
@@ -518,6 +524,7 @@ async function startOne(user: User, b: { script?: unknown; videoId?: unknown; as
     status: "working",
     attempts: 0,
   };
+  Object.assign(job, { voiceId: t.voice!.id, engines: look.engines });
   job.providerId = await hg.startVideo({ lookId: look.id, voiceId: t.voice!.id, script, aspect: job.aspect, engines: look.engines, title: typeof b.title === "string" ? b.title : "Renom AI video", idem: job.id });
   await saveJob(job);
   await putJSON(indexKey(user.id), { ids: [job.id, ...(await readIndex(user.id))].slice(0, 500) });
@@ -545,8 +552,22 @@ export function advanceJob(id: string): Promise<AiVideoJob | null> {
     }
     if (s.state === "working") return job;
     if (s.state === "failed") {
+      job.providerError = [job.providerError, s.detail].filter(Boolean).join(" | ");
+      // One more go on the standard engine before giving up (Avatar V isn't open to every look or plan).
+      if (!job.fellBack && !s.moderation && job.engines?.includes("avatar_v")) {
+        job.fellBack = true;
+        try {
+          job.providerId = await hg.startVideo({ lookId: job.lookId, voiceId: job.voiceId, script: job.script, aspect: job.aspect, engines: job.engines, title: "Renom AI video", idem: `${job.id}-b`, plain: true });
+          console.warn(`[aivideo] ${job.id} retrying on the standard engine`);
+          await saveJob(job);
+          return job;
+        } catch (e) {
+          job.providerError += ` | retry: ${(e as Error).message}`;
+        }
+      }
       job.status = "failed";
       job.error = s.reason;
+      console.error(`[aivideo] ${job.id} failed: ${job.providerError}`);
       await saveJob(job);
       return job;
     }

@@ -205,21 +205,26 @@ export const deleteGroup = (groupId: string) => call(`/v3/avatars/${encodeURICom
 
 // ── Videos ──
 
-export async function startVideo(o: { lookId: string; voiceId?: string; script: string; aspect: "9:16" | "16:9"; engines: string[]; title: string; idem: string }): Promise<string> {
+export async function startVideo(o: { lookId: string; voiceId?: string; script: string; aspect: "9:16" | "16:9"; engines: string[]; title: string; idem: string; plain?: boolean }): Promise<string> {
   const base = { type: "avatar", avatar_id: o.lookId, script: o.script, ...(o.voiceId ? { voice_id: o.voiceId } : {}), aspect_ratio: o.aspect, resolution: "1080p", title: o.title.slice(0, 200) };
   // Avatar V moves like the advisor's own footage (their twin is the reference); Avatar IV otherwise.
-  const body = o.engines.includes("avatar_v") ? { ...base, engine: { type: "avatar_v", more_blinking: true } } : base;
+  const body = !o.plain && o.engines.includes("avatar_v") ? { ...base, engine: { type: "avatar_v", more_blinking: true } } : base;
   const d = await call<{ video_id?: string; id?: string }>("/v3/videos", json(body, o.idem));
   const id = d.video_id ?? d.id;
   if (!id) throw new TwinError("The video wasn’t started. Try again.");
   return id;
 }
 
-export type VideoState = { state: "working" } | { state: "done"; url: string } | { state: "failed"; reason: string };
+export type VideoState = { state: "working" } | { state: "done"; url: string } | { state: "failed"; reason: string; detail: string; moderation: boolean };
 
 export async function videoStatus(videoId: string): Promise<VideoState> {
   const d = await call<{ status?: string; video_url?: string | null; failure_code?: string | null; failure_message?: string | null }>(`/v3/videos/${encodeURIComponent(videoId)}`, { timeout: 20_000 });
-  if (d.status === "completed") return d.video_url ? { state: "done", url: d.video_url } : { state: "failed", reason: "The video came back empty. Please make it again." };
-  if (d.status === "failed") return { state: "failed", reason: /moderat|policy/i.test(`${d.failure_code} ${d.failure_message}`) ? "The script or photo was declined by content review. Reword it or pick another look." : "This one couldn’t be made. Please try again." };
+  if (d.status === "completed") return d.video_url ? { state: "done", url: d.video_url } : { state: "failed", reason: "The video came back empty. Please make it again.", detail: "empty", moderation: false };
+  if (d.status === "failed") {
+    const detail = `${d.failure_code ?? ""} ${d.failure_message ?? ""}`.trim().slice(0, 300);
+    console.error(`[twin] video ${videoId} failed: ${detail || "(no reason given)"}`);
+    const moderation = /moderat|policy/i.test(detail);
+    return { state: "failed", reason: moderation ? "The script or photo was declined by content review. Reword it or pick another look." : "This one couldn’t be made. Please try again.", detail, moderation };
+  }
   return { state: "working" };
 }

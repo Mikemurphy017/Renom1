@@ -10,7 +10,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const mock = { calls: [] as { method: string; url: string; body: string; idem?: string }[], polls: new Map<string, number>(), consent: "pending" as string, failVoice: false };
+const mock = { calls: [] as { method: string; url: string; body: string; idem?: string }[], polls: new Map<string, number>(), consent: "pending" as string, failVoice: false, failAvatarV: false };
 let server: http.Server;
 let dir: string;
 let base: string;
@@ -86,7 +86,8 @@ before(async () => {
       if (url === "/v3/avatars/group_1/consent") return send({ url: "https://consent.example/abc", avatar_group: { consent_status: "pending" } });
       if (url === "/v3/avatars/group_1" && req.method === "GET") return send({ id: "group_1", consent_status: mock.consent });
       if (url === "/v3/avatars/group_1" && req.method === "DELETE") return send({});
-      if (url === "/v3/videos" && req.method === "POST") return send({ video_id: "vid_1" });
+      if (url === "/v3/videos" && req.method === "POST") return send({ video_id: mock.failAvatarV && JSON.parse(body).engine?.type === "avatar_v" ? "vid_bad" : "vid_1" });
+      if (url === "/v3/videos/vid_bad") return send({ status: "failed", failure_code: "engine_unavailable", failure_message: "Avatar V is not available for this look" });
       if (url === "/v3/videos/vid_1") return send(ready("vid", 2) ? { status: "completed", video_url: `${base}/out.mp4` } : { status: "processing" });
       if (url === "/out.mp4") {
         res.setHeader("content-type", "video/mp4");
@@ -259,6 +260,19 @@ test("new looks stop at the monthly allowance", async () => {
   process.env.AI_LOOKS_MONTHLY_LIMIT = "8";
   await assert.rejects(() => twin.addTemplateLooks(user, { templateId: "5e659e76755d47fd9160a2d7dedce124" }), /1 more look this month/);
   delete process.env.AI_LOOKS_MONTHLY_LIMIT;
+});
+
+test("a failed video is tried once more on the standard engine, and the reason is kept", async () => {
+  mock.failAvatarV = true;
+  const job = await twin.startAiVideo(user, { script: "One quick idea for business owners before the year ends.", aspect: "9:16" });
+  const done = await until(() => twin.advanceJob(job.id), (j) => j?.status !== "working");
+  mock.failAvatarV = false;
+  assert.equal(done?.status, "ready");
+  assert.equal(done?.fellBack, true);
+  assert.match(done?.providerError ?? "", /engine_unavailable/);
+  const retry = JSON.parse(mock.calls.filter((c) => c.url === "/v3/videos" && c.method === "POST").at(-1)!.body);
+  assert.equal(retry.engine, undefined, "the retry uses the standard engine");
+  assert.equal(retry.voice_id, "voice_1");
 });
 
 test("scripts that are too long or empty are turned down", async () => {
