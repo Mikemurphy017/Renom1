@@ -195,24 +195,24 @@ export function Landing() {
 
       <main>
         {/* Hero */}
-        <section className="mx-auto max-w-4xl px-4 pt-16 pb-14 text-center sm:px-6 md:pt-24">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-[12px] text-muted-foreground shadow-soft">
-            <span className="size-1.5 rounded-full bg-success" /> {TRIAL_DAYS}-day free trial
+        <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pt-16 pb-14 text-center sm:px-6 md:pt-24 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-14 lg:text-left">
+          <div>
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-[12px] text-muted-foreground shadow-soft">
+              <span className="size-1.5 rounded-full bg-success" /> {TRIAL_DAYS}-day free trial
+            </div>
+            <h1 className="font-serif text-[42px] leading-[1.04] tracking-tight sm:text-[56px] lg:text-[58px]">
+              The advisor people trust most is the one <em className="text-primary italic">they’ve already met.</em>
+            </h1>
+            <p className="mx-auto mt-6 max-w-2xl text-[17px] leading-relaxed text-muted-foreground sm:text-[18px] lg:mx-0">
+              Video lets prospects meet you before the first meeting. {NAME} writes the script in your voice, puts it on a teleprompter in your browser, edits your take and hands you a polished video built to attract high-net-worth prospects, <span className="font-medium text-foreground">in under 10 minutes</span>.
+            </p>
+            <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
+              <CTA>Start your free trial</CTA>
+              <a href="#how" className="inline-flex h-12 items-center justify-center rounded-full border border-border bg-card px-7 text-[15px] font-medium hover:bg-accent">See how it works</a>
+            </div>
+            <p className="mt-4 text-[13px] text-muted-foreground">{TRIAL_DAYS} days free, up to {TRIAL_VIDEOS} videos. Cancel anytime.</p>
           </div>
-          <h1 className="font-serif text-[44px] leading-[1.03] tracking-tight sm:text-[64px] lg:text-[76px]">
-            The advisor people trust most is the one <em className="text-primary italic">they’ve already met.</em>
-          </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-[17px] leading-relaxed text-muted-foreground sm:text-[19px]">
-            Video lets prospects meet you before the first meeting. {NAME} writes the script in your voice, puts it on a teleprompter in your browser, edits your take and hands you a polished video built to attract high-net-worth prospects, <span className="font-medium text-foreground">in under 10 minutes</span>.
-          </p>
-          <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
-            <CTA>Start your free trial</CTA>
-            <a href="#how" className="inline-flex h-12 items-center justify-center rounded-full border border-border bg-card px-7 text-[15px] font-medium hover:bg-accent">See how it works</a>
-          </div>
-          <p className="mt-4 text-[13px] text-muted-foreground">{TRIAL_DAYS} days free, up to {TRIAL_VIDEOS} videos. Cancel anytime.</p>
-          <div className="mx-auto mt-12 max-w-4xl">
-            <AutoplayVideo id="7a_SYS82sXI" title={`${NAME}: see it in action`} />
-          </div>
+          <AutoplayVideo id="7a_SYS82sXI" title={`${NAME}: see it in action`} />
         </section>
 
         {/* Under 10 minutes */}

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, Check, Captions, FileText, Lightbulb, MonitorPlay, Send, ShieldCheck, Volume2, VolumeX } from "lucide-react";
+import { ArrowRight, Check, Captions, FileText, Lightbulb, MonitorPlay, Send, ShieldCheck, Volume2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PLANS, effectiveMonthly, getPlan, money, type BillingInterval, type PlanId } from "@/lib/pricing";
 
@@ -397,14 +397,14 @@ export function AutoplayVideo({ id, title }: { id: string; title: string }) {
       <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-[#0B1F3A] shadow-[0_24px_60px_-20px_rgba(11,31,58,.45)]">
         {origin && <iframe ref={frame} src={src} title={title} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen className="absolute inset-0 h-full w-full border-0" />}
         {!sound && (
-          <button type="button" onClick={unmute} aria-label="Turn on sound" className="group absolute inset-0 flex cursor-pointer items-center justify-center">
-            <span className="inline-flex items-center gap-2.5 rounded-full bg-[#DC2626] px-6 py-3.5 text-[17px] font-semibold text-white shadow-lg transition group-hover:scale-105 sm:px-8 sm:py-4 sm:text-[20px]">
-              <VolumeX className="size-5 sm:size-6" /> Click for sound
+          <button type="button" onClick={unmute} aria-label="Turn on sound" className="group absolute inset-0 flex cursor-pointer items-center justify-center p-[8%]">
+            <span className="flex h-full max-h-[78%] w-full max-w-[78%] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-white/85 bg-[#DC2626]/75 px-4 text-center text-white shadow-[0_0_0_10px_rgba(220,38,38,.25)] backdrop-blur-[1px] transition group-hover:bg-[#DC2626]/85 sm:gap-4">
+              <Volume2 className="size-10 sm:size-14" strokeWidth={2.2} />
+              <span className="text-[18px] leading-tight font-bold sm:text-[26px]">Your video is playing<br />Click to unmute</span>
             </span>
           </button>
         )}
       </div>
-      {!sound && <p className="mt-3 flex items-center justify-center gap-1.5 text-[13px] text-muted-foreground"><Volume2 className="size-4" /> Click the video to turn on sound</p>}
     </div>
   );
 }
