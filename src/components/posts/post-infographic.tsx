@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/lib/store";
 import { uploadImage } from "@/lib/media/upload";
-import { canvasBlob } from "@/lib/posts/graphic";
-import { INFO_PALETTES, brandPalette, drawInfographic, type InfoPalette } from "@/lib/posts/infographic";
+import { canvasBlob, loadImage } from "@/lib/posts/graphic";
+import { INFO_PALETTES, brandPalette, drawInfographic, type InfoPalette, type PhotoPlace } from "@/lib/posts/infographic";
 import { HYPOTHETICAL_NOTE, type Infographic } from "@/lib/posts/infographic-spec";
 import type { PostAspect, PostDraft, PostImage } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -31,11 +31,11 @@ export function numberFrom(display: string): number | null {
   return Number.isFinite(n) ? n * mult : null;
 }
 
-function Preview({ spec, palette, aspect, name, sub, className }: { spec: Infographic; palette: InfoPalette; aspect: PostAspect; name: string; sub: string; className?: string }) {
+function Preview({ spec, palette, aspect, name, sub, photo, photoPlace, className }: { spec: Infographic; palette: InfoPalette; aspect: PostAspect; name: string; sub: string; photo: HTMLImageElement | null; photoPlace: PhotoPlace; className?: string }) {
   const ref = React.useRef<HTMLCanvasElement>(null);
   React.useEffect(() => {
-    if (ref.current) void drawInfographic(ref.current, { spec, palette, aspect, name, sub }).catch(() => {});
-  }, [spec, palette, aspect, name, sub]);
+    if (ref.current) void drawInfographic(ref.current, { spec, palette, aspect, name, sub, photo, photoPlace }).catch(() => {});
+  }, [spec, palette, aspect, name, sub, photo, photoPlace]);
   return <canvas ref={ref} className={cn("block h-auto w-full", className)} aria-label="Preview of the infographic" />;
 }
 
@@ -49,6 +49,20 @@ export function InfographicMaker({ post, aspect, onAdd, onPlans }: { post: PostD
   const [palette, setPalette] = React.useState<InfoPalette>(palettes[brand ? 1 : 0]);
   const [showName, setShowName] = React.useState(true);
   const [busy, setBusy] = React.useState<"" | "plan" | "save">("");
+  // The post's own pictures (AI images and uploads) can go on the infographic.
+  const photos = (post.images ?? (post.image ? [post.image] : [])).filter((g) => g.source !== "graphic");
+  const [photoId, setPhotoId] = React.useState<string>(() => (post.image?.infographic && post.image.baseId ? post.image.baseId : (photos.find((g) => g.source === "ai") ?? photos[0])?.id ?? ""));
+  const [photoPlace, setPhotoPlace] = React.useState<PhotoPlace>("hero");
+  const [photo, setPhoto] = React.useState<HTMLImageElement | null>(null);
+  const photoUrl = photos.find((g) => g.id === photoId)?.url;
+  React.useEffect(() => {
+    let alive = true;
+    setPhoto(null);
+    if (photoUrl) loadImage(photoUrl).then((img) => alive && setPhoto(img)).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [photoUrl]);
   const canvas = React.useRef<HTMLCanvasElement>(null);
   const text = post.copy[0]?.text ?? "";
   const name = showName ? profile.name : "";
@@ -81,9 +95,9 @@ export function InfographicMaker({ post, aspect, onAdd, onPlans }: { post: PostD
     if (!spec || !canvas.current) return;
     setBusy("save");
     try {
-      await drawInfographic(canvas.current, { spec, palette, aspect, name, sub });
+      await drawInfographic(canvas.current, { spec, palette, aspect, name, sub, photo, photoPlace });
       const up = await uploadImage(await canvasBlob(canvas.current), "thumbnail", "post-infographic");
-      onAdd({ id: up.id, url: up.url, source: "graphic", aspect, headline: spec.headline, infographic: true });
+      onAdd({ id: up.id, url: up.url, source: "graphic", aspect, headline: spec.headline, infographic: true, baseId: photo && photoId ? photoId : undefined });
       toast.success("Infographic added", { description: "It’s selected for this post." });
     } catch (e) {
       toast.error("Couldn’t save the infographic", { description: (e as Error).message });
@@ -93,8 +107,8 @@ export function InfographicMaker({ post, aspect, onAdd, onPlans }: { post: PostD
   };
 
   React.useEffect(() => {
-    if (spec && canvas.current) void drawInfographic(canvas.current, { spec, palette, aspect, name, sub }).catch(() => {});
-  }, [spec, palette, aspect, name, sub]);
+    if (spec && canvas.current) void drawInfographic(canvas.current, { spec, palette, aspect, name, sub, photo, photoPlace }).catch(() => {});
+  }, [spec, palette, aspect, name, sub, photo, photoPlace]);
 
   if (!plans.length || !spec)
     return (
@@ -113,7 +127,7 @@ export function InfographicMaker({ post, aspect, onAdd, onPlans }: { post: PostD
       <div className="grid grid-cols-3 gap-2">
         {plans.map((p, n) => (
           <button key={n} type="button" onClick={() => choose(n)} aria-pressed={pick === n} className={cn("cursor-pointer overflow-hidden rounded-xl border-2 text-left transition", pick === n ? "border-primary" : "border-transparent opacity-80 hover:opacity-100")}>
-            <Preview spec={n === pick ? spec : p} palette={palette} aspect={aspect} name={name} sub={sub} />
+            <Preview spec={n === pick ? spec : p} palette={palette} aspect={aspect} name={name} sub={sub} photo={photo} photoPlace={photoPlace} />
             <span className="block bg-card px-2 py-1 text-[11px] font-medium">{LAYOUT_LABEL[p.layout]}</span>
           </button>
         ))}
@@ -134,6 +148,29 @@ export function InfographicMaker({ post, aspect, onAdd, onPlans }: { post: PostD
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <div className="mb-1.5 text-[12px] font-medium">Your photo</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => setPhotoId("")} aria-pressed={!photoId} className={cn("flex size-14 cursor-pointer items-center justify-center rounded-lg border-2 bg-muted text-[11px] text-muted-foreground", !photoId ? "border-primary" : "border-transparent hover:border-primary/40")}>None</button>
+              {photos.map((g) => (
+                // eslint-disable-next-line @next/next/no-img-element -- the advisor's own pictures
+                <button key={g.id} type="button" onClick={() => setPhotoId(g.id)} aria-pressed={photoId === g.id} className={cn("relative size-14 cursor-pointer overflow-hidden rounded-lg border-2", photoId === g.id ? "border-primary" : "border-transparent opacity-75 hover:opacity-100")}><img src={g.url} alt={g.source === "ai" ? "AI image" : "Your picture"} className="absolute inset-0 h-full w-full object-cover" /></button>
+              ))}
+              {photoId && (
+                <div className="inline-flex rounded-full border border-border p-0.5" role="radiogroup" aria-label="Where the photo goes">
+                  {(
+                    [
+                      ["hero", "Across the top"],
+                      ["circle", "In a circle"],
+                    ] as const
+                  ).map(([v, l]) => (
+                    <button key={v} type="button" role="radio" aria-checked={photoPlace === v} onClick={() => setPhotoPlace(v)} className={cn("cursor-pointer rounded-full px-3 py-1 text-[12px] transition", photoPlace === v ? "bg-navy text-navy-foreground dark:bg-primary dark:text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>{l}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {!photos.length && <p className="mt-1 text-[12px] text-muted-foreground">Make an AI image first (the “AI image” option above) and it can go on your infographic.</p>}
           </div>
           <div>
             <label className="mb-1 block text-[12px] font-medium" htmlFor="ig-headline">Headline</label>

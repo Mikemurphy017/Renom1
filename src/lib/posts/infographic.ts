@@ -36,8 +36,13 @@ export function brandPalette(brand?: string[]): InfoPalette | null {
   return { id: "brand", label: "Your brand", bg: [main, mix(main, ink === "#FFFFFF" ? "#000000" : "#FFFFFF", 0.28)], ink, colors: [isHex(brand?.[1]) ? brand![1] : "#FFC233", "#3DF5C5", "#FF6B9A", ink] };
 }
 
+export type PhotoPlace = "hero" | "circle";
+
 export interface InfographicInput {
   spec: Infographic;
+  /** A photo of the advisor (an AI image) to put on it, and how: across the top, or in a circle. */
+  photo?: HTMLImageElement | null;
+  photoPlace?: PhotoPlace;
   palette: InfoPalette;
   aspect: PostAspect;
   name: string;
@@ -436,6 +441,19 @@ function drawSteps(ctx: CanvasRenderingContext2D, f: Fonts, i: Infographic, p: I
   });
 }
 
+/** Fills the box with the image, cropped; ax/ay say which part to keep (0.5, 0.3: centre, upper third, where a face usually is). */
+function cover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number, ax = 0.5, ay = 0.3) {
+  const r = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  const dw = img.naturalWidth * r;
+  const dh = img.naturalHeight * r;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.drawImage(img, x + (w - dw) * ax, y + (h - dh) * ay, dw, dh);
+  ctx.restore();
+}
+
 const LAYOUTS = { stat: drawStat, bars: drawBars, donut: drawDonut, compare: drawCompare, line: drawLine, steps: drawSteps };
 
 /** Draws the infographic at posting size and sets the canvas's size to match. */
@@ -451,8 +469,66 @@ export async function drawInfographic(canvas: HTMLCanvasElement, input: Infograp
   const pad = 72 * s;
   background(ctx, p, H);
 
-  // Kicker pill.
+  // The photo: across the top fading into the colour (beside the chart when wide), or a ringed circle by the headline.
+  const photo = input.photo && input.photo.naturalWidth ? input.photo : null;
+  const place = photo ? (input.photoPlace ?? "hero") : null;
+  const wide = H < 800;
+  const tone = mix(p.bg[0], p.bg[1], 0.4);
+  let right = W - pad;
+  let headRight = right;
   let y = pad;
+  let minY = 0;
+  if (photo && place === "hero") {
+    if (wide) {
+      const pw = W * 0.4;
+      cover(ctx, photo, W - pw, 0, pw, H, 0.5, 0.3);
+      const g = ctx.createLinearGradient(W - pw, 0, W - pw * 0.45, 0);
+      g.addColorStop(0, tone);
+      g.addColorStop(1, rgba(tone, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(W - pw - 1, 0, pw * 0.56, H);
+      right = headRight = W - pw + 30 * s;
+    } else {
+      // The photo top right, its whole face showing, fading into the colour on the left and below; the headline beside it.
+      const pw = W * 0.56;
+      const ph = H * 0.5;
+      cover(ctx, photo, W - pw, 0, pw, ph, 0.5, 0.2);
+      const gl = ctx.createLinearGradient(W - pw, 0, W - pw * 0.6, 0);
+      gl.addColorStop(0, tone);
+      gl.addColorStop(1, rgba(tone, 0));
+      ctx.fillStyle = gl;
+      ctx.fillRect(W - pw - 1, 0, pw * 0.4 + 1, ph);
+      const gb = ctx.createLinearGradient(0, ph * 0.62, 0, ph);
+      gb.addColorStop(0, rgba(tone, 0));
+      gb.addColorStop(1, tone);
+      ctx.fillStyle = gb;
+      ctx.fillRect(W - pw - 1, ph * 0.62, pw + 1, ph * 0.38 + 1);
+      headRight = W - pw + 70 * s;
+      minY = ph * 0.97;
+    }
+  } else if (photo && place === "circle") {
+    const d = (wide ? 260 : 270) * s;
+    const cx = W - pad - d / 2;
+    const cy = pad + d / 2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, d / 2, 0, Math.PI * 2);
+    ctx.clip();
+    cover(ctx, photo, cx - d / 2, cy - d / 2, d, d, 0.5, 0.25);
+    ctx.restore();
+    const ring = ctx.createLinearGradient(cx - d / 2, cy - d / 2, cx + d / 2, cy + d / 2);
+    ring.addColorStop(0, pop(p, 0));
+    ring.addColorStop(1, pop(p, 2));
+    ctx.strokeStyle = ring;
+    ctx.lineWidth = 12 * s;
+    ctx.beginPath();
+    ctx.arc(cx, cy, d / 2 + 4 * s, 0, Math.PI * 2);
+    ctx.stroke();
+    headRight = W - pad - d - 34 * s;
+    minY = pad + d + 24 * s;
+  }
+
+  // Kicker pill.
   if (i.kicker) {
     ctx.font = `800 ${24 * s}px ${f.sans}`;
     const label = i.kicker.toUpperCase();
@@ -467,25 +543,25 @@ export async function drawInfographic(canvas: HTMLCanvasElement, input: Infograp
     y += 50 * s + 26 * s;
   }
   // Headline.
-  const h = fit(ctx, i.headline, (px) => `800 ${px}px ${f.sans}`, W - pad * 2, H * 0.2, 76 * s, 38 * s, 1.08, 3);
+  const h = fit(ctx, i.headline, (px) => `800 ${px}px ${f.sans}`, headRight - pad, place && !wide ? H * 0.3 : H * 0.2, 76 * s, 38 * s, 1.08, place && !wide ? 5 : 3);
   ctx.font = `800 ${h.px}px ${f.sans}`;
   ctx.fillStyle = p.ink;
   ctx.textAlign = "left";
   h.lines.forEach((l, n) => ctx.fillText(l, pad, y + h.px * 0.88 + n * h.lh));
-  y += h.lines.length * h.lh + 40 * s;
+  y = Math.max(y + h.lines.length * h.lh + 40 * s, minY);
 
   // Footer: name, then the small print.
   const note = [i.hypothetical ? HYPOTHETICAL_NOTE : "", i.source ? `Source: ${i.source}` : ""].filter(Boolean).join(" ");
   ctx.font = `500 ${19 * s}px ${f.sans}`;
-  const noteLines = note ? wrap(ctx, note, W - pad * 2).slice(0, 2) : [];
+  const noteLines = note ? wrap(ctx, note, right - pad).slice(0, 2) : [];
   const nameH = (input.name ? 40 * s : 0) + (input.sub ? 32 * s : 0);
   const footH = nameH + (noteLines.length ? noteLines.length * 26 * s + 14 * s : 0);
   const footY = H - pad * 0.8 - footH;
   // Takeaway above the footer.
   ctx.font = `600 ${34 * s}px ${f.sans}`;
-  const take = i.takeaway ? wrap(ctx, i.takeaway, W - pad * 2 - 30 * s).slice(0, 2) : [];
+  const take = i.takeaway ? wrap(ctx, i.takeaway, right - pad - 30 * s).slice(0, 2) : [];
   const takeH = take.length ? take.length * 44 * s + 30 * s : 0;
-  const chart: Box = { x: pad, y, w: W - pad * 2, h: footY - takeH - 30 * s - y };
+  const chart: Box = { x: pad, y, w: right - pad, h: footY - takeH - 30 * s - y };
   if (chart.h > 80) LAYOUTS[i.layout](ctx, f, i, p, chart, s);
   if (take.length) {
     const ty = footY - takeH - 10 * s;
@@ -500,7 +576,7 @@ export async function drawInfographic(canvas: HTMLCanvasElement, input: Infograp
   let fy = footY;
   if (nameH) {
     ctx.fillStyle = rgba(p.ink, 0.25);
-    ctx.fillRect(pad, fy - 8 * s, W - pad * 2, 2);
+    ctx.fillRect(pad, fy - 8 * s, right - pad, 2);
     ctx.textAlign = "left";
     if (input.name) {
       ctx.font = `800 ${30 * s}px ${f.sans}`;
