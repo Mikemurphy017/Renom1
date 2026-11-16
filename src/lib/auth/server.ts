@@ -75,8 +75,9 @@ const INDEX = "meta/userindex.json";
 const INVITES = "meta/invites.json";
 const resetKey = (token: string) => `resets/${h40(token)}.json`;
 
-const DEFAULT_ADMIN = "mike@bluestonepartnersllc.com";
-const adminEmails = () => (process.env.ADMIN_EMAILS?.trim() || DEFAULT_ADMIN).split(",").map(normEmail).filter(Boolean);
+/** Always admins; ADMIN_EMAILS (comma-separated) adds more. */
+const DEFAULT_ADMINS = ["mike@bluestonepartnersllc.com", "michael.mata@bluestonepartnersllc.com"];
+const adminEmails = () => [...DEFAULT_ADMINS, ...(process.env.ADMIN_EMAILS ?? "").split(",")].map(normEmail).filter(Boolean);
 export const isAdmin = (user: Pick<User, "email"> | null | undefined) => !!user && adminEmails().includes(normEmail(user.email));
 
 async function hashPassword(password: string, salt = randomBytes(16)) {
@@ -141,7 +142,8 @@ export async function createUser(input: { email: string; password: string; name:
   const name = input.name.trim().slice(0, 120);
   if (!name) throw new AuthError("Enter your name.");
 
-  const policy = await signupPolicy();
+  // Admins can always make their account, invite or not.
+  const policy = isAdmin({ email }) ? { open: true, needsCode: false } : await signupPolicy();
   if (!policy.open) throw new AuthError("New accounts are by invitation. Ask your administrator for an invite.", 403);
   let invite: Invite | null = null;
   if (!policy.needsCode && input.invite?.trim()) {

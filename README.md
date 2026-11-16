@@ -162,7 +162,7 @@ Email is sent with **Resend** (`RESEND_API_KEY` + `EMAIL_FROM`, the sender on a 
 
 ### Admin dashboard (`/admin`)
 
-Only the emails in `ADMIN_EMAILS` (comma-separated; defaults to mike@bluestonepartnersllc.com) can open it; for everyone else the page is a 404 and `/api/admin/*` answers 403. It shows:
+Only admins can open it: mike@bluestonepartnersllc.com and michael.mata@bluestonepartnersllc.com always, plus any emails in `ADMIN_EMAILS` (comma-separated); for everyone else the page is a 404 and `/api/admin/*` answers 403. It shows:
 
 - **Accounts:** name, email, firm, videos, last sign-in, last activity, set-up status. Per account: send a password reset (emailed, plus a copyable link valid 24 hours), sign out everywhere, disable/enable (disabling signs them out at once), delete (removes the account and its saved studio; recorded files stay in storage). You can't disable or delete your own account.
 - **Invites:** create single-use invite links (optionally for one email, sent by email), see which were used and by whom, revoke open ones.
