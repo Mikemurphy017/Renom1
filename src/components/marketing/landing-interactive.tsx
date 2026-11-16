@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, Check, Captions, FileText, Lightbulb, MonitorPlay, Send, ShieldCheck } from "lucide-react";
+import { ArrowRight, Check, Captions, FileText, Lightbulb, MonitorPlay, Send, ShieldCheck, Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PLANS, effectiveMonthly, getPlan, money, type BillingInterval, type PlanId } from "@/lib/pricing";
 
@@ -369,6 +369,42 @@ export function RoiCalculator() {
       <Link href="/signup" className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#0B1F3A] text-[14px] font-medium text-white hover:bg-[#16304f]">
         Start your free trial <ArrowRight className="size-4" />
       </Link>
+    </div>
+  );
+}
+
+/**
+ * A YouTube video that starts on its own, muted and looping (browsers only
+ * allow silent autoplay), with a "Click for sound" button that turns the sound
+ * on and starts it again from the beginning.
+ */
+export function AutoplayVideo({ id, title }: { id: string; title: string }) {
+  const frame = React.useRef<HTMLIFrameElement>(null);
+  const [origin, setOrigin] = React.useState("");
+  const [sound, setSound] = React.useState(false);
+  React.useEffect(() => setOrigin(window.location.origin), []);
+  const send = (func: string, args: unknown[] = []) => frame.current?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), "*");
+  const unmute = () => {
+    send("unMute");
+    send("setVolume", [100]);
+    send("seekTo", [0, true]);
+    send("playVideo");
+    setSound(true);
+  };
+  const src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&playsinline=1&loop=1&playlist=${id}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&enablejsapi=1${origin ? `&origin=${encodeURIComponent(origin)}` : ""}`;
+  return (
+    <div>
+      <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-[#0B1F3A] shadow-[0_24px_60px_-20px_rgba(11,31,58,.45)]">
+        {origin && <iframe ref={frame} src={src} title={title} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen className="absolute inset-0 h-full w-full border-0" />}
+        {!sound && (
+          <button type="button" onClick={unmute} aria-label="Turn on sound" className="group absolute inset-0 flex cursor-pointer items-center justify-center">
+            <span className="inline-flex items-center gap-2.5 rounded-full bg-[#DC2626] px-6 py-3.5 text-[17px] font-semibold text-white shadow-lg transition group-hover:scale-105 sm:px-8 sm:py-4 sm:text-[20px]">
+              <VolumeX className="size-5 sm:size-6" /> Click for sound
+            </span>
+          </button>
+        )}
+      </div>
+      {!sound && <p className="mt-3 flex items-center justify-center gap-1.5 text-[13px] text-muted-foreground"><Volume2 className="size-4" /> Click the video to turn on sound</p>}
     </div>
   );
 }

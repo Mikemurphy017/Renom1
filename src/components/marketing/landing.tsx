@@ -14,7 +14,7 @@ import {
 import { Logo } from "@/components/layout/logo";
 import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
-import { FlowTabs, RoiCalculator } from "./landing-interactive";
+import { AutoplayVideo, FlowTabs, RoiCalculator } from "./landing-interactive";
 import { PricingPlans } from "./pricing";
 import { TRIAL_DAYS, TRIAL_VIDEOS } from "@/lib/pricing";
 
@@ -210,6 +210,9 @@ export function Landing() {
             <a href="#how" className="inline-flex h-12 items-center justify-center rounded-full border border-border bg-card px-7 text-[15px] font-medium hover:bg-accent">See how it works</a>
           </div>
           <p className="mt-4 text-[13px] text-muted-foreground">{TRIAL_DAYS} days free, up to {TRIAL_VIDEOS} videos. Cancel anytime.</p>
+          <div className="mx-auto mt-12 max-w-4xl">
+            <AutoplayVideo id="7a_SYS82sXI" title={`${NAME}: see it in action`} />
+          </div>
         </section>
 
         {/* Under 10 minutes */}
