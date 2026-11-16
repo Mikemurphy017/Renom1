@@ -343,15 +343,17 @@ export function Landing() {
 
         {/* Pays for itself */}
         <section className="bg-[#0B1F3A]">
-          <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-24 sm:px-6 lg:grid-cols-2">
-            <div>
+          <div className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
+            <div className="mx-auto max-w-2xl text-center">
               <Eyebrow className="text-[#D2B07A]">The math</Eyebrow>
               <H2 light accent="Calculator">{NAME} ROI</H2>
-              <p className="mt-5 max-w-lg text-[16px] leading-relaxed text-[#AAB4C4]">
+              <p className="mt-5 text-[16px] leading-relaxed text-[#AAB4C4]">
                 Video is how people decide whether they want to meet you. If being seen every week brings in even one new relationship, the studio pays for itself many times over. Put in your own numbers.
               </p>
             </div>
-            <RoiCalculator />
+            <div className="mx-auto mt-12 max-w-3xl">
+              <RoiCalculator />
+            </div>
           </div>
         </section>
 
