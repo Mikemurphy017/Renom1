@@ -28,6 +28,8 @@ export interface Credentials {
   email: string;
   password: string;
   signInUrl: string;
+  /** Whether the details were also emailed to them. */
+  emailed?: boolean;
 }
 
 export function credentialsMessage(c: Credentials) {
@@ -65,7 +67,7 @@ export function CredentialsCard({ creds, title = "Client is set up", onDone }: {
         <span className="flex size-6 items-center justify-center rounded-full bg-success text-white"><Check className="size-3.5" /></span>
         {title}
       </div>
-      <p className="mt-1.5 text-[13px] text-muted-foreground">Copy this and send it to {creds.name.split(" ")[0] || "them"} by email or text. The password is shown only now; if it gets lost, make a new one from the Clients list.</p>
+      <p className="mt-1.5 text-[13px] text-muted-foreground">{creds.emailed ? <><span className="font-medium text-foreground">Emailed to {creds.email}.</span> Here it is too, if you’d like to send it another way.</> : <>Copy this and send it to {creds.name.split(" ")[0] || "them"} by email or text.</>} The password is shown only now; if it gets lost, use “Resend sign-in email” or “New password” on the Clients list.</p>
       <pre className="mt-4 overflow-x-auto rounded-xl border border-border bg-card p-4 font-mono text-[13px] leading-relaxed whitespace-pre-wrap select-all">{message}</pre>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <Button className="rounded-full" onClick={() => copy("Message", message)}>
@@ -129,6 +131,7 @@ export function ClientSetup({ id }: { id?: string }) {
   const [disclosure, setDisclosure] = React.useState("");
   const [requireApproval, setRequireApproval] = React.useState(false);
   const [plan, setPlan] = React.useState<"pro" | "starter">("pro");
+  const [emailClient, setEmailClient] = React.useState(true);
   const [reviewer, setReviewer] = React.useState("");
   const [opinion, setOpinion] = React.useState("");
   const [photoBusy, setPhotoBusy] = React.useState(false);
@@ -181,14 +184,15 @@ export function ClientSetup({ id }: { id?: string }) {
     setSaving(true);
     try {
       const profile = { ...p, email: p.email || loginEmail, disclosures: disclosure.trim() ? [{ ...(p.disclosures[0] ?? {}), text: disclosure.trim() }] : [] };
-      const body = JSON.stringify({ email: loginEmail, profile, requireApproval, reviewer, plan });
+      const body = JSON.stringify({ email: loginEmail, profile, requireApproval, reviewer, plan, emailClient });
       if (editing) {
         await call(`/api/admin/clients/${id}`, { method: "PUT", body });
         toast.success("Workspace saved", { description: "They’ll see it next time they open the app." });
         router.push("/admin/clients");
       } else {
-        const r = await call<{ password: string; signInUrl: string; user: { email: string; name: string } }>("/api/admin/clients", { method: "POST", body });
-        setCreds({ name: r.user.name, email: r.user.email, password: r.password, signInUrl: r.signInUrl });
+        const r = await call<{ password: string; signInUrl: string; emailed?: boolean; user: { email: string; name: string } }>("/api/admin/clients", { method: "POST", body });
+        setCreds({ name: r.user.name, email: r.user.email, password: r.password, signInUrl: r.signInUrl, emailed: r.emailed });
+        if (emailClient && !r.emailed) toast.error("The sign-in email wasn’t sent", { description: "Email isn’t set up, or it failed. Copy the message below and send it yourself." });
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch (err) {
@@ -340,6 +344,12 @@ export function ClientSetup({ id }: { id?: string }) {
       </Card>
 
       <div className="sticky bottom-4 z-10 flex items-center justify-end gap-2 rounded-2xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur">
+        {!editing && (
+          <label className="mr-auto flex cursor-pointer items-center gap-2 pl-1 text-[13px]">
+            <Switch checked={emailClient} onCheckedChange={setEmailClient} />
+            Email them their sign-in details
+          </label>
+        )}
         <Button type="button" variant="ghost" className="rounded-full" onClick={() => router.push("/admin/clients")}>Cancel</Button>
         <Button type="submit" className="rounded-full px-5" disabled={saving || photoBusy}>
           {saving ? <LoaderCircle className="animate-spin" /> : <Check />} {editing ? "Save workspace" : "Create workspace & sign-in"}
