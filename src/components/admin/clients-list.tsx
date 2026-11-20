@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { KeyRound, LoaderCircle, Mail, PencilLine, UserPlus } from "lucide-react";
+import { KeyRound, LoaderCircle, PencilLine, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -68,26 +68,6 @@ export function ClientsList() {
     }
   };
 
-  const resendEmail = async (u: Row) => {
-    if (!window.confirm(`Email ${u.email} their sign-in details?\n\nThis makes a new temporary password (the old one stops working and they’re signed out) and emails it to them with a sign-in link.`)) return;
-    setBusy(u.id);
-    try {
-      const res = await fetch(`/api/admin/users/${u.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "email-credentials" }) });
-      const j = await res.json();
-      if (!res.ok || !j.ok) throw new Error(j.error || "Couldn’t send the email.");
-      if (j.emailed) toast.success(`Sign-in details sent to ${u.email}`);
-      else {
-        // The password changed but the email failed: show it so it can be sent another way.
-        toast.error("The email didn’t go through", { description: "Here are the new details to send yourself." });
-        setCreds({ name: u.name, email: u.email, password: j.password, signInUrl: j.signInUrl });
-      }
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  };
-
   return (
     <div>
       <PageHeader
@@ -134,9 +114,6 @@ export function ClientsList() {
                 </label>
                 <Button asChild size="sm" variant="outline" className="rounded-full">
                   <Link href={`/admin/clients/${u.id}`}><PencilLine /> {u.onboarded ? "Edit workspace" : "Set up workspace"}</Link>
-                </Button>
-                <Button size="sm" variant="ghost" className="rounded-full" disabled={busy === u.id || u.disabled} onClick={() => resendEmail(u)} title="Email them a new temporary password and a sign-in link">
-                  <Mail /> Resend sign-in email
                 </Button>
                 <Button size="sm" variant="ghost" className="rounded-full" disabled={busy === u.id} onClick={() => newPassword(u)}>
                   {busy === u.id ? <LoaderCircle className="animate-spin" /> : <KeyRound />} New password

@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/admin";
 import { resetLink, sendResetEmail } from "@/lib/auth/reset-email";
-import { sendCredentialsEmail } from "@/lib/auth/credentials-email";
-import { emailConfigured } from "@/lib/email";
 import { signInUrl } from "@/lib/auth/workspace";
 import { AuthError, createResetToken, deleteUser, setDisabled, setGrantedPlan, setTempPassword, signOutEverywhere, userById } from "@/lib/auth/server";
 
@@ -34,20 +32,6 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
         if (self) throw new AuthError("Change your own password in Settings.", 409);
         const password = await setTempPassword(id);
         return NextResponse.json({ ok: true, password, signInUrl: signInUrl(request) });
-      }
-      case "email-credentials": {
-        // A new temporary password, emailed to the client (the old one can't be read back: only its hash is kept).
-        if (self) throw new AuthError("Change your own password in Settings.", 409);
-        if (!emailConfigured()) throw new AuthError("Email isn’t set up for this studio yet, so nothing was sent. Use “New password” and send the details yourself.", 409);
-        const password = await setTempPassword(id);
-        try {
-          await sendCredentialsEmail(request, user, password);
-        } catch (e) {
-          console.error("[admin] credentials email failed:", e);
-          // The password changed; hand it to the admin so the client isn't locked out.
-          return NextResponse.json({ ok: true, emailed: false, password, signInUrl: signInUrl(request) });
-        }
-        return NextResponse.json({ ok: true, emailed: true });
       }
       case "plan": {
         // Grant Starter or Pro features, or (null) go back to what their subscription gives.
