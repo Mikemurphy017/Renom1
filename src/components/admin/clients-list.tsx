@@ -54,7 +54,8 @@ export function ClientsList() {
   };
 
   const newPassword = async (u: Row) => {
-    if (!window.confirm(`Make a new temporary password for ${u.email}? Their current password stops working and they’re signed out.`)) return;
+    // Only a password's hash is kept, so the message comes with a fresh temporary password.
+    if (u.lastSignInAt && !window.confirm(`Get a new sign-in message for ${u.email}?\n\nIt comes with a new temporary password: their current password stops working and they’re signed out.`)) return;
     setBusy(u.id);
     try {
       const res = await fetch(`/api/admin/users/${u.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "password" }) });
@@ -116,7 +117,7 @@ export function ClientsList() {
                   <Link href={`/admin/clients/${u.id}`}><PencilLine /> {u.onboarded ? "Edit workspace" : "Set up workspace"}</Link>
                 </Button>
                 <Button size="sm" variant="ghost" className="rounded-full" disabled={busy === u.id} onClick={() => newPassword(u)}>
-                  {busy === u.id ? <LoaderCircle className="animate-spin" /> : <KeyRound />} New password
+                  {busy === u.id ? <LoaderCircle className="animate-spin" /> : <KeyRound />} Copy sign-in message
                 </Button>
               </div>
             </div>
@@ -126,7 +127,7 @@ export function ClientsList() {
       <Dialog open={!!creds} onOpenChange={(o) => !o && setCreds(null)}>
         <DialogContent className="sm:max-w-[620px]">
           <DialogHeader><DialogTitle className="sr-only">New sign-in details</DialogTitle></DialogHeader>
-          {creds && <CredentialsCard creds={creds} title="New password ready" onDone={() => setCreds(null)} />}
+          {creds && <CredentialsCard creds={creds} title="Sign-in message ready" onDone={() => setCreds(null)} />}
         </DialogContent>
       </Dialog>
     </div>

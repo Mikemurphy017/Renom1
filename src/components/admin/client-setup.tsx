@@ -30,6 +30,8 @@ export interface Credentials {
   signInUrl: string;
 }
 
+export const credentialsSubject = () => `Your ${BRAND.name} sign-in details`;
+
 export function credentialsMessage(c: Credentials) {
   const first = c.name.trim().split(/\s+/)[0] || "there";
   return [
@@ -65,8 +67,13 @@ export function CredentialsCard({ creds, title = "Client is set up", onDone }: {
         <span className="flex size-6 items-center justify-center rounded-full bg-success text-white"><Check className="size-3.5" /></span>
         {title}
       </div>
-      <p className="mt-1.5 text-[13px] text-muted-foreground">Copy this and send it to {creds.name.split(" ")[0] || "them"} by email or text. The password is shown only now; if it gets lost, make a new one from the Clients list.</p>
-      <pre className="mt-4 overflow-x-auto rounded-xl border border-border bg-card p-4 font-mono text-[13px] leading-relaxed whitespace-pre-wrap select-all">{message}</pre>
+      <p className="mt-1.5 text-[13px] text-muted-foreground">Copy this and send it to {creds.name.split(" ")[0] || "them"} from your own email or by text. The password is shown only now; if it gets lost, use “Copy sign-in message” on the Clients list for a fresh one.</p>
+      <div className="mt-4 flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-[13px]">
+        <span className="shrink-0 text-muted-foreground">Subject</span>
+        <span className="min-w-0 flex-1 truncate font-medium select-all">{credentialsSubject()}</span>
+        <Button size="sm" variant="ghost" className="shrink-0 rounded-full" onClick={() => copy("Subject", credentialsSubject())}>{copied === "Subject" ? <Check /> : <Copy />} Copy</Button>
+      </div>
+      <pre className="mt-2 overflow-x-auto rounded-xl border border-border bg-card p-4 font-mono text-[13px] leading-relaxed whitespace-pre-wrap select-all">{message}</pre>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <Button className="rounded-full" onClick={() => copy("Message", message)}>
           {copied === "Message" ? <Check /> : <Copy />} Copy message
