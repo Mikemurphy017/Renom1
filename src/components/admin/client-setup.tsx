@@ -43,6 +43,8 @@ export function credentialsMessage(c: Credentials) {
     `Email: ${c.email}`,
     `Temporary password: ${c.password}`,
     "",
+    `New to ${BRAND.name}? This short tutorial walks you through it: https://youtu.be/LDRMZlD57K4`,
+    "",
     "Once you're in, you'll be asked to choose your own password (Settings → Account).",
   ].join("\n");
 }
